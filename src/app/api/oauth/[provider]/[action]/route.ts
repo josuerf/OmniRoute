@@ -15,6 +15,7 @@ import {
   findExistingOAuthConnectionMatch,
 } from "@/lib/oauth/connectionPersistence";
 import { createDeviceFlowTicket, getDeviceFlowTicketStatus } from "@/lib/oauth/deviceFlowTickets";
+import { exchangeAndPersistConnection } from "@/lib/oauth/exchangeAndPersistConnection";
 import {
   createProviderConnection,
   updateProviderConnection,
@@ -485,7 +486,6 @@ export async function POST(
 
     if (action === "exchange") {
       const { code, redirectUri, connectionId, codeVerifier, state } = body;
-      const normalizedState = typeof state === "string" && state.length > 0 ? state : undefined;
       const providerData = getProvider(provider);
 
       // Capability check, not a bare flowType equality: grok-cli keeps flowType
@@ -513,66 +513,21 @@ export async function POST(
         );
       }
 
-      // Resolve proxy for this provider (provider-level → global → direct)
-      const proxy = await resolveProxyForProvider(provider);
-
-      // Exchange code for tokens (through proxy if configured)
-      const tokenData = await runWithProxyContextOrDirect(proxy, () =>
-        exchangeTokens(provider, code, redirectUri, codeVerifier, normalizedState)
-      );
-
-      // #11284: when Cloud Code projectId discovery failed at connect time,
-      // SAVE the connection but mark it degraded (maintainer direction on
-      // #11284) — the refresh token stays stored and request-time bootstrap
-      // self-heals the row once Google assigns a project.
-      const degradedProject = antigravityDegradedProjectState(provider, tokenData);
-
-      // Normalize: if name is missing, use email or displayName as fallback so accounts
-      // always show a real label (e.g. user@gmail.com) instead of "Account #abc123"
-      if (!tokenData.name && (tokenData.email || tokenData.displayName)) {
-        tokenData.name = tokenData.email || tokenData.displayName;
-      }
-
-      // Upsert: update existing connection if same provider+email, else create new
-      const expiresAt = tokenData.expiresIn
-        ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
-        : null;
-
-      let connection: any;
-      if (tokenData.email) {
-        const existing = await getProviderConnections({ provider });
-        // Codex accounts sharing an email require workspaceId/chatgptUserId
-        // agreement to be treated as the same account (#7737).
-        const match = findExistingOAuthConnectionMatch(existing, provider, tokenData, connectionId);
-        const matchId = typeof match?.id === "string" ? match.id : null;
-        if (matchId) {
-          connection = await updateProviderConnection(matchId, {
-            ...tokenData,
-            expiresAt,
-            testStatus: degradedProject?.testStatus ?? "active",
-            ...(degradedProject ?? {}),
-            isActive: true,
-          });
-        }
-      }
-      if (!connection) {
-        connection = await createProviderConnection(
-          buildOAuthConnectionCreatePayload(provider, tokenData, expiresAt, degradedProject)
-        );
-      }
-
-      // Auto sync to Cloud if enabled
-      await syncToCloudIfEnabled();
+      // Exchange code for tokens (through the provider's configured proxy)
+      // and persist the resulting connection (update existing match, else
+      // create). Shared with the self-service connection-link route.
+      const { connection, warning } = await exchangeAndPersistConnection(provider, {
+        code,
+        redirectUri,
+        connectionId,
+        codeVerifier,
+        state,
+      });
 
       return NextResponse.json({
         success: true,
-        ...(degradedProject ? { warning: degradedProject.warning } : {}),
-        connection: {
-          id: connection.id,
-          provider: connection.provider,
-          email: connection.email,
-          displayName: connection.displayName,
-        },
+        ...(warning ? { warning } : {}),
+        connection,
       });
     }
 
