@@ -27,6 +27,7 @@ Complete reference for all OmniRoute API endpoints.
 - [Search API](#search-api)
 - [WebSocket Streaming](#websocket-streaming)
 - [Quotas & Issues Reporting](#quotas--issues-reporting)
+- [Self-Service Account Endpoints](#self-service-account-endpoints)
 - [Semantic Cache](#semantic-cache)
 - [Dashboard & Management](#dashboard--management)
 - [Combo Management](#combo-management)
@@ -725,6 +726,60 @@ distinguishes them.
 
 **Auth:** the caller's own Bearer API key, validated with `isValidApiKey` — this is _not_ the
 management surface (`/api/keys/…`), which stays behind `requireManagementAuth`.
+
+---
+
+## Self-Service Account Endpoints
+
+Routes a developer's own API key can call about **itself** — no `manage`/`admin`
+scope, no dashboard session. Classified `CLIENT_API` (`/api/v1/*` prefix); each
+handler additionally checks a `self:*` scope on the calling key.
+
+| Method | Path                            | Description                                                                                                                                            |
+| ------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/v1/me/status`             | The calling key's own usage/quota status (`self:usage`; `accountQuotas` requires `self:account-quota`)                                                 |
+| POST   | `/api/v1/me/connections/claude` | Exchange a Claude OAuth authorization code and atomically link the resulting connection into the calling key's own `allowedConnections` (`self:usage`) |
+
+**Auth:** Bearer API key. `POST /api/v1/me/connections/claude` requires the
+`self:usage` scope (`hasSelfUsageScope`, `src/shared/constants/selfServiceScopes.ts`);
+401 if the Bearer token is missing/invalid, 403 if the key lacks the scope.
+
+**`POST /api/v1/me/connections/claude` request body:**
+
+```json
+{
+  "code": "auth-code-from-claude",
+  "redirectUri": "https://your-callback",
+  "codeVerifier": "pkce-verifier",
+  "state": "optional"
+}
+```
+
+Same shape as the existing `POST /api/oauth/claude/exchange` action (both
+validate against the same schema fields), plus the same PKCE `codeVerifier`
+requirement enforced upstream by the Claude provider's capability flags.
+
+**Response:**
+
+```json
+{ "status": "linked", "connectionId": "uuid", "provider": "claude" }
+```
+
+`status` is `"linked"` on first link or `"already_linked"` if the exchanged
+Claude account was already present in the key's `allowedConnections` — never
+an error in the idempotent case. Any existing, unrelated entries in the key's
+`allowedConnections` are preserved (merge, never replace); this route never
+accepts a caller-supplied `connectionId`, so there is no way to link a
+connection this exact authenticated call did not just create. Failures
+(invalid code, upstream provider error, etc.) return the same sanitized
+`{"error": "Internal server error"}` 500 as `/api/oauth/[provider]/[action]`'s
+`exchange` action — no upstream error body or token material is ever exposed.
+Never returns the raw access/refresh token or the full connection row.
+
+Built for the external, VPN-only self-service account-linking portal
+(a separate deployment, not part of this repository); see
+`docs/ops/claude-connection-link-staging-checklist.md` for its staging
+verification checklist.
 
 ---
 

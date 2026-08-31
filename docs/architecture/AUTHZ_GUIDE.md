@@ -202,6 +202,23 @@ API keys carry a `scopes` array (stored as JSON in `api_keys.scopes`, see `src/l
 
 - `manage` / `admin` — grants the key access to management API endpoints when sent as Bearer.
 
+### Self-service scopes (`src/shared/constants/selfServiceScopes.ts`)
+
+Gate a key's access to routes about **itself** under `/api/v1/me/*` — these
+are `CLIENT_API`-classified by the normal `/api/v1/` prefix rule (Pattern 1
+above); the scope check happens inside the handler, not in `classify.ts`.
+
+- `self:usage` — required by `GET /api/v1/me/status` and
+  `POST /api/v1/me/connections/claude` (`hasSelfUsageScope`). Granted to new
+  keys by default (`DEFAULT_SELF_SERVICE_SCOPES`).
+- `self:account-quota` — opt-in; when present, `GET /api/v1/me/status` also
+  returns per-connection `accountQuotas` detail (`hasSelfAccountQuotaScope`).
+
+Neither scope grants `manage`/`admin` access, and a key never needs a
+dashboard session to use them — this is the self-service surface an external
+tool (e.g. an account-linking portal) can safely call holding only the
+developer's own API key.
+
 ### MCP scopes (`src/shared/constants/mcpScopes.ts`)
 
 Each MCP tool requires specific scopes via `MCP_TOOL_SCOPES`. Full list (`MCP_SCOPE_LIST`):
