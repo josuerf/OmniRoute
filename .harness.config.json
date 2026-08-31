@@ -1,0 +1,65 @@
+{
+  "coverageMin": 80,
+  "verifyOnStop": {
+    "minFiles": 3
+  },
+  "securityScan": {
+    "enabled": true,
+    "tools": {
+      "semgrep": true,
+      "gitleaks": true,
+      "npmAudit": true,
+      "trivy": false
+    }
+  },
+  "domainSpecific": {},
+  "timeout": {
+    "verifyLocal": 30,
+    "verifyAll": 300
+  },
+  "failOn": {
+    "lint": "error",
+    "coverage": "warning",
+    "security": "error"
+  },
+  "duplication": {
+    "enabled": true,
+    "maxDuplication": 5,
+    "minLines": 5,
+    "minTokens": 50,
+    "ignorePatterns": [
+      "**/*.test.ts",
+      "**/*.spec.ts",
+      "**/node_modules/**",
+      "**/*.min.js"
+    ]
+  },
+  "complexity": {
+    "enabled": true,
+    "thresholds": {
+      "react-nextjs": 10,
+      "node-express": 10,
+      "node-fastify": 10,
+      "node-elysia": 10,
+      "java-springboot": 10,
+      "csharp-dotnet": 15,
+      "csharp-aspnet": 15,
+      "python-fastapi": 10,
+      "go-std": 10
+    }
+  },
+  "patterns": {
+    "enabled": true,
+    "globalWiki": true,
+    "globalPath": "~/.superpowers/patterns-wiki",
+    "bootstrapThreshold": 10,
+    "recurrenceThreshold": {
+      "minFrequency": 3,
+      "minProjects": 2
+    },
+    "staleness": {
+      "reviewDays": 30,
+      "archiveDays": 90
+    }
+  }
+}
