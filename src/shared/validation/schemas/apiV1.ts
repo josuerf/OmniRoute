@@ -713,3 +713,23 @@ export const v1WebFetchSchema = z.object({
   wait_for_selector: z.string().max(256).optional(),
   include_metadata: z.boolean().default(false),
 });
+
+// ── Self-service Claude connection link (POST /api/v1/me/connections/claude) ──
+
+/**
+ * Body schema for POST /api/v1/me/connections/claude — the self-service
+ * combined OAuth exchange+link route. The route hardcodes the provider to
+ * "claude" (never caller-supplied), and Claude's OAuth flowType is
+ * "authorization_code_pkce" (src/lib/oauth/providers/claude.ts), so unlike
+ * the generic `oauthExchangeSchema` (whose `codeVerifier` is optional to
+ * also cover non-PKCE providers) this schema makes `codeVerifier` REQUIRED —
+ * mirroring the same per-provider PKCE requirement the
+ * `/api/oauth/[provider]/[action]` `exchange` action enforces at runtime for
+ * PKCE providers (see that route's `codeVerifier` check).
+ */
+export const v1MeConnectionClaudeExchangeSchema = z.object({
+  code: z.string().trim().min(1),
+  redirectUri: z.string().trim().min(1),
+  codeVerifier: z.string().trim().min(1, "Code verifier is required for claude OAuth exchange"),
+  state: z.string().nullable().optional(),
+});
