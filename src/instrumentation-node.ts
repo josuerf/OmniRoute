@@ -233,6 +233,33 @@ export async function scanComboModelNameCollisionsAtBoot(): Promise<void> {
   }
 }
 
+/**
+ * #9654 U7: fold a dashboard DB toggle for the adaptive virtual-lanes flag into
+ * the process-global admission runtime's env at boot. Env-wins: no-op when the
+ * operator's OMNIROUTE_CHAT_VIRTUAL_LANES env var is set (the lazy runtime
+ * already reads process.env correctly). The runtime reads env only at
+ * construction, so this must run before the first request touches it — hence
+ * awaited here, after ensureDbReadyForBoot(). Non-fatal.
+ *
+ * Exported (rather than inline in registerNodejs()) so it can be unit tested
+ * directly without exercising the rest of the startup sequence.
+ */
+export async function warmAdaptiveVirtualLanesIntoRuntime(): Promise<void> {
+  try {
+    const { warmAdaptiveVirtualLanesIntoRuntime: warm } =
+      await import("@/lib/admissionVirtualLanes");
+    const materialized = await warm();
+    if (materialized) {
+      console.log(
+        "[STARTUP] Adaptive virtual lanes flag materialized from dashboard override (#9654)"
+      );
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[STARTUP] Could not warm adaptive virtual lanes flag (non-fatal):", msg);
+  }
+}
+
 export async function registerNodejs(): Promise<void> {
   markServerStarting();
 
@@ -286,6 +313,7 @@ export async function registerNodejs(): Promise<void> {
   }
 
   await scanComboModelNameCollisionsAtBoot();
+  await warmAdaptiveVirtualLanesIntoRuntime();
 
   const [
     { initGracefulShutdown },
@@ -443,8 +471,12 @@ export async function registerNodejs(): Promise<void> {
   // instrumentation startup), NOT in the unused src/server-init.ts.
   try {
     const { initCredentialHealthCheck } = await import("@/lib/credentialHealth/scheduler");
-    initCredentialHealthCheck();
-    console.log("[STARTUP] Credential health scheduler started");
+    const started = initCredentialHealthCheck();
+    console.log(
+      started
+        ? "[STARTUP] Credential health scheduler started"
+        : "[STARTUP] Credential health scheduler disabled"
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn("[STARTUP] Could not start credential health scheduler:", msg);

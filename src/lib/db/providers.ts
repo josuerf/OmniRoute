@@ -19,15 +19,46 @@ import {
 } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 import { invalidateReasoningRoutingRuleCache } from "./reasoningRoutingRules";
 import { normalizeProviderSpecificData } from "@/lib/providers/requestDefaults";
+import { ensureCodexFingerprintSeed } from "@omniroute/open-sse/config/codexIdentity.ts";
 import { bumpProxyConfigGeneration, getSettings } from "./settings";
 import {
   getStoredManagementPassword,
   isBcryptHash,
   verifyManagementPassword,
 } from "@/lib/auth/managementPassword";
-import { webSessionCredentialKey, parseProviderSpecificData } from "./webSessionDedup";
+import {
+  webSessionCredentialKey,
+  parseProviderSpecificData,
+  isMatchingOauthIdentity,
+} from "./webSessionDedup";
 import { pickCodexConnectionForUser } from "@/lib/oauth/utils/codexConnectionSelection";
 import { reconcileCodexUsageHistory } from "./providers/usageIdentityReconciliation";
+
+/**
+ * normalizeProviderSpecificData + the Codex fingerprint-seed invariant: Codex
+ * OAuth connections whose convergence mode derives account-scoped identities
+ * (device/session/full — the default session included) carry a persisted
+ * random seed (`codexFingerprintSeed`) as the derivation source. Created here
+ * at the persistence choke point so every write path (manual create, OAuth
+ * persist, edit, import) is covered; the seed is never regenerated once valid,
+ * so identities stay put across saves. Pre-seed connections rotate from the
+ * legacy connection-id derivation exactly once on their next write — the
+ * OmniRoute analog of sub2api's migration-225 backfill (v0.1.178, #5696).
+ */
+function normalizeConnectionProviderSpecificData(
+  provider: string | null,
+  providerSpecificData: unknown,
+  credentials: { accessToken?: unknown; refreshToken?: unknown },
+  existingProviderSpecificData?: unknown
+) {
+  const normalized = normalizeProviderSpecificData(provider, providerSpecificData);
+  if (provider !== "codex") return normalized;
+  return ensureCodexFingerprintSeed(
+    normalized,
+    credentials,
+    (existingProviderSpecificData as Record<string, unknown> | null) ?? null
+  );
+}
 import {
   withNullableMaxConcurrent,
   withNullableQuotaWindowThresholds,
@@ -353,9 +384,10 @@ export async function createProviderConnection(data: JsonRecord) {
   await assertApiKeyIsNotManagementPassword(data.apiKey);
   const db = getDbInstance() as unknown as DbLike;
   const now = new Date().toISOString();
-  const normalizedProviderSpecificData = normalizeProviderSpecificData(
+  const normalizedProviderSpecificData = normalizeConnectionProviderSpecificData(
     toStringOrNull(data.provider),
-    data.providerSpecificData
+    data.providerSpecificData,
+    data
   );
 
   let existing: JsonRecord | null = null;
@@ -407,30 +439,25 @@ export async function createProviderConnection(data: JsonRecord) {
       }
     } else {
       // For other providers (or Codex without workspaceId), match on email —
-      // disambiguated by providerSpecificData.username when present on both
-      // sides. Two different IdPs can share the same email address (e.g. a
-      // Google account and a HuggingFace account); matching on email alone
-      // would silently overwrite the other account's connection on the
-      // second login. Only fall back to the bare email-only match when
-      // neither side carries a username (legacy rows created before this
-      // disambiguation existed).
+      // disambiguated by providerSpecificData.username and/or
+      // providerSpecificData.profileArn when present on both sides. Two
+      // different IdPs (or two distinct Kiro/AWS profiles authenticated via
+      // the same email-carrying IdP) can share the same email address;
+      // matching on email alone would silently overwrite the other
+      // account's connection on the second login. Only fall back to the
+      // bare email-only match when neither side carries a username/profileArn
+      // (legacy rows created before this disambiguation existed).
       const incomingUsername = toStringOrNull(providerSpecificData.username);
+      const incomingProfileArn = toStringOrNull(providerSpecificData.profileArn);
       const emailMatches = db
         .prepare(
           "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND email = ?"
         )
         .all(data.provider, data.email) as JsonRecord[];
       existing =
-        emailMatches.find((row) => {
-          const existingUsername = toStringOrNull(
-            parseProviderSpecificData(row.provider_specific_data)?.username
-          );
-          if (incomingUsername && existingUsername) {
-            return incomingUsername === existingUsername;
-          }
-          if (incomingUsername || existingUsername) return false;
-          return true;
-        }) || null;
+        emailMatches.find((row) =>
+          isMatchingOauthIdentity(row, incomingUsername, incomingProfileArn)
+        ) || null;
     }
   } else if (data.authType === "apikey") {
     // Name-based upsert (existing behavior): same provider + same name → update.
@@ -483,9 +510,11 @@ export async function createProviderConnection(data: JsonRecord) {
     const rawExisting = toRecord(rowToCamel(existing));
     const decryptedExisting = decryptConnectionFields({ ...rawExisting });
     const merged: JsonRecord = { ...decryptedExisting, ...data, updatedAt: now };
-    merged.providerSpecificData = normalizeProviderSpecificData(
+    merged.providerSpecificData = normalizeConnectionProviderSpecificData(
       toStringOrNull(merged.provider),
-      merged.providerSpecificData
+      merged.providerSpecificData,
+      merged,
+      decryptedExisting.providerSpecificData
     );
     const persistence: JsonRecord = { ...merged };
     for (const field of CONNECTION_CREDENTIAL_FIELDS) {
@@ -598,15 +627,26 @@ export async function createProviderConnection(data: JsonRecord) {
   // to no-overrides) keeps the field present on the returned object so the
   // UI can tell "field was read, no overrides" apart from "field absent."
   if ("quotaWindowThresholds" in connection) {
-    connection.quotaWindowThresholds = sanitizeQuotaWindowThresholds(
-      connection.quotaWindowThresholds
-    );
+    const result = sanitizeQuotaWindowThresholds(connection.quotaWindowThresholds);
+    if (result.rejected.length > 0) {
+      throw new Error(
+        `Refusing to persist quotaWindowThresholds with rejected keys: ${result.rejected.join(", ")}`
+      );
+    }
+    connection.quotaWindowThresholds = result.sanitized;
   }
 
   // Same sanitization for rateLimitOverrides — keep in-memory representation
-  // in sync with what gets persisted.
+  // in sync with what gets persisted. Reject (don't silently drop) invalid
+  // keys/values so a direct DB writer can't lose operator intent.
   if ("rateLimitOverrides" in connection) {
-    connection.rateLimitOverrides = sanitizeRateLimitOverrides(connection.rateLimitOverrides);
+    const result = sanitizeRateLimitOverrides(connection.rateLimitOverrides);
+    if (result.rejected.length > 0) {
+      throw new Error(
+        `Refusing to persist rateLimitOverrides with rejected keys: ${result.rejected.join(", ")}`
+      );
+    }
+    connection.rateLimitOverrides = result.sanitized;
   }
 
   _insertConnectionRow(db, encryptConnectionFields({ ...connection }));
@@ -805,25 +845,39 @@ export async function updateProviderConnection(id: string, data: JsonRecord) {
   // on every unrelated field edit.
   await assertApiKeyIsNotManagementPassword(data.apiKey);
 
+  const existingCamel = toRecord(rowToCamel(existing));
   const merged: JsonRecord = {
-    ...toRecord(rowToCamel(existing)),
+    ...existingCamel,
     ...data,
     updatedAt: new Date().toISOString(),
   };
-  merged.providerSpecificData = normalizeProviderSpecificData(
+  merged.providerSpecificData = normalizeConnectionProviderSpecificData(
     toStringOrNull(merged.provider),
-    merged.providerSpecificData
+    merged.providerSpecificData,
+    merged,
+    existingCamel.providerSpecificData
   );
   // Mirror the sanitization the create path applies — keep the returned
   // object in lockstep with what we persist.
   if ("quotaWindowThresholds" in merged) {
-    const sanitized = sanitizeQuotaWindowThresholds(merged.quotaWindowThresholds);
+    const result = sanitizeQuotaWindowThresholds(merged.quotaWindowThresholds);
+    if (result.rejected.length > 0) {
+      throw new Error(
+        `Refusing to persist quotaWindowThresholds with rejected keys: ${result.rejected.join(", ")}`
+      );
+    }
     // For updates we always carry the key forward (even as null) so the read
-    // path surfaces the cleared state to callers that just patched it.
-    merged.quotaWindowThresholds = sanitized;
+    // path surfaces the cleared state to callers that merged it.
+    merged.quotaWindowThresholds = result.sanitized;
   }
   if ("rateLimitOverrides" in merged) {
-    merged.rateLimitOverrides = sanitizeRateLimitOverrides(merged.rateLimitOverrides);
+    const result = sanitizeRateLimitOverrides(merged.rateLimitOverrides);
+    if (result.rejected.length > 0) {
+      throw new Error(
+        `Refusing to persist rateLimitOverrides with rejected keys: ${result.rejected.join(", ")}`
+      );
+    }
+    merged.rateLimitOverrides = result.sanitized;
   }
   const existingRecord = toRecord(existing);
 
@@ -856,6 +910,11 @@ export async function updateProviderConnection(id: string, data: JsonRecord) {
     merged
   );
 }
+
+export {
+  updateCodexScopedQuotaState,
+  updateCodexScopeCooldown,
+} from "./providers/codexAccountState";
 
 /**
  * Atomic conditional clear of recoverable error state on a connection row.

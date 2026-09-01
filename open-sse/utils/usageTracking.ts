@@ -484,7 +484,16 @@ export function sanitizeProviderUsageForRequest(
 
   const format = resolveUsageFormat(usage, targetFormat);
   const reportedInput = getReportedInputTokens(usage, format);
-  if (reportedInput <= 0 || isInputTokenCountPlausible(reportedInput, body)) {
+  // #10705: reportedInput === 0 was always accepted, on the theory this guard only
+  // needed to catch providers over-reporting huge counts. But a real, non-trivial
+  // request body can legitimately have its input tokens under-reported to exactly 0
+  // by a relay provider. Only treat 0 as plausible when the request body itself is
+  // trivial (no serialized body, or a body too small to plausibly need any tokens);
+  // otherwise fall through to the same local-estimate repair used for over-reports.
+  const bodyBytesForZeroCheck = reportedInput === 0 ? getSerializedBodyBytes(body) : null;
+  const zeroIsPlausible =
+    reportedInput === 0 && (bodyBytesForZeroCheck === null || bodyBytesForZeroCheck === 0);
+  if (zeroIsPlausible || (reportedInput > 0 && isInputTokenCountPlausible(reportedInput, body))) {
     return usage;
   }
 
@@ -558,6 +567,14 @@ export function sanitizeUsagePayloadForRequest(
     return replaceUsage(payload.message, "usage", FORMATS.CLAUDE);
   }
   if (payload.type === "message_delta" && payload.usage) {
+    // message_delta is output-only by spec. #10705 0-input repair would
+    // overwrite a valid message_start input count with an estimate.
+    const delta = payload.usage;
+    const deltaInput =
+      tokenNumber(delta.input_tokens) +
+      tokenNumber(delta.cache_read_input_tokens) +
+      tokenNumber(delta.cache_creation_input_tokens);
+    if (deltaInput === 0) return false;
     return replaceUsage(payload, "usage", FORMATS.CLAUDE);
   }
   if (payload.response?.usage) {

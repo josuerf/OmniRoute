@@ -28,6 +28,7 @@ import {
   isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
 import { isAuthenticated } from "@/shared/utils/apiAuth";
+export const dynamic = "force-dynamic";
 import { providerModelMutationSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
@@ -264,18 +265,26 @@ export async function PUT(request) {
           [
             "provider",
             "modelId",
+            "modelName",
+            "source",
             "normalizeToolCallId",
             "preserveOpenAIDeveloperRole",
             "upstreamHeaders",
             "compatByProtocol",
             "contextWindowOverride",
+            "apiFormat",
+            "targetFormat",
+            "supportsVision",
           ].includes(k)
         ) &&
         ("normalizeToolCallId" in raw ||
           "preserveOpenAIDeveloperRole" in raw ||
           "upstreamHeaders" in raw ||
           "compatByProtocol" in raw ||
-          "contextWindowOverride" in raw);
+          "contextWindowOverride" in raw ||
+          "apiFormat" in raw ||
+          "targetFormat" in raw ||
+          "supportsVision" in raw);
       if (compatOnly) {
         const knownProvider =
           !!provider &&
@@ -308,6 +317,18 @@ export async function PUT(request) {
           patch.upstreamHeaders =
             upstreamHeaders === null || typeof upstreamHeaders === "object"
               ? upstreamHeaders
+              : undefined;
+        }
+        if ("apiFormat" in raw) {
+          patch.apiFormat = typeof apiFormat === "string" ? apiFormat : null;
+        }
+        if ("targetFormat" in raw) {
+          patch.targetFormat = typeof targetFormat === "string" ? targetFormat : null;
+        }
+        if ("supportsVision" in raw) {
+          patch.supportsVision =
+            supportsVision === null || typeof supportsVision === "boolean"
+              ? supportsVision
               : undefined;
         }
         if (Object.keys(patch).length > 0) {

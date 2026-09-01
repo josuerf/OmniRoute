@@ -9,60 +9,10 @@ import {
 } from "@/shared/constants/colors";
 import { formatDuration, formatApiKeyLabel, maskAccount } from "@/shared/utils/formatting";
 import { formatErrorForDisplay } from "@/shared/utils/formatting";
-
-// ─── Payload Code Block ─────────────────────────────────────────────────────
-
-function PayloadSection({ title, json, onCopy, collapsible = true, defaultOpen = true }) {
-  const t = useTranslations("requestLogger.detail");
-  const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState(defaultOpen);
-
-  const handleCopy = async () => {
-    const success = await onCopy();
-    if (success !== false) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-3">
-          <h3 className="text-[11px] text-text-muted uppercase tracking-wider font-bold">
-            {title}
-          </h3>
-          {collapsible && (
-            <button
-              onClick={() => setOpen((v) => !v)}
-              className="p-1 rounded hover:bg-bg-subtle text-text-muted hover:text-text-primary transition-colors"
-              aria-label={open ? t("collapse", { title }) : t("expand", { title })}
-            >
-              <span className="material-symbols-outlined text-[16px]">
-                {open ? "expand_less" : "expand_more"}
-              </span>
-            </button>
-          )}
-        </div>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-1 text-xs text-text-muted hover:text-text-primary transition-colors"
-          aria-label={t("copyTitle", { title })}
-        >
-          <span className="material-symbols-outlined text-[14px]">
-            {copied ? "check" : "content_copy"}
-          </span>
-          {copied ? t("copied") : t("copy")}
-        </button>
-      </div>
-      {open && (
-        <pre className="p-4 rounded-xl bg-black/5 dark:bg-black/30 border border-border overflow-x-auto text-xs font-mono text-text-main max-h-150 overflow-y-auto leading-relaxed whitespace-pre-wrap break-words">
-          {json}
-        </pre>
-      )}
-    </div>
-  );
-}
+import {
+  PayloadSection,
+  ConversationContextSection,
+} from "@/shared/components/RequestLoggerDetail.sections";
 
 // ─── Stream section + Detail Modal ───────────────────────────────────────────────────────────
 
@@ -354,7 +304,7 @@ export default function RequestLoggerDetail({
   const codexAccountRotation = getCodexAccountRotation(detail);
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center px-2 pt-[5vh] sm:px-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -362,12 +312,12 @@ export default function RequestLoggerDetail({
     >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
-        className="relative bg-bg-primary border border-border rounded-xl w-full max-w-225 max-h-[90vh] overflow-y-auto shadow-2xl"
+        className="relative w-full max-w-225 max-h-[90vh] overflow-x-hidden overflow-y-auto rounded-xl border border-border bg-bg-primary shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-border bg-bg-primary/95 backdrop-blur-sm rounded-t-xl">
-          <div className="flex items-center gap-3">
+        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 border-b border-border bg-bg-primary/95 backdrop-blur-sm rounded-t-xl sm:px-6 sm:py-4">
+          <div className="flex flex-wrap items-center gap-2 min-w-0 sm:gap-3">
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 {log.active ? (
@@ -414,23 +364,31 @@ export default function RequestLoggerDetail({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onPrevious}
-              disabled={!onPrevious}
-              className="p-1.5 rounded-lg hover:bg-bg-subtle text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:pointer-events-none"
-              aria-label={t("previousRequest")}
-            >
-              <span className="material-symbols-outlined text-[18px]">chevron_left</span>
-            </button>
-            <button
-              onClick={onNext}
-              disabled={!onNext}
-              className="p-1.5 rounded-lg hover:bg-bg-subtle text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:pointer-events-none"
-              aria-label={t("nextRequest")}
-            >
-              <span className="material-symbols-outlined text-[18px]">chevron_right</span>
-            </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Only rendered when a caller actually wires up navigation (RequestLoggerV2's
+                list view) — a caller with no ordered-list context to navigate through
+                (conversations page, RequestTimeline) passes neither, so there's nothing
+                to show instead of a permanently-disabled dead button. */}
+            {(onPrevious || onNext) && (
+              <>
+                <button
+                  onClick={onPrevious}
+                  disabled={!onPrevious}
+                  className="p-1.5 rounded-lg hover:bg-bg-subtle text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                  aria-label={t("previousRequest")}
+                >
+                  <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+                </button>
+                <button
+                  onClick={onNext}
+                  disabled={!onNext}
+                  className="p-1.5 rounded-lg hover:bg-bg-subtle text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                  aria-label={t("nextRequest")}
+                >
+                  <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+                </button>
+              </>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-bg-subtle text-text-muted hover:text-text-primary transition-colors"
@@ -441,7 +399,7 @@ export default function RequestLoggerDetail({
           </div>
         </div>
 
-        <div className="p-6 flex flex-col gap-6">
+        <div className="p-4 flex flex-col gap-6 sm:p-6">
           {/* Metadata Grid */}
           {log.active ? (
             <div className="flex flex-wrap gap-4 p-4 bg-bg-subtle rounded-xl border border-border">
@@ -868,6 +826,8 @@ export default function RequestLoggerDetail({
             </div>
           ) : (
             <>
+              <ConversationContextSection key={log.id} log={log} detail={detail} />
+
               {streamChunks && streamChunks.provider && (
                 <StreamSection
                   title={t("providerEventStream")}

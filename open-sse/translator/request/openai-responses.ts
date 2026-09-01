@@ -8,6 +8,7 @@ import { isOpenAIResponsesStoreEnabled } from "@/lib/providers/requestDefaults";
 import { FORMATS } from "../formats.ts";
 import { register } from "../registry.ts";
 import { normalizeResponsesInputForChat } from "../../utils/responsesInputNormalization.ts";
+import { extractReplayableResponsesReasoningText } from "../../services/reasoningInputPolicy.ts";
 import {
   getRegisteredProviders,
   requiresPlainStringContent,
@@ -71,14 +72,6 @@ function toolOutputContentToString(output: unknown): string {
     }
   }
   return parts.join("\n");
-}
-
-function getReasoningSummaryText(item: JsonRecord): string {
-  if (!Array.isArray(item.summary)) return "";
-  return item.summary
-    .map((part) => toString(toRecord(part).text))
-    .filter((text) => text.length > 0)
-    .join("\n\n");
 }
 
 function appendReasoningContent(current: unknown, next: string): string {
@@ -456,10 +449,11 @@ export function openaiResponsesToOpenAIRequest(
     }
 
     if (itemType === "reasoning") {
-      // Responses reasoning summaries are normally display metadata. Preserve them only
-      // when the routed upstream explicitly requires prior reasoning to continue a turn.
+      // Only genuine plaintext reasoning can cross into Chat reasoning_content.
+      // Opaque encrypted state and its display summary have no Chat replay form,
+      // so opaque-only items are dropped while mixed items replay their plaintext.
       if (preserveReasoningContent) {
-        const reasoning = getReasoningSummaryText(item);
+        const reasoning = extractReplayableResponsesReasoningText(item);
         if (reasoning) {
           if (currentAssistantMsg) {
             currentAssistantMsg.reasoning_content = appendReasoningContent(

@@ -202,3 +202,45 @@ test("#8926: partial passthrough discovery remains non-authoritative", async () 
     ["gpt-5.6-luna"]
   );
 });
+
+test("ChatGPT Web curated variants require their mapped upstream live slug", async () => {
+  const variants = new Map([
+    ["gpt-5.6-sol-pro", "gpt-5-6-pro"],
+    ["gpt-5.6-sol-xhigh", "gpt-5-6-thinking"],
+    ["gpt-5.6-sol-high", "gpt-5-6-thinking"],
+    ["gpt-5.6-sol-medium", "gpt-5-6-thinking"],
+    ["gpt-5.6-sol-instant", "gpt-5-6"],
+    ["gpt-5.6-luna-free-thinking", "gpt-5-6"],
+    ["gpt-5.6-luna-free", "gpt-5-6"],
+    ["gpt-5.5-pro-extended", "gpt-5-5-pro"],
+    ["gpt-5.5-pro", "gpt-5-5-pro"],
+    ["gpt-5.5-xhigh", "gpt-5-5-thinking"],
+    ["gpt-5.5-high", "gpt-5-5-thinking"],
+    ["gpt-5.5-medium", "gpt-5-5-thinking"],
+    ["gpt-5.5-instant", "gpt-5-5"],
+  ]);
+
+  await seedProviderCatalog(
+    "chatgpt-web",
+    "chatgpt-web-live-8926",
+    Array.from(new Set(variants.values()))
+  );
+
+  const catalog = await getActiveSyncedCatalog("chatgpt-web");
+  assert.equal(catalog.authoritative, true);
+
+  for (const modelId of variants.keys()) {
+    const resolved = await getModelInfo(`chatgpt-web/${modelId}`);
+    assert.equal(resolved.provider, "chatgpt-web", modelId);
+    assert.equal(resolved.model, modelId, modelId);
+  }
+
+  await seedProviderCatalog("chatgpt-web", "chatgpt-web-live-8926", ["gpt-5-6"]);
+
+  const available = await getModelInfo("chatgpt-web/gpt-5.6-sol-instant");
+  assert.equal(available.provider, "chatgpt-web");
+
+  const unavailable = await getModelInfo("chatgpt-web/gpt-5.6-sol-pro");
+  assert.equal(unavailable.provider, null);
+  assert.equal(unavailable.errorType, "model_not_found");
+});

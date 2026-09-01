@@ -28,10 +28,17 @@ const STREAMING_RESPONSE_HEADER_DENYLIST = new Set([
   "x-amz-security-token",
   "x-auth-token",
   "x-accel-buffering",
-  // 314-byte Codex session blob. It is not a client rate-limit signal and
-  // alone ate ~40% of the old 768-byte budget, evicting x-codex-*-used-percent.
-  "x-codex-turn-state",
 ]);
+
+/**
+ * `x-codex-turn-state` is forwarded verbatim and EXEMPT from the forwarding
+ * budget. The real Codex client captures this ~314-byte blob from /responses
+ * (and echoes it back within the same turn), so dropping it breaks the
+ * protocol chain — but naively counting it against the budget used to evict
+ * the x-codex-*-used-percent quota headers (the reason it was denylisted
+ * under #10315-era budgeting). Carving it out keeps both.
+ */
+const CODEX_TURN_STATE_RESPONSE_HEADER = "x-codex-turn-state";
 
 const DEFAULT_FORWARDED_HEADER_BUDGET_BYTES = 768;
 
@@ -206,7 +213,9 @@ export function buildStreamingResponseHeaders(
       STREAMING_RESPONSE_HEADER_DENYLIST.has(normalized) ||
       connectionScopedHeaders.has(normalized) ||
       isNextMiddlewareControlHeader(normalized) ||
-      isOmniRouteInternalHeader(normalized)
+      isOmniRouteInternalHeader(normalized) ||
+      // Forwarded separately below, outside the byte budget.
+      normalized === CODEX_TURN_STATE_RESPONSE_HEADER
     ) {
       return;
     }
@@ -269,6 +278,10 @@ export function buildStreamingResponseHeaders(
     "X-Accel-Buffering": "no",
     [OMNIROUTE_RESPONSE_HEADERS.cache]: "MISS",
   };
+  const codexTurnState = providerHeaders.get(CODEX_TURN_STATE_RESPONSE_HEADER)?.trim();
+  if (codexTurnState) {
+    responseHeaders[CODEX_TURN_STATE_RESPONSE_HEADER] = codexTurnState;
+  }
   attachOmniRouteMetaHeaders(responseHeaders, meta);
   return responseHeaders;
 }

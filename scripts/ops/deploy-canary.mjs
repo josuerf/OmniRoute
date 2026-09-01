@@ -28,11 +28,16 @@
  *   OMNIROUTE_SMOKE_API_KEY      sent as Authorization: Bearer when the gateway requires auth
  */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
-import { buildRemoteSteps, evaluateSmoke, planCanaryDeploy } from "./deployCanary.ts";
+import {
+  buildRemoteSteps,
+  classifyInstallOutcome,
+  evaluateSmoke,
+  planCanaryDeploy,
+} from "./deployCanary.ts";
 import { makeGitAncestryProbe, readBuildSha } from "../build/buildProvenance.ts";
 
 function parseArgs(argv) {
@@ -59,6 +64,22 @@ function run(step) {
   console.log(`\n▶ ${step.name}: ${step.description}`);
   const [command, ...rest] = step.argv;
   return execFileSync(command, rest, { encoding: "utf8" }).trim();
+}
+
+/**
+ * Like `run`, but never throws: returns the exit code plus both streams. Used for the
+ * install, whose exit code does not decide the outcome (see classifyInstallOutcome) and
+ * whose stderr must reach the log — it used to be swallowed by execFileSync throwing.
+ */
+function runCapturing(step) {
+  console.log(`\n▶ ${step.name}: ${step.description}`);
+  const [command, ...rest] = step.argv;
+  const result = spawnSync(command, rest, { encoding: "utf8" });
+  return {
+    exitCode: result.status ?? 1,
+    stdout: (result.stdout || "").trim(),
+    stderr: (result.stderr || "").trim(),
+  };
 }
 
 async function probeHealth(baseUrl) {
@@ -110,8 +131,9 @@ if (args.models.length === 0) {
 }
 
 const repoRoot = process.cwd();
+const localBuildSha = readBuildSha(repoRoot);
 const plan = planCanaryDeploy({
-  buildSha: readBuildSha(repoRoot),
+  buildSha: localBuildSha,
   isAncestorOfRelease: makeGitAncestryProbe(
     process.env.OMNIROUTE_RELEASE_REF || "origin/main",
     repoRoot
@@ -147,7 +169,23 @@ try {
   console.log(`\n▶ upload: ${args.tarball} → ${args.host}:${remoteTarball}`);
   execFileSync("scp", [args.tarball, `${args.host}:${remoteTarball}`], { stdio: "inherit" });
 
-  run(install);
+  const installResult = runCapturing(install);
+  const outcome = classifyInstallOutcome({
+    exitCode: installResult.exitCode,
+    stderr: installResult.stderr,
+    installedSha: run(verify),
+    expectedSha: localBuildSha,
+  });
+  if (!outcome.installed) {
+    if (installResult.stderr) console.error(installResult.stderr);
+    fail(`install did not land: ${outcome.reason}`);
+  }
+  if (outcome.kind === "installed-with-cleanup-failure") {
+    console.warn(`   ⚠️  ${outcome.reason}`);
+  } else {
+    console.log(`   ${outcome.reason}`);
+  }
+
   run(restart);
 
   const installedSha = run(verify);

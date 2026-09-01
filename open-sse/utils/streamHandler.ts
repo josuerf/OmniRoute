@@ -508,6 +508,31 @@ export function buildStreamErrorChunks(
 }
 
 /**
+ * Synthesized terminal frames for a graceful truncation (#7699): the upstream
+ * ended without a terminal marker AFTER content was already forwarded to the
+ * client. Instead of an `event: error` frame (which would discard the partial
+ * content and report a mid-response failure), emit a clean Claude completion —
+ * `message_delta` carrying `stop_reason: "max_tokens"` followed by
+ * `message_stop` — so Anthropic SDK / Claude Code treat the response as a
+ * budget-limited finish and keep everything already received.
+ */
+export function buildGracefulTruncationChunks(clientResponseFormat?: string | null): Uint8Array[] {
+  if (clientResponseFormat !== FORMATS.CLAUDE) return [];
+
+  return [
+    ...encodeSseEvent(
+      {
+        type: "message_delta",
+        delta: { stop_reason: "max_tokens", stop_sequence: null },
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+      { event: "message_delta" }
+    ),
+    ...encodeSseEvent({ type: "message_stop" }, { event: "message_stop" }),
+  ];
+}
+
+/**
  * Minimal `writable` half used by `pipeWithDisconnect`. The real writable is
  * driven entirely by the upstream-piped readable, so the writer only needs an
  * `abort()` hook for `createDisconnectAwareStream`'s `cancel()` path.
@@ -534,10 +559,13 @@ export function createNoopAbortWritable(): {
  * - **#7699, no terminal marker.** Scoped to Claude (`/v1/messages`), which is
  *   the issue's real scope: Anthropic's SSE spec permits a mid-stream
  *   `event: error`, and Claude clients treat a stream ending without
- *   `message_stop` as an error. For every other format (plain OpenAI chat
- *   completions included) a done-without-recognized-marker close is NOT
- *   necessarily a drop — many formats have no `[DONE]` equivalent — so
- *   synthesising an error there would be a false positive.
+ *   `message_stop` as an error. When content already reached the client this is
+ *   NOT a provider failure — the partial response is valid and must be kept — so
+ *   it resolves to a graceful truncation (`stop_reason: max_tokens`). For every
+ *   other format (plain OpenAI chat completions included) a
+ *   done-without-recognized-marker close is NOT necessarily a drop — many
+ *   formats have no `[DONE]` equivalent — so synthesising an error there would
+ *   be a false positive.
  *
  * - **#8649, no content at all.** The stream terminated properly and carried no
  *   model output. Unlike the marker case this is not format-dependent: a
@@ -545,19 +573,28 @@ export function createNoopAbortWritable(): {
  *   streaming twin of the non-streaming `isEmptyContentResponse` check. Only
  *   applies to bodies that actually looked like SSE, and terminal states where
  *   emptiness is legitimate (length / tool_calls / content_filter / max_tokens /
- *   tool_use) are excluded by the watcher.
+ *   tool_use) are excluded by the watcher. If the stream already carried a
+ *   substantive SSE `error` / `response.failed` / Claude `event:error`, stand
+ *   down — same spirit as Claude #3685 `lifecycle.hasError` and readiness #8972
+ *   (do not invent empty content on top of an actionable error).
  */
-function resolveSilentCloseReason(input: {
+type SilentCloseOutcome = { kind: "truncated" } | { kind: "error"; reason: string };
+
+function resolveSilentCloseOutcome(input: {
   bytesWereForwarded: boolean;
   clientTerminalSeen: boolean;
   clientResponseFormat?: string | null;
   contentWatcher: StreamContentWatcher;
-}): string | null {
+}): SilentCloseOutcome | null {
   if (!input.bytesWereForwarded) return null;
 
   if (!input.clientTerminalSeen) {
-    if (input.clientResponseFormat === FORMATS.CLAUDE) {
-      return "Upstream stream ended without a terminal marker";
+    if (input.clientResponseFormat === FORMATS.CLAUDE && input.contentWatcher.sawContent()) {
+      // #7699 — upstream dropped after content reached the client on a Claude
+      // stream. Keep the partial response: emit a clean max_tokens completion
+      // instead of an error frame so Anthropic SDK / Claude Code don't report
+      // a mid-response break.
+      return { kind: "truncated" };
     }
     // #10443: every known path that produces OpenAI chat chunks emits a
     // terminal — the response translators (gemini/claude/kiro/cursor-to-openai)
@@ -569,13 +606,24 @@ function resolveSilentCloseReason(input: {
     // legitimate end. Guard on sawContent() so the #8649 empty-content
     // verdict below keeps its more precise shape for content-free closes.
     if (input.clientResponseFormat === FORMATS.OPENAI && input.contentWatcher.sawContent()) {
-      return "Upstream stream ended without a terminal marker";
+      return { kind: "error", reason: "Upstream stream ended without a terminal marker" };
+    }
+    // Responses-format clients (Codex CLI and other /v1/responses consumers):
+    // a healthy OpenAI Responses stream ALWAYS terminates with an explicit
+    // `response.completed` event — it is the format's only terminal marker and
+    // carries the final status/usage. Content forwarded without it is an
+    // upstream drop, the same class as #10443 for chat completions; surface a
+    // synthetic response.failed instead of a silent close so clients report
+    // the break instead of waiting on a completion event that never comes.
+    if (isResponsesClientFormat(input.clientResponseFormat) && input.contentWatcher.sawContent()) {
+      return { kind: "error", reason: "Upstream stream ended without a terminal marker" };
     }
   }
 
   const watcher = input.contentWatcher;
+  if (watcher.sawError()) return null;
   if (watcher.sawSseFrame() && !watcher.sawContent() && !watcher.sawLegitEmptyTerminal()) {
-    return "Provider returned empty content";
+    return { kind: "error", reason: "Provider returned empty content" };
   }
 
   return null;
@@ -635,13 +683,15 @@ export function createDisconnectAwareStream(transformStream, streamController) {
     if (clientTerminalSeen) return;
 
     terminalTail += terminalDecoder.decode(chunk, { stream: true });
-    if (terminalTail.length > 4096) {
-      terminalTail = terminalTail.slice(-4096);
-    }
+    // Scan before bounding retained state: a compaction terminal frame can
+    // exceed the tail budget because encrypted_content is carried inline.
     clientTerminalSeen = hasClientTerminalSseMarker(
       terminalTail,
       streamController.clientResponseFormat
     );
+    if (terminalTail.length > 4096) {
+      terminalTail = terminalTail.slice(-4096);
+    }
     if (clientTerminalSeen) {
       streamController.markClientTerminalSeen?.();
     }
@@ -659,20 +709,35 @@ export function createDisconnectAwareStream(transformStream, streamController) {
           const { done, value } = await reader.read();
           if (done) {
             contentWatcher.finish();
-            const silentCloseReason = resolveSilentCloseReason({
+            const silentClose = resolveSilentCloseOutcome({
               bytesWereForwarded,
               clientTerminalSeen,
               clientResponseFormat: streamController.clientResponseFormat,
               contentWatcher,
             });
 
-            if (silentCloseReason) {
+            if (silentClose?.kind === "truncated") {
+              // #7699 — the upstream dropped without a terminal marker after
+              // content reached the client. Keep the partial response: emit a
+              // clean `max_tokens` completion instead of an error frame so
+              // Anthropic SDK / Claude Code don't report a mid-response break.
+              streamController.handleComplete();
+              try {
+                for (const chunk of buildGracefulTruncationChunks(
+                  streamController.clientResponseFormat
+                )) {
+                  controller.enqueue(chunk);
+                }
+              } catch {
+                // downstream may have closed; stream already marked complete
+              }
+            } else if (silentClose) {
               streamController.handleError(
-                Object.assign(new Error(silentCloseReason), { statusCode: 502 })
+                Object.assign(new Error(silentClose.reason), { statusCode: 502 })
               );
               try {
                 for (const chunk of buildStreamErrorChunks(
-                  silentCloseReason,
+                  silentClose.reason,
                   502,
                   streamController.clientResponseFormat
                 )) {

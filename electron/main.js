@@ -38,8 +38,19 @@ const { killProcessTree } = require("./processTree");
 const { resolveServerEntry } = require("./lib/resolveServerEntry");
 const { resolveDarwinHelperExecutable } = require("./lib/resolveNodeHelper");
 const { resolveRemoteServerUrl, isValidHttpUrl } = require("./lib/resolveRemoteServerUrl");
-const { writeRemoteServerUrl } = require("./lib/remoteServerPreferences");
+const {
+  readPreferences,
+  writeRemoteServerUrl,
+  writeCloseBehavior,
+} = require("./lib/remoteServerPreferences");
 const { buildReadinessUrl, waitForServer } = require("./lib/serverReadiness");
+const { shouldStartHidden, showOrCreateWindow } = require("./lib/windowLifecycle");
+const {
+  CLOSE_BEHAVIOR_KEEP_LOADED,
+  CLOSE_BEHAVIOR_UNLOAD,
+  normalizeCloseBehavior,
+  resolveRendererUrl,
+} = require("./lib/windowClosePolicy");
 
 // ── Single Instance Lock ───────────────────────────────────
 const gotTheLock = app.requestSingleInstanceLock();
@@ -49,11 +60,12 @@ if (!gotTheLock) {
 }
 
 app.on("second-instance", () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  }
+  const isHeadless =
+    process.argv.includes("--headless") ||
+    process.argv.includes("--cli") ||
+    process.env.OMNIROUTE_HEADLESS === "true";
+  if (isHeadless) return;
+  showMainWindow();
 });
 
 // ── Environment Detection ──────────────────────────────────
@@ -71,6 +83,8 @@ let nextServer = null;
 let serverPort = 20128;
 let isServerStopped = false;
 let remoteServerPromptWindow = null;
+let keepAliveWithoutWindows = false;
+let lastRendererUrl = null;
 
 // ── Remote Server Mode ──────────────────────────────────────
 // Lets the desktop shell attach to an already-running OmniRoute server (e.g. a
@@ -81,6 +95,8 @@ const REMOTE_SERVER_PREFS_PATH = path.join(
   resolveDataDir(null, process.env),
   "electron-preferences.json"
 );
+const electronPreferences = readPreferences(REMOTE_SERVER_PREFS_PATH);
+let closeBehavior = electronPreferences.closeBehavior;
 let remoteServerUrl = resolveRemoteServerUrl({
   env: process.env,
   prefsPath: REMOTE_SERVER_PREFS_PATH,
@@ -365,14 +381,18 @@ function setupContentSecurityPolicy() {
 }
 
 // ── Create Window ──────────────────────────────────────────
-function createWindow() {
+function createWindow({ showWhenReady = true } = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+
+  const rendererStartedAt = Date.now();
+
   // Platform-conditional options (#9)
   const platformWindowOptions =
     process.platform === "darwin"
       ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 16 } }
       : { titleBarStyle: "default" };
 
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
@@ -390,28 +410,28 @@ function createWindow() {
     backgroundColor: "#0a0a0a",
     ...platformWindowOptions,
   });
+  mainWindow = window;
 
   // Load the Next.js app
-  mainWindow.loadURL(getServerUrl());
+  window.loadURL(resolveRendererUrl(lastRendererUrl, getServerUrl()));
   if (isDev) {
-    mainWindow.webContents.openDevTools({ mode: "detach" });
+    window.webContents.openDevTools({ mode: "detach" });
   }
 
-  // Show window when ready (unless starting minimized/hidden in tray)
-  mainWindow.once("ready-to-show", () => {
-    const startHidden =
-      process.argv.includes("--hidden") ||
-      process.argv.includes("--minimized") ||
-      app.getLoginItemSettings().wasOpenedAsHidden;
-    if (!startHidden) {
-      mainWindow.show();
+  // Hidden startup (createWindow({ showWhenReady: false })) skips the initial
+  // show(); the window stays created (so tray/dock interactions work) but the
+  // renderer only becomes visible on the next explicit showMainWindow() call.
+  window.once("ready-to-show", () => {
+    console.log(`[Electron] Renderer ready in ${Date.now() - rendererStartedAt}ms`);
+    if (showWhenReady) {
+      window.show();
     } else {
       console.log("[Electron] Launched hidden in background tray");
     }
   });
 
   // Handle external links — validate URL protocol to prevent RCE
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  window.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const parsedUrl = new URL(url);
       if (["http:", "https:"].includes(parsedUrl.protocol)) {
@@ -425,18 +445,44 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  // Handle window close — minimize to tray
-  mainWindow.on("close", (event) => {
+  // Keep the server alive while either hiding the renderer for a fast reopen or
+  // unloading it to reclaim memory, according to the persisted tray preference.
+  window.on("close", (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
-      mainWindow.hide();
+      lastRendererUrl = resolveRendererUrl(window.webContents.getURL(), getServerUrl());
+      if (closeBehavior === CLOSE_BEHAVIOR_UNLOAD) {
+        console.log("[Electron] Dashboard renderer unloaded; server remains running");
+        window.destroy();
+      } else {
+        console.log("[Electron] Dashboard hidden; renderer kept loaded");
+        window.hide();
+      }
     }
     return false;
   });
 
-  mainWindow.on("closed", () => {
-    mainWindow = null;
+  window.on("closed", () => {
+    if (mainWindow === window) mainWindow = null;
   });
+
+  return window;
+}
+
+function showMainWindow() {
+  return showOrCreateWindow({
+    appReady: app.isReady(),
+    getWindow: () => mainWindow,
+    createWindow,
+  });
+}
+
+function setCloseBehavior(nextBehavior) {
+  const normalized = normalizeCloseBehavior(nextBehavior);
+  if (!normalized || normalized === closeBehavior) return;
+  closeBehavior = normalized;
+  writeCloseBehavior(REMOTE_SERVER_PREFS_PATH, closeBehavior);
+  createTray();
 }
 
 // ── System Tray ────────────────────────────────────────────
@@ -465,12 +511,7 @@ function createTray() {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: "Open OmniRoute",
-      click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
-      },
+      click: () => showMainWindow(),
     },
     {
       label: "Open Dashboard",
@@ -504,6 +545,23 @@ function createTray() {
         },
       ],
     },
+    {
+      label: "When Dashboard Closes",
+      submenu: [
+        {
+          label: "Keep Loaded (Faster Reopen)",
+          type: "radio",
+          checked: closeBehavior === CLOSE_BEHAVIOR_KEEP_LOADED,
+          click: () => setCloseBehavior(CLOSE_BEHAVIOR_KEEP_LOADED),
+        },
+        {
+          label: "Unload Renderer (Lower Memory)",
+          type: "radio",
+          checked: closeBehavior === CLOSE_BEHAVIOR_UNLOAD,
+          click: () => setCloseBehavior(CLOSE_BEHAVIOR_UNLOAD),
+        },
+      ],
+    },
     { type: "separator" },
     {
       label: "Check for Updates",
@@ -522,12 +580,7 @@ function createTray() {
   tray.setToolTip("OmniRoute");
   tray.setContextMenu(contextMenu);
 
-  tray.on("double-click", () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
+  tray.on("double-click", () => showMainWindow());
 }
 
 // ── Change Port (#3: now restarts server) ──────────────────
@@ -549,6 +602,7 @@ async function changePort(newPort) {
   await waitForServer(getServerReadinessUrl());
 
   // Reload window and update tray
+  lastRendererUrl = getServerUrl();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.loadURL(getServerUrl());
   }
@@ -613,6 +667,7 @@ async function setRemoteServerUrl(nextUrl) {
 
   remoteServerUrl = normalized;
   writeRemoteServerUrl(REMOTE_SERVER_PREFS_PATH, remoteServerUrl);
+  lastRendererUrl = getServerUrl();
 
   startNextServer();
   try {
@@ -781,6 +836,14 @@ function startNextServer() {
       ...serverEnv,
       DATA_DIR: dataDir,
       PORT: String(serverPort),
+      // Pin the embedded server to loopback. Next.js standalone binds to
+      // `process.env.HOSTNAME || '0.0.0.0'`, and Windows always exports
+      // HOSTNAME as the machine name — which resolves to the LAN address, so
+      // the server listens only there and 127.0.0.1 stays closed. The renderer
+      // then fails to load `http://localhost:<port>`, "ready-to-show" never
+      // fires, and the window (created with `show: false`) is never shown.
+      // Mirrors scripts/dev/run-next-playwright.mjs, which already pins this.
+      HOSTNAME: "127.0.0.1",
       NODE_ENV: "production",
       ELECTRON_RUN_AS_NODE: "1",
       NODE_PATH: resolveServerNodePath(serverEnv, resolvePackNodePaths(dataDir)),
@@ -1086,9 +1149,20 @@ app.whenReady().then(async () => {
     process.argv.includes("--headless") ||
     process.argv.includes("--cli") ||
     process.env.OMNIROUTE_HEADLESS === "true";
+  const startHidden =
+    !isHeadless &&
+    shouldStartHidden({
+      argv: process.argv,
+      loginItemSettings: app.getLoginItemSettings(),
+    });
+  keepAliveWithoutWindows = startHidden;
 
   // Fix #1: Start server and WAIT for readiness before showing window
   startNextServer();
+  if (!isHeadless) {
+    createTray();
+  }
+
   let serverReady = true;
   if (!isDev) {
     // Probe the lightweight auth-exempt endpoint instead of aggregating full monitoring state.
@@ -1097,9 +1171,10 @@ app.whenReady().then(async () => {
 
   if (isHeadless) {
     console.log("[Electron] Headless mode active — UI window and tray icon skipped");
+  } else if (startHidden) {
+    console.log("[Electron] Launched hidden in background tray without a renderer");
   } else {
-    createWindow();
-    createTray();
+    showMainWindow();
   }
 
   setupIpcHandlers();
@@ -1107,7 +1182,7 @@ app.whenReady().then(async () => {
 
   // If readiness timed out (e.g. very long first-launch migrations), don't leave the
   // window stuck on a hanging connection — keep polling and reload once it responds (#2460).
-  if (!isDev && !serverReady && !isHeadless) {
+  if (!isDev && !serverReady && !isHeadless && !startHidden) {
     void waitForServer(getServerReadinessUrl(), 300000).then((ready) => {
       if (ready && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.loadURL(getServerUrl());
@@ -1125,11 +1200,7 @@ app.whenReady().then(async () => {
   // macOS: recreate window when dock icon clicked
   app.on("activate", () => {
     if (isHeadless) return;
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    } else if (mainWindow) {
-      mainWindow.show();
-    }
+    showMainWindow();
   });
 });
 
@@ -1139,7 +1210,12 @@ app.on("window-all-closed", () => {
     process.argv.includes("--headless") ||
     process.argv.includes("--cli") ||
     process.env.OMNIROUTE_HEADLESS === "true";
-  if (process.platform !== "darwin" && !isHeadless) {
+  if (
+    process.platform !== "darwin" &&
+    !isHeadless &&
+    !keepAliveWithoutWindows &&
+    closeBehavior !== CLOSE_BEHAVIOR_UNLOAD
+  ) {
     app.quit();
   }
 });

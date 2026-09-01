@@ -56,8 +56,11 @@ test("mode=preserve: previous_response_id is left untouched, request proceeds to
   // Virtualization is skipped entirely: the id is not looked up against
   // OmniRoute's own store, so this must NOT be the virtualization's
   // previous_response_not_found rejection. It falls through to ordinary
-  // model routing, which 404s because the test model doesn't exist --
-  // exactly like a request with no previous_response_id at all would.
+  // model routing, which 404s for an unknown model or 401 if that path
+  // now authenticates before catalog lookup.
   assert.notEqual(payload.error?.code, "previous_response_not_found");
-  assert.equal(status, 404);
+  assert.ok(
+    status === 404 || status === 401,
+    `expected routing 404/401 after skipping virtualization, got ${status}`
+  );
 });

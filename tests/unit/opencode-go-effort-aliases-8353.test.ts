@@ -50,9 +50,40 @@ const ISSUE_ALIASES: ReadonlyArray<{ alias: string; base: string; effort: string
   { alias: "qwen3.7-max-max", base: "qwen3.7-max", effort: "max" },
   { alias: "qwen3.7-plus-high", base: "qwen3.7-plus", effort: "high" },
   { alias: "qwen3.7-plus-max", base: "qwen3.7-plus", effort: "max" },
+  {
+    alias: "muse-spark-1.2-contributor-minimal",
+    base: "muse-spark-1.2-contributor",
+    effort: "minimal",
+  },
+  {
+    alias: "muse-spark-1.2-contributor-low",
+    base: "muse-spark-1.2-contributor",
+    effort: "low",
+  },
+  {
+    alias: "muse-spark-1.2-contributor-medium",
+    base: "muse-spark-1.2-contributor",
+    effort: "medium",
+  },
+  {
+    alias: "muse-spark-1.2-contributor-high",
+    base: "muse-spark-1.2-contributor",
+    effort: "high",
+  },
+  {
+    alias: "muse-spark-1.2-contributor-xhigh",
+    base: "muse-spark-1.2-contributor",
+    effort: "xhigh",
+  },
 ];
 
-const NEW_BASES = ["grok-4.5", "hy3", "kimi-k3", "qwen3.7-plus"] as const;
+const NEW_BASES = [
+  "grok-4.5",
+  "hy3",
+  "kimi-k3",
+  "qwen3.7-plus",
+  "muse-spark-1.2-contributor",
+] as const;
 
 function goModelIds(): string[] {
   const entry = REGISTRY["opencode-go"];
@@ -98,11 +129,14 @@ test("#8353 catalog: aliases are NOT synthesized on opencode-zen", () => {
   for (const { alias } of ISSUE_ALIASES) {
     assert.equal(zenIds.has(alias), false, `opencode-zen must not expose ${alias}`);
   }
+  // kimi-k3 became a live zen model in the 2026-08-17 registry sync (present in
+  // https://opencode.ai/zen/v1/models) — only the remaining Go-tier-only bases
+  // must stay absent from zen. The effort alias kimi-k3-max is still Go-only
   for (const base of NEW_BASES) {
+    if (base === "kimi-k3") continue;
     assert.equal(zenIds.has(base), false, `opencode-zen must not expose base ${base}`);
   }
 });
-
 test("#8353 catalog: qwen effort aliases keep Claude targetFormat", () => {
   const models = REGISTRY["opencode-go"]?.models ?? [];
   for (const id of [
@@ -133,6 +167,7 @@ test("#8353 parseEffortLevel: unsupported tiers stay null", () => {
   assert.equal(parseEffortLevel("hy3-max"), null);
   assert.equal(parseEffortLevel("kimi-k3-high"), null);
   assert.equal(parseEffortLevel("qwen3.6-plus-low"), null);
+  assert.equal(parseEffortLevel("muse-spark-1.2-contributor-max"), null);
 });
 
 test("#8353 parseEffortLevel: existing DeepSeek V4 Pro / GLM / MiMo aliases still work", () => {
@@ -161,6 +196,11 @@ const TRANSFORM_SAMPLES = [
   { alias: "kimi-k3-max", base: "kimi-k3", effort: "max" },
   { alias: "qwen3.7-plus-max", base: "qwen3.7-plus", effort: "max" },
   { alias: "qwen3.7-max-high", base: "qwen3.7-max", effort: "high" },
+  {
+    alias: "muse-spark-1.2-contributor-xhigh",
+    base: "muse-spark-1.2-contributor",
+    effort: "xhigh",
+  },
 ] as const;
 
 for (const { alias, base, effort } of TRANSFORM_SAMPLES) {

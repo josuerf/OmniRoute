@@ -193,6 +193,60 @@ describe("model capability overrides", () => {
     assert.equal(rejectedDelete.status, 400);
   });
 
+  it("stores exact reasoning_efforts through the API and preserves native max/ultra", async () => {
+    const before = caps.getResolvedModelCapabilities("codex/gpt-5.6");
+    const accepted = await patchOverride(
+      "reasoning_efforts",
+      "﻿​ low\r\n, medium, max‍, ultra⁠"
+    );
+    assert.equal(accepted.status, 200);
+
+    const payload = (await accepted.json()) as {
+      overrides: Array<{ target: string; key: string; value: number | string[] }>;
+    };
+    const listed = payload.overrides.find((override) => override.key === "reasoning_efforts");
+    assert.ok(listed);
+    assert.equal(listed.target, "codex/gpt-5.6");
+    assert.deepEqual(listed.value, ["low", "medium", "max", "ultra"]);
+    assert.deepEqual(overrides.getReasoningEffortsOverride("codex", "gpt-5.6"), [
+      "low",
+      "medium",
+      "max",
+      "ultra",
+    ]);
+
+    const resolved = caps.getResolvedModelCapabilities("codex/gpt-5.6");
+    assert.equal(resolved.supportsThinking, true);
+    assert.equal(resolved.reasoningEffortsOverride, true);
+    assert.deepEqual(resolved.supportedThinkingEfforts, ["low", "medium", "max", "ultra"]);
+
+    for (const invalid of [
+      "",
+      "low,",
+      "low,,high",
+      "low, LOW",
+      "minimal,low",
+      "low,unknown",
+      "low，high",
+    ]) {
+      assert.equal((await patchOverride("reasoning_efforts", invalid)).status, 400, invalid);
+    }
+    assert.equal((await patchOverride("reasoning_efforts", ["low", "high"])).status, 400);
+    assert.equal((await patchOverride("reasoning_efforts", 123)).status, 400);
+
+    const removed = await route.DELETE(
+      new Request(
+        "http://localhost/api/model-capability-overrides?target=codex/gpt-5.6&key=reasoning_efforts",
+        { method: "DELETE" }
+      )
+    );
+    assert.equal(removed.status, 200);
+    assert.equal(overrides.getReasoningEffortsOverride("codex", "gpt-5.6"), null);
+    const after = caps.getResolvedModelCapabilities("codex/gpt-5.6");
+    assert.equal(after.reasoningEffortsOverride, false);
+    assert.deepEqual(after.supportedThinkingEfforts, before.supportedThinkingEfforts);
+  });
+
   it("rejects invalid targets and non-positive values", () => {
     assert.equal(overrides.setModelCapabilityOverride("gpt-4o", "max_output_tokens", 1000), false);
     assert.equal(

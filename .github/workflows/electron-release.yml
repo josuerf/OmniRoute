@@ -279,9 +279,14 @@ jobs:
 
       - name: Smoke packaged Electron app (Linux)
         if: matrix.platform == 'linux'
+        # #7592: also cold-restart against the same DATA_DIR and assert a
+        # native SQLite driver (not the sql.js WASM fallback) is selected on
+        # the second launch — blocking here since Linux has no Windows-style
+        # sandbox caveats that would make it flaky.
         env:
           ELECTRON_SMOKE_TIMEOUT_MS: 60000
           ELECTRON_SMOKE_STREAM_LOGS: "1"
+          ELECTRON_SMOKE_COLD_RESTART: "1"
         run: xvfb-run -a npm run electron:smoke:packaged
 
       - name: Collect installers

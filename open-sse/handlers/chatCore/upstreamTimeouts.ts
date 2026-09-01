@@ -9,6 +9,7 @@ import {
   getLoggedOutputTokens,
   getReasoningTokens,
 } from "@/lib/usage/tokenAccounting";
+import { MAX_PROVIDER_SPECIFIC_TIMEOUT_MS } from "@/shared/validation/providerSpecificData";
 
 export function createBodyTimeoutError(timeoutMs: number): Error {
   const err = new Error(`Response body read timeout after ${timeoutMs}ms`);
@@ -89,14 +90,44 @@ function resolveProviderTimeoutMs(executor: unknown): number {
   }
 }
 
+/** Per-connection operator timeout tier: reads
+ *  `providerSpecificData.timeoutMs`, bounded to 1..86_400_000 ms.
+ *  Returns undefined when absent or invalid so the chain falls through. */
+export function resolveConnectionTimeoutMs(psd: unknown): number | undefined {
+  const timeoutMs = (psd as Record<string, unknown> | null | undefined)?.timeoutMs;
+  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs)) return undefined;
+  const floored = Math.floor(timeoutMs);
+  if (floored < 1 || floored > MAX_PROVIDER_SPECIFIC_TIMEOUT_MS) return undefined;
+  return floored;
+}
+
 /**
  * Resolves the upstream header-response timeout in precedence order:
+ * connection-level override (`providerSpecificData.timeoutMs`) →
  * model-level override (registry `RegistryModel.timeoutMs`) → provider-level
  * override (`executor.getTimeoutMs()`) → global `FETCH_TIMEOUT_MS` default.
  * `provider`/`model` are optional so existing single-argument call sites
  * keep resolving to the provider/global chain unchanged (#6354).
  */
-export function getExecutorTimeoutMs(executor: unknown, provider?: string, model?: string): number {
+export function getExecutorTimeoutMs(
+  executor: unknown,
+  provider?: string,
+  model?: string,
+  connectionTimeoutMs?: number
+): number {
+  if (
+    typeof connectionTimeoutMs === "number" &&
+    Number.isFinite(connectionTimeoutMs) &&
+    connectionTimeoutMs > 0
+  ) {
+    // Defensive backstop for direct callers: resolveConnectionTimeoutMs is the
+    // gate (it rejects out-of-range values so the chain falls through); this
+    // clamp only caps values a future caller could pass unvetted.
+    return Math.min(
+      Math.max(0, Math.floor(connectionTimeoutMs)),
+      MAX_PROVIDER_SPECIFIC_TIMEOUT_MS
+    );
+  }
   const modelOverride = resolveModelTimeoutOverride(provider, model);
   if (modelOverride !== undefined) return modelOverride;
   return resolveProviderTimeoutMs(executor);
@@ -196,6 +227,7 @@ export async function executeWithUpstreamStartTimeout<T>({
   executor,
   provider,
   model,
+  connectionTimeoutMs,
   signal,
   log,
   execute,
@@ -203,11 +235,12 @@ export async function executeWithUpstreamStartTimeout<T>({
   executor: unknown;
   provider: string;
   model: string;
+  connectionTimeoutMs?: number;
   signal: AbortSignal;
   log?: { warn?: (tag: string, message: string) => void } | null;
   execute: (signal: AbortSignal) => Promise<T>;
 }): Promise<T> {
-  const timeoutMs = getExecutorTimeoutMs(executor, provider, model);
+  const timeoutMs = getExecutorTimeoutMs(executor, provider, model, connectionTimeoutMs);
   if (timeoutMs <= 0) return execute(signal);
   if (signal.aborted) throw createAbortError(signal);
 

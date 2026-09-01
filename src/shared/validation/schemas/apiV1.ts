@@ -560,37 +560,35 @@ export const v1CountTokensSchema = z
 // with defaults. New features add implementations, not new fields.
 // Multi-query deferred to POST /v1/search/batch (separate PRD).
 
-export const v1SearchSchema = z
-  .object({
+export const v1SearchSchema = z.preprocess(
+  (raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+    const o = { ...(raw as Record<string, unknown>) };
+    if (o.provider === "x_search") o.provider = "x-search";
+    if (o.provider === "x-search") o.search_type = "x";
+    return o;
+  },
+  z
+    .object({
     // Core
     query: z
       .string()
       .trim()
       .min(1, "Query is required")
       .max(500, "Query must be 500 characters or fewer"),
-    provider: z
-      .enum([
-        "serper-search",
-        "brave-search",
-        "perplexity-search",
-        "exa-search",
-        "tavily-search",
-        "firecrawl",
-        "google-pse-search",
-        "linkup-search",
-        "ollama-search",
-        "searchapi-search",
-        "youcom-search",
-        "searxng-search",
-        "zai-search",
-        "jina-search",
-        "jina-ai",
-        "jina",
-        "duckduckgo-free",
-      ])
-      .optional(),
+    // Not a z.enum: the runtime catalog (SEARCH_PROVIDERS + SEARCH_PROVIDER_ALIASES in
+    // open-sse/config/searchRegistry.ts) is the source of truth via resolveSearchProvider(),
+    // which already returns a named "Unknown search provider: <id>" error for bad ids (see
+    // src/app/api/v1/search/route.ts). A hard-coded enum here would 400 before that check
+    // ever runs, hiding the informative message behind a generic Zod failure (#10849).
+    // Known catalog ids as of this writing: serper-search, brave-search, perplexity-search,
+    // exa-search, tavily-search, firecrawl, google-pse-search, linkup-search, ollama-search,
+    // searchapi-search, youcom-search, searxng-search, zai-search, jina-search, jina-ai,
+    // jina, duckduckgo-free, x-search, x_search (plus short aliases resolved by
+    // SEARCH_PROVIDER_ALIASES).
+    provider: z.string().min(1).optional(),
     max_results: z.coerce.number().int().min(1).max(100).default(5),
-    search_type: z.enum(["web", "news"]).default("web"),
+    search_type: z.enum(["web", "news", "x"]).default("web"),
     offset: z.coerce.number().int().min(0).default(0),
 
     // Locale
@@ -632,7 +630,8 @@ export const v1SearchSchema = z
     // Strict mode — reject if provider doesn't support a requested filter
     strict_filters: z.boolean().default(false),
   })
-  .catchall(z.unknown());
+    .catchall(z.unknown())
+);
 
 export const searchResultSchema = z.object({
   title: z.string(),
@@ -656,7 +655,7 @@ export const searchResultSchema = z.object({
       author: z.string().nullable().optional(),
       language: z.string().nullable().optional(),
       source_type: z
-        .enum(["article", "blog", "forum", "video", "academic", "news", "other"])
+        .enum(["article", "blog", "forum", "video", "academic", "news", "x", "other"])
         .nullable()
         .optional(),
       image_url: z.string().nullable().optional(),

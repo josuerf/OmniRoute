@@ -6,16 +6,16 @@ lastUpdated: 2026-08-18
 
 # VS Code Copilot Chat — OmniCopilot extension
 
-**OmniCopilot** puts every model your OmniRoute serves into the *native* GitHub Copilot Chat
+**OmniCopilot** puts every model your OmniRoute serves into the _native_ GitHub Copilot Chat
 model picker. No second sidebar, no separate chat UI — Copilot's agent mode, tool calling,
 MCP servers and custom instructions all keep working, just running on the model you pick.
 
-| | |
-| --- | --- |
-| **Install (VS Code)** | [Marketplace → `diegosouzapw.omnicopilot`](https://marketplace.visualstudio.com/items?itemName=diegosouzapw.omnicopilot) |
-| **Install (forks)** | [Open VSX](https://open-vsx.org/extension/diegosouzapw/omnicopilot) — Cursor, Windsurf, VSCodium, Theia, code-server, Gitpod, Antigravity, Kiro |
-| **Source / issues** | [github.com/diegosouzapw/OmniCopilot](https://github.com/diegosouzapw/OmniCopilot) (MIT) |
-| **Requires** | VS Code 1.104+ |
+|                       |                                                                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Install (VS Code)** | [Marketplace → `diegosouzapw.omnicopilot`](https://marketplace.visualstudio.com/items?itemName=diegosouzapw.omnicopilot)                        |
+| **Install (forks)**   | [Open VSX](https://open-vsx.org/extension/diegosouzapw/omnicopilot) — Cursor, Windsurf, VSCodium, Theia, code-server, Gitpod, Antigravity, Kiro |
+| **Source / issues**   | [github.com/diegosouzapw/OmniCopilot](https://github.com/diegosouzapw/OmniCopilot) (MIT)                                                        |
+| **Requires**          | VS Code 1.104+                                                                                                                                  |
 
 > **No Copilot subscription needed.** Since VS Code 1.122 a language-model provider works
 > without a GitHub sign-in and without any Copilot plan. Inline completions and
@@ -60,7 +60,7 @@ The extension requests **`GET /v1/models?prefix=alias`** so one id arrives per m
 changing the server-wide setting for your other clients. On a reference instance this collapsed
 **2345 entries to 1396 — 949 duplicates, zero models lost.**
 
-If you would rather fix it server-wide for *every* client, set the
+If you would rather fix it server-wide for _every_ client, set the
 `MODELS_CATALOG_PREFIX_MODE` feature flag to `alias` in the dashboard. See
 [API_REFERENCE → prefix](../reference/API_REFERENCE.md#model-id-prefixes-prefix) for the
 query parameter and the warning about `canonical`.
@@ -81,7 +81,7 @@ and OmniRoute translates those for `/v1/chat/completions`, so they are perfectly
 
 ### Providers you never configured
 
-The catalog lists models from providers with an **active connection** *plus* every **noAuth**
+The catalog lists models from providers with an **active connection** _plus_ every **noAuth**
 provider — the keyless ones that make up much of the free tier. That is intentional. To hide
 them, add them to `blockedProviders` in the dashboard settings; nothing changes in the
 extension.
@@ -91,18 +91,32 @@ extension.
 ## Dashboard inside a VS Code tab
 
 `omnicopilot.dashboardOpen: "editor"` renders the OmniRoute dashboard in an editor tab via the
-Simple Browser instead of an external browser. Embedding is **opt-in on the server**: start
-OmniRoute with
+Simple Browser instead of an external browser. Embedding is **opt-in on the server** through
+`DASHBOARD_ALLOW_EMBED=vscode`, which serves the HTML pages with
+`frame-ancestors 'self' vscode-webview:` instead of the default `frame-ancestors 'none'` +
+`X-Frame-Options: DENY`. The API surface (`/api`, `/v1`, `/v1beta`, `/a2a`, `/healthz`) keeps the
+strict headers either way.
+
+> ⚠️ **It is a build-time flag, not a runtime one.** Next.js compiles `headers()` into the route
+> manifest, so `next.config.mjs` reads the variable while the bundle is built
+> (`next.config.mjs` → `resolveDashboardEmbedMode`, `scripts/build/dashboardEmbed.mjs`).
+> Exporting it in front of an already-built server changes nothing — the headers are baked.
 
 ```bash
-DASHBOARD_ALLOW_EMBED=vscode omniroute
+# the variable has to be present on the BUILD command
+DASHBOARD_ALLOW_EMBED=vscode npm run build        # or npm run build:release
+npm start
 ```
 
-which serves the HTML pages with `frame-ancestors 'self' vscode-webview:` instead of the default
-`frame-ancestors 'none'` + `X-Frame-Options: DENY`. The API surface (`/api`, `/v1`, `/v1beta`,
-`/a2a`, `/healthz`) keeps the strict headers either way. Without the variable the page refuses to
-frame and the extension falls back to the external browser — nothing breaks. See
-[`ENVIRONMENT.md`](../reference/ENVIRONMENT.md) and issue
+| How you installed          | Can you enable embedding?                                                                                                               |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| From source                | ✅ set the variable on the build command, as above                                                                                      |
+| `npm install -g omniroute` | ❌ the published package ships a prebuilt bundle — build from source instead                                                            |
+| Docker image               | ✅ `docker build --build-arg DASHBOARD_ALLOW_EMBED=vscode -t omniroute:embed .` — the prebuilt image on Docker Hub is not embed-enabled |
+
+Without an embed-enabled build the page refuses to frame, the extension detects that from the
+response headers and falls back to the external browser — nothing breaks, and it says so once.
+See [`ENVIRONMENT.md`](../reference/ENVIRONMENT.md) and issue
 [#10273](https://github.com/diegosouzapw/OmniRoute/issues/10273).
 
 ---
@@ -119,14 +133,14 @@ Kilo and Roo — the same configs described in
 
 ## Troubleshooting
 
-| Symptom | Cause / fix |
-| --- | --- |
-| No OmniRoute models in the picker | Server unreachable. The status-bar dot goes grey; run `OmniRoute: Check Connection`. Discovery is silent by design and contributes no models rather than prompting. |
-| Every model appears twice | You are on an OmniCopilot older than 1.0.1 — update. The extension now requests `?prefix=alias`. |
-| An image/audio model used to be listed and is gone | Intentional since 1.0.1 — it could never answer a chat request. |
-| Panel missing from the Activity Bar | VS Code moves extra view containers into the **"…"** overflow at the bottom of the Activity Bar, and a container hidden via right-click stays hidden. Right-click the Activity Bar → tick **OmniRoute**, or open it with `OmniRoute: Manage Connection`. |
-| Dashboard opens in the browser despite `editor` mode | The server is not started with `DASHBOARD_ALLOW_EMBED=vscode` (see above). The fallback is deliberate. |
-| Models list is stale after changing providers | `OmniRoute: Refresh Models`, or the ↻ link in the panel. |
+| Symptom                                              | Cause / fix                                                                                                                                                                                                                                              |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No OmniRoute models in the picker                    | Server unreachable. The status-bar dot goes grey; run `OmniRoute: Check Connection`. Discovery is silent by design and contributes no models rather than prompting.                                                                                      |
+| Every model appears twice                            | You are on an OmniCopilot older than 1.0.1 — update. The extension now requests `?prefix=alias`.                                                                                                                                                         |
+| An image/audio model used to be listed and is gone   | Intentional since 1.0.1 — it could never answer a chat request.                                                                                                                                                                                          |
+| Panel missing from the Activity Bar                  | VS Code moves extra view containers into the **"…"** overflow at the bottom of the Activity Bar, and a container hidden via right-click stays hidden. Right-click the Activity Bar → tick **OmniRoute**, or open it with `OmniRoute: Manage Connection`. |
+| Dashboard opens in the browser despite `editor` mode | The server was not **built** with `DASHBOARD_ALLOW_EMBED=vscode` (see above) — setting it at startup on a prebuilt install does nothing. The fallback is deliberate.                                                                                     |
+| Models list is stale after changing providers        | `OmniRoute: Refresh Models`, or the ↻ link in the panel.                                                                                                                                                                                                 |
 
 ---
 

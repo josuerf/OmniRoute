@@ -573,16 +573,16 @@ export function cleanupReasoningCache(): number {
 
 // ──────────────── Auto-start periodic cleanup ────────────────
 //
-// server-init.ts was supposed to start the cleanup job, but that module is
-// never imported anywhere (it is stranded/dead code).  As a result, the
-// reasoning_cache SQLite table accumulates expired entries indefinitely.
+// server-init.ts was supposed to start the cleanup job, but that module was
+// never imported anywhere (it was stranded dead code, since removed). As a
+// result, the reasoning_cache SQLite table accumulates expired entries
+// indefinitely.
 //
 // Fix: start the periodic cleanup directly from this module so it runs
 // regardless of how the server boots.  On first import we run one
 // immediate sweep, then schedule a 30-minute interval.
 //
-// See: src/lib/jobs/reasoningCacheCleanupJob.ts (the original job module,
-// which also remains valid if server-init.ts ever gets wired in).
+// See: src/lib/jobs/reasoningCacheCleanupJob.ts (the original job module).
 
 const DEFAULT_CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // 30 min
 

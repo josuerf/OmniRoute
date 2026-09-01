@@ -974,12 +974,20 @@
     "batchFileUsedByCount": "Използвано от {count, plural, one {# партида} other {# партиди}}",
     "batchFilePreview": "Преглед",
     "batchFilePreviewTruncated": "Показване на първите {shown} реда ({total} общо реда)",
-    "batchFileDownloadFull": "Изтеглете целия файл"
+    "batchFileDownloadFull": "Изтеглете целия файл",
+    "batchHeaderSubtitle": "Run many requests as one job",
+    "batchStep1": "1 · Upload JSONL",
+    "batchStep1Desc": "Add requests",
+    "batchStep2": "2 · Create batch",
+    "batchStep2Desc": "Run job",
+    "batchStep3": "3 · Get results",
+    "batchStep3Desc": "Download output"
   },
   "disabled": "Деактивирано",
   "featureFlagOmnirouteEmergencyFallbackDescription": "Маршрутизиране на заявки с изчерпан бюджет към аварийния безплатен резервен доставчик/модел.",
   "featureFlagArenaEloSyncEnabledDescription": "Активиране на периодична синхронизация на ELO от класацията на Arena AI за класиране на интелигентността на моделите.",
   "featureFlagExposeCcDiscoveryAliasesDescription": "Рекламирайте claude/&lt;provider&gt;/&lt;model&gt; mirror идентификатори на /v1/models, така че списъкът с модели на Claude Code gateway да включва неклаудови модели. Внимание: удвоява записите в каталога за всички клиенти, когато е активирано глобално.",
+  "featureFlagChatVirtualLanesEnabledDescription": "Активирайте адаптивни виртуални ленти за допускане за всеки наемател (tenant) при изпращане към доставчици (#9654): скокът в натоварването на един наемател вече не връща 503 на друг. Променливата на средата OMNIROUTE_CHAT_VIRTUAL_LANES има предимство пред тази настройка в таблото; промените влизат в сила след рестартиране на сървъра.",
   "sidebar": {
     "home": "Начало",
     "dashboard": "Табло",
@@ -1164,6 +1172,8 @@
     "consoleLogs": "Console Logs",
     "logsTimeline": "Timeline",
     "logsTimelineSubtitle": "Визуален времеви график на заявките",
+    "conversations": "Conversations",
+    "conversationsSubtitle": "Multi-turn agentic conversations",
     "globalRouting": "Global Routing",
     "mitmProxy": "MITM Proxy",
     "oneProxy": "1Proxy",
@@ -1290,7 +1300,8 @@
       "open": "отвори",
       "close": "затвори"
     },
-    "noResults": "Няма резултати"
+    "noResults": "Няма резултати",
+    "trafficInspectorPurpose": "See exactly what your application sends to and receives from AI providers. Works with any OpenAI-compatible client."
   },
   "webhooks": {
     "title": "Уеб кукички",
@@ -1736,8 +1747,8 @@
     "quotaShare": "Споделяне на квота",
     "discovery": "Откриване",
     "freeProviderRankings": "Класации на безплатни доставчици",
-    "radar": "__MISSING__:Radar",
-    "setup": "__MISSING__:Setup",
+    "radar": "Radar",
+    "setup": "Setup",
     "freeTiers": "Безплатни нива",
     "gamification": "Геймификация",
     "leaderboard": "Класация",
@@ -1853,7 +1864,21 @@
     "directDownloadHint": "Или изтеглете съответния инсталаторен формат директно:",
     "releaseNotes": "Бележки за изданието",
     "readMore": "Прочетете повече",
-    "noAuthLabel": "Без удостоверяване"
+    "noAuthLabel": "Без удостоверяване",
+    "recentRequests": "Recent Requests",
+    "recentRequestsEmpty": "No requests yet.",
+    "recentRequestsModel": "Model",
+    "recentRequestsTokens": "In / Out",
+    "recentRequestsWhen": "When",
+    "readinessEyebrow": "Get ready to route",
+    "readinessTitle": "Send your first request",
+    "readinessSubtitle": "Four small steps. OmniRoute checks readiness as you go.",
+    "readinessStep1": "Connect a provider",
+    "readinessStep2": "Configure endpoint authentication",
+    "readinessStep3": "Copy your endpoint",
+    "readinessStep4": "Send a test request",
+    "readinessContinue": "Continue setup",
+    "readinessDismiss": "Dismiss for now"
   },
   "analytics": {
     "title": "Анализ",
@@ -2215,6 +2240,10 @@
     "fullAccess": "Пълен достъп",
     "keyManagement": "Управление на API ключове",
     "keyManagementDesc": "Създавайте и управлявайте API ключове за удостоверяване на заявки към вашата крайна точка",
+    "requestFlowAria": "Your app sends requests through an API key to OmniRoute",
+    "requestFlowYourApp": "Your app",
+    "requestFlowApiKey": "API key",
+    "requestFlowOmniRoute": "OmniRoute",
     "totalKeys": "Общо ключове",
     "restricted": "Ограничен",
     "totalRequests": "Общо заявки",
@@ -2894,7 +2923,8 @@
       "omp": "Oh My Pi терминален агент за програмиране",
       "letta": "Letta CLI агент с постоянна памет и използване на инструменти",
       "warp": "Warp AI терминал с поддръжка на персонализиран доставчик",
-      "agent-deck": "Agent Deck мултиагентен оркестратор"
+      "agent-deck": "Agent Deck мултиагентен оркестратор",
+      "prime-agent": "Prime Agent — self-improving RLM coding harness with OpenAI-compatible provider support"
     },
     "guides": {
       "cursor": {
@@ -3603,6 +3633,10 @@
     "wizardStep3Desc": "Pick how requests are distributed across your models - 13 strategies available",
     "wizardStep4Title": "Review & Save",
     "wizardStep4Desc": "Review your configuration and activate the combo",
+    "usageGuideInvokeTitle": "How to call this combo",
+    "usageGuideInvokeDesc": "Send the combo's exact name as the model, e.g. model: \"my-combo\" (or combo/my-combo).",
+    "usageGuideInvokeAutoNote": "auto and auto/* are a separate zero-config router that does not use your combos (unless a combo is literally named auto).",
+    "usageGuideInvokeOpenrouterNote": "openrouter/auto is a real paid OpenRouter product (Auto Best Available), not an OmniRoute alias — exclude it via Settings → Routing → Hide paid models.",
     "emailVisibilityStateOn": "On",
     "emailVisibilityStateOff": "Off",
     "reorderHandle": "Drag to reorder",
@@ -3715,7 +3749,12 @@
     "errorDescription": "Не успяхме да заредим данните за комбинирането в момента. Проверете връзката си и опитайте отново.",
     "errorId": "Идентификатор на грешка: {id}",
     "errorRetry": "Опитай отново",
-    "comboLabel": "Комбо"
+    "comboLabel": "Комбо",
+    "duplicateAutoComboConfirm": "Да създадете статично комбо от \"{name}\"?",
+    "duplicateAutoComboSnapshotMsg": "Това ще направи моментна снимка на текущо свързаните доставчици/модели, които съвпадат с този шаблон, в редактируемо комбо.",
+    "duplicateAutoComboFailedPrefix": "Неуспешно копиране на автоматично комбо:",
+    "duplicateAutoComboUnknownError": "Неизвестна грешка",
+    "duplicateAutoComboTitle": "Създайте статично комбо от {name}"
   },
   "costs": {
     "title": "Разходи",
@@ -4117,7 +4156,10 @@
     "notionIntegrationHelp": "Създайте вътрешна интеграция на",
     "notionIntegrationToken": "Токен за вътрешна интеграция на Notion",
     "notionNotConnected": "Не е свързано",
-    "notionTokenConfigured": "Токенът е конфигуриран. Инструментите на Notion са налични чрез MCP."
+    "notionTokenConfigured": "Токенът е конфигуриран. Инструментите на Notion са налични чрез MCP.",
+    "subtitle": "Use the OpenAI-compatible endpoint with most SDKs and tools.",
+    "testEndpoint": "Test endpoint →",
+    "advancedProtocols": "Advanced protocols"
   },
   "endpoints": {
     "tabProxy": "Endpoint Proxy",
@@ -4700,7 +4742,14 @@
     "issueCount": "{count} проблема",
     "score": "Оценка",
     "lastRequest": "Последна заявка",
-    "lastError": "Последна грешка"
+    "lastError": "Последна грешка",
+    "healthVerdictReady": "OmniRoute is ready",
+    "healthVerdictActionRequired": "Action required to restore full operation",
+    "healthVerdictCoolingDown": "Cooling down after recent changes",
+    "healthSubtitle": "System health check",
+    "advancedDiagnosticsTitle": "Advanced diagnostics",
+    "hide": "Hide",
+    "show": "Show"
   },
   "telemetry": {
     "title": "Системна телеметрия",
@@ -4962,7 +5011,9 @@
         "skipped": "вече конфигурирано",
         "failed": "неуспешно"
       }
-    }
+    },
+    "securityDescSkipWarning": "⚠️ Without a password, you won't be able to add providers during setup. You can add them later from the dashboard after setting a password.",
+    "providerRequiresPassword": "You need to set a password first to add providers. Please go back to the security step and set a password, or add providers later from the dashboard."
   },
   "providers": {
     "title": "Доставчици",
@@ -5094,7 +5145,7 @@
     "deprecatedProvider": "Този доставчик е отхвърлен",
     "riskNotice": {
       "title": "Преди да продължите",
-      "detailsTitle": "__MISSING__:Usage caveats",
+      "detailsTitle": "Usage caveats",
       "tooltip": "Доставчик с предупреждения за употреба — щракнете за подробности",
       "oauth": "Този доставчик използва вашата официална продуктова сесия/OAuth, която не е оторизирана за използване като прокси/рутер. Не препоръчваме интензивно използване на автономни агенти (в стил OpenCloud, дълги многостъпкови процеси, големи партиди) — upstream услугата може да реагира чрез ограничаване или блокиране на акаунта. Използвайте на свой собствен риск.",
       "webCookie": "Този доставчик се удостоверява чрез бисквитките на вашата уеб сесия. Upstream услугата може да анулира сесията по всяко време, което ще изисква да се влезете отново. Не се препоръчва за дълги операции без надзор. Използвайте на свой собствен риск.",
@@ -5104,9 +5155,9 @@
       "cancel": "Отказ"
     },
     "warningNotice": {
-      "tooltip": "__MISSING__:{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
-      "lastFailureSuffix": "__MISSING__: (last failure {time})",
-      "ariaLabel": "__MISSING__:View connection health details, {count} warning(s)"
+      "tooltip": "{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
+      "lastFailureSuffix": " (last failure {time})",
+      "ariaLabel": "View connection health details, {count} warning(s)"
     },
     "disabled": "Забранено",
     "enableProvider": "Активиране на доставчика",
@@ -5230,6 +5281,17 @@
     "skippingExistingModels": "Пропускане на {count} съществуващи модела",
     "autoSync": "Автоматично синхронизиране",
     "autoSyncShort": "Синхронизиране",
+    "autoFetchModels": "Автоматично извличане на upstream модели",
+    "autoFetchModelsTooltip": "Изтеглете и кеширайте upstream модели, когато е необходимо",
+    "autoFetchModelsEnabled": "Автоматично извличане на upstream модела е активирано",
+    "autoFetchModelsDisabled": "Автоматично извличане на upstream модела е деактивирано",
+    "autoFetchModelsToggleFailed": "Неуспешно превключване на автоматично извличане на upstream модела",
+    "autoFetchModelsPartialFailure": "Някои връзки са актуализирани, но автоматичното извличане на upstream модела не беше променено навсякъде",
+    "overridesUpstreamModel": "Презаписва upstream",
+    "overridesUpstreamModelHint": "Вашите настройки надвиват тази основна модел.",
+    "resetToUpstreamDefaults": "Възстановяване на настройки по подразбиране на upstream",
+    "resetToUpstreamDefaultsSuccess": "Възстановени настройки по подразбиране на upstream модела",
+    "resetToUpstreamDefaultsFailed": "Неуспешно възстановяване на подразбиращите се настройки на upstream модела",
     "autoSyncTooltip": "Автоматично опресняване на списъка с модели на всеки 24 часа (може да се конфигурира чрез MODEL_SYNC_INTERVAL_HOURS)",
     "autoSyncEnabled": "Автоматичното синхронизиране е активирано — моделите ще се опресняват периодично",
     "autoSyncDisabled": "Автоматичното синхронизиране е деактивирано",
@@ -5435,18 +5497,18 @@
     "interceptFetchHint": "Пренаписване на повикванията на вградения инструмент web_fetch към /v1/web/fetch на OmniRoute.",
     "interceptionLoadError": "Неуспешно зареждане на настройките за прихващане: {error}",
     "interceptionSaveError": "Неуспешно запазване на настройките за прихващане: {error}",
-    "ccAliasSectionTitle": "Изложи в Claude Code (claude/…)",
-    "ccAliasSectionHint": "Рекламирайте моделите на този доставчик под claude/&lt;provider&gt;/&lt;model&gt; mirror ids, за да може откритията на моделите на Claude Code да ги изброява. По подразбиране е изключено — активирането му удвоява записите в каталога за всички клиенти.",
-    "ccAliasProviderLevelLabel": "Дефолтен доставчик",
-    "ccAliasModelOverridesLabel": "Преодолявания на моделите",
-    "ccAliasModelOverrideAriaLabel": "Презапис за {modelId}",
-    "ccAliasStateInherit": "Наследи",
-    "ccAliasStateOn": "Включено",
-    "ccAliasStateOff": "Изключено",
-    "ccAliasAddModelPlaceholder": "Идентификатор на модела (напр. gpt-4o)",
-    "ccAliasAddModelButton": "Добави заместване",
-    "ccAliasLoadError": "Неуспешно зареждане на настройки за discovery-alias: {error}",
-    "ccAliasSaveError": "Неуспешно запазване на настройката discovery-alias: {error}",
+    "ccAliasSectionTitle": "Expose in Claude Code (claude/…)",
+    "ccAliasSectionHint": "Advertise this provider's models under claude/&lt;provider&gt;/&lt;model&gt; mirror ids so Claude Code's gateway model discovery can list them. Off by default — enabling this doubles catalog entries for all clients.",
+    "ccAliasProviderLevelLabel": "Provider default",
+    "ccAliasModelOverridesLabel": "Per-model overrides",
+    "ccAliasModelOverrideAriaLabel": "Override for {modelId}",
+    "ccAliasStateInherit": "Inherit",
+    "ccAliasStateOn": "On",
+    "ccAliasStateOff": "Off",
+    "ccAliasAddModelPlaceholder": "Model id (e.g. gpt-4o)",
+    "ccAliasAddModelButton": "Add override",
+    "ccAliasLoadError": "Failed to load discovery-alias settings: {error}",
+    "ccAliasSaveError": "Failed to save discovery-alias setting: {error}",
     "compatUpstreamHeadersLabel": "Extra upstream headers",
     "compatUpstreamHeadersHint": "High-privilege setting — same trust level as editing provider API credentials; only trusted admins should use it. Merged after OmniRoute adds auth from the provider API key. If a custom header uses the same name as an existing one (e.g. Authorization), your value fully replaces the auto-generated header (including the Bearer token) — the upstream only sees what you typed, not the key from settings. Misconfiguration can cause 401 or broken upstream auth. One row per header (e.g. extra Authentication for some gateways). Hover or focus the value to preview. Saves on blur, outside click, or closing this panel.",
     "compatUpstreamHeaderName": "Header name",
@@ -5805,6 +5867,8 @@
     "rateLimitOverridesSection": "Предефиниране на ограниченията на скоростта",
     "rateLimitOverridesMaxConcurrentHint": "Предефиниране на максималния брой едновременни заявки за тази връзка. Предефинира ограничението на ниво акаунт.",
     "rateLimitOverridesMaxConcurrentLabel": "Макс. едновременни (Ограничение на скоростта)",
+    "rateLimitOverridesMaxWaitMsHint": "__MISSING__:Maximum time (ms) a request may wait for a rate-limit slot before failing. Overrides the global Resilience setting for this connection only.",
+    "rateLimitOverridesMaxWaitMsLabel": "__MISSING__:Max Queue Wait (ms)",
     "rateLimitOverridesMinTimeHint": "Минимално време (ms) между заявките. Предефинира закъснението по подразбиране на ограничителя на скоростта.",
     "rateLimitOverridesMinTimeLabel": "Мин. интервал (ms)",
     "rateLimitOverridesRpmHint": "Максимален брой заявки в минута за тази връзка. Предефинира стойността по подразбиране на доставчика.",
@@ -6082,7 +6146,6 @@
       "glmt": "Предварително зададен GLM профил с по-висок бюджет за токени, активирано мислене и по-дълъг таймаут.",
       "getgoapi": "Свържете GoAPI с API ключ.",
       "groq": "Безплатен план: 30 RPM / 14.4K RPD — без кредитна карта",
-      "hackclub": "Влезте с вашия Hack Club акаунт на ai.hackclub.com.",
       "haiper": "Вземете API ключ на haiper.ai/haiper-api",
       "heroku": "Свържете Heroku AI с API ключ.",
       "hcnsec": "Вземете API ключ на api.hcnsec.cn",
@@ -6191,7 +6254,7 @@
       "galadriel": "Свържете Galadriel с API ключ.",
       "predibase": "$25 безплатни кредити за пробен период (валидност 30 дни)",
       "chenzk": "Съвместим с OpenAI шлюз с каталог на моделите на живо на chenzk.top.",
-      "freepik": "Генерирайте изображения с Mystic API на Freepik.",
+      "magnific": "Генерирайте изображения с Mystic API на Freepik.",
       "freetheai": "Безплатен съвместим с OpenAI шлюз с поддръжка на passthrough модели.",
       "g4f-gemini": "Безплатно обратно прокси без ключ от g4f.space към Gemini, ограничено до 5 заявки в минута.",
       "g4f-groq": "Безплатно обратно прокси без ключ от g4f.space към Groq, ограничено до 5 заявки в минута.",
@@ -6206,6 +6269,7 @@
       "claude": "Свържете Claude Code със съществуващия OAuth поток.",
       "cline": "Свържете Cline със съществуващия OAuth поток.",
       "cursor": "Свържете Cursor IDE със съществуващия OAuth поток.",
+      "cursor-api": "Connect Cursor with a user API key (crsr_...) from cursor.com/dashboard/api; no IDE session needed.",
       "github": "Свържете GitHub Copilot със съществуващия OAuth поток.",
       "gitlab-duo": "OAuth приложение с обхвати ai_features + read_user. Конфигурирайте GITLAB_DUO_OAUTH_CLIENT_ID и по избор GITLAB_DUO_OAUTH_CLIENT_SECRET на тази инстанция на OmniRoute.",
       "kilocode": "Свържете Kilo Code със съществуващия OAuth поток.",
@@ -6268,6 +6332,15 @@
     "cheaperInferenceSupporterBadge": "Приятел на отворения код",
     "cheaperInferenceSupporterTooltip": "Cheaper Inference подкрепя OmniRoute като приятел на отворения код",
     "kimiPartnerLinkNote": "Партньорска връзка — поддържа OmniRoute без допълнителни разходи за вас",
+    "codexQuotaPools": "Пулове с квоти на Codex",
+    "codexPoolAvailable": "Наличен",
+    "codexPoolPartiallyLimited": "Частично ограничен",
+    "codexPoolFullyLimited": "Напълно ограничен",
+    "codexPoolLimited": "{count} ограничени",
+    "codexPoolQuotaExhausted": "Квотата е изчерпана",
+    "codexPoolCoolingDown": "В период на изчакване",
+    "codexPoolUsed": "използвано",
+    "codexPoolUntil": "До {value}",
     "anonymousFallbackTitle": "Анонимен резервен вариант",
     "anonymousFallbackDesc": "Когато всички конфигурирани връзки са изчерпани (квота, кредити или изтичане), временно използвайте безключовия слой на този доставчик. Изключете, за да пропуснете този доставчик вместо да изпращате анонимни заявки — препоръчително, когато безключовият слой ги отхвърля (401).",
     "anonymousFallbackEnabled": "Анонимен резервен вариант е активиран за {provider}",
@@ -6344,17 +6417,20 @@
     "searchByModelAria": "Търсене по модел",
     "selectSupportedEndpoint": "Изберете поне една поддържана крайна точка",
     "antigravityClientProfileHarness": "Harness / CLI",
-    "autoFetchModels": "Автоматично извличане на upstream модели",
-    "autoFetchModelsEnabled": "Автоматично извличане на upstream модела е активирано",
-    "autoFetchModelsTooltip": "Изтеглете и кеширайте upstream модели, когато е необходимо",
-    "overridesUpstreamModel": "Презаписва upstream",
-    "autoFetchModelsToggleFailed": "Неуспешно превключване на автоматично извличане на upstream модела",
-    "autoFetchModelsPartialFailure": "Някои връзки са актуализирани, но автоматичното извличане на upstream модела не беше променено навсякъде",
-    "autoFetchModelsDisabled": "Автоматично извличане на upstream модела е деактивирано",
-    "resetToUpstreamDefaults": "Възстановяване на настройки по подразбиране на upstream",
-    "resetToUpstreamDefaultsSuccess": "Възстановени настройки по подразбиране на upstream модела",
-    "resetToUpstreamDefaultsFailed": "Неуспешно възстановяване на подразбиращите се настройки на upstream модела",
-    "overridesUpstreamModelHint": "Вашите настройки надвиват тази основна модел."
+    "harImportButtonLabel": "Import .har file",
+    "harImportButtonBusy": "Importing…",
+    "harImportButtonHint": "Export from DevTools Network tab after sending at least one chat message.",
+    "harImportStatusValid": "Imported — valid for ~{minutes}m.",
+    "harImportStatusExpiringSoon": "Imported — valid for only ~{minutes}m more.",
+    "harImportStatusExpired": "Imported, but this token already expired ({minutes}m ago) — export a fresh HAR.",
+    "harImportStatusUnknownExpiry": "Imported. Couldn't read its expiry.",
+    "harImportErrorNotJson": "That file isn't valid JSON — is it really a .har export?",
+    "harImportErrorNoEntries": "This HAR has no network entries recorded.",
+    "harImportErrorNoChathubUrl": "No Copilot chat connection found in this HAR. Send at least one chat message in m365.cloud.microsoft before exporting.",
+    "harImportErrorUnparsableUrl": "Found the chat connection, but couldn't read its URL.",
+    "harImportErrorMissingFields": "Found the chat connection, but the token was missing from it.",
+    "harImportErrorReadFailed": "Couldn't read that file.",
+    "harImportErrorUnknown": "Couldn't extract a credential from that HAR file."
   },
   "settings": {
     "title": "Настройки",
@@ -6573,12 +6649,12 @@
     "autoDisableDescription": "Permanently mark provider connections as deactivated if they return specific terminal ban signals (e.g. HTTP 403 'verify your account'). This removes them from the combo rotation.",
     "autoDisableThreshold": "Ban Threshold",
     "autoDisableThresholdDesc": "Consecutive ban signals required before permanent deactivation.",
-    "autoDisableBannedScope": "__MISSING__:Apply auto-disable to",
-    "autoDisableBannedScopeDesc": "__MISSING__:Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
-    "autoDisableBannedScopeAll": "__MISSING__:All connections",
-    "autoDisableBannedScopeAllDesc": "__MISSING__:Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
-    "autoDisableBannedScopeSubscription": "__MISSING__:Login / subscription accounts only",
-    "autoDisableBannedScopeSubscriptionDesc": "__MISSING__:Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
+    "autoDisableBannedScope": "Apply auto-disable to",
+    "autoDisableBannedScopeDesc": "Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
+    "autoDisableBannedScopeAll": "All connections",
+    "autoDisableBannedScopeAllDesc": "Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
+    "autoDisableBannedScopeSubscription": "Login / subscription accounts only",
+    "autoDisableBannedScopeSubscriptionDesc": "Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
     "customBannedSignals": "Забранени ключови думи",
     "customBannedSignalsDesc": "Допълнителни ключови думи, които задействат откриване за постоянен бан на акаунта. Вградените ключови думи се прилагат винаги.",
     "customBannedSignalsPlaceholder": "напр. api key revoked",
@@ -7186,6 +7262,7 @@
     "configured": "конфигуриран",
     "none": "Няма",
     "modelOverrideValuePlaceholder": "Числова стойност",
+    "modelOverrideReasoningEffortsPlaceholder": "English comma-separated, e.g. low, medium, high",
     "addKeyValue": "Добавяне на ключ-стойност",
     "noModelOverrides": "Няма конфигурирани предефинирания за този модел.",
     "modelOverrideLoadFailed": "Неуспешно зареждане на предефиниранията на модела",
@@ -7757,6 +7834,10 @@
         "label": "Ponytail (lazy senior dev)",
         "description": "Lazy senior-dev discipline: climb the YAGNI ladder, fix root cause, smallest working diff."
       },
+      "i-have-adhd": {
+        "label": "I have ADHD (action-first)",
+        "description": "Action-first output: next action leads, steps numbered, one concrete next step, no preamble."
+      },
       "terse-cjk": {
         "label": "Сбит CJK (文言)",
         "description": "Класически китайски ултра-сбит стил (наличен само за китайски)."
@@ -8037,6 +8118,10 @@
     "disableSessionStickinessDesc": "Комбинациите от тип Round-robin и random се ротират към различна връзка при всяка заявка, вместо да обвързват целия разговор към една връзка чрез хеша на първото съобщение. Оставете изключено, за да запазите съвпаденията в кеша на подканите (prompt-cache) за многостъпкови чатове. Персонализираните настройки за всяка комбинация имат предимство.",
     "promptCacheAffinity": "Prompt-cache locality routing",
     "promptCacheAffinityDesc": "Prefer the same provider account for matching prompt-cache keys while preserving health and quota failover.",
+    "reasoningTokenBuffer": "Reasoning token buffer",
+    "reasoningTokenBufferDesc": "Allow combo routing to add max_tokens headroom only for known reasoning models when the full buffer fits inside a known output cap.",
+    "zeroLatencyOptimizations": "Zero-latency optimizations",
+    "zeroLatencyOptimizationsDesc": "Opt in to hedging, predictive TTFT skips, and proactive fallback compression. Leave off to prevent these latency features from racing targets or compressing fallback requests.",
     "credentialRedaction": "Скриване на идентификационни данни",
     "credentialRedactionDesc": "Скриване на API ключове, токени и тайни от контекста, изпратен към доставчиците, и от отговорите.",
     "enableCredentialRedaction": "Активиране на скриването на идентификационни данни",
@@ -8192,7 +8277,19 @@
     "cliproxyapiHealth": "Здраве",
     "cliproxyapiPort": "Порт",
     "qdrantHost": "Хост",
-    "qdrantCollection": "Колекция"
+    "qdrantCollection": "Колекция",
+    "presetAll": "All",
+    "presetAllDesc": "Show everything",
+    "presetEssentials": "Essentials",
+    "presetEssentialsDesc": "Beginner path - Advanced tools stay searchable",
+    "presetMinimal": "Minimal",
+    "presetMinimalDesc": "Core pages only",
+    "presetDeveloper": "Developer",
+    "presetDeveloperDesc": "Dev & proxy tools",
+    "presetAdmin": "Admin",
+    "presetAdminDesc": "Monitoring & audit",
+    "settingsSidebarTitle": "Sidebar Customization",
+    "settingsSidebarDesc": "Choose which sidebar items to show. Essentials keeps Advanced tools searchable."
   },
   "contextRtk": {
     "title": "RTK Engine",
@@ -8597,6 +8694,27 @@
     },
     "enableTitle": "Активиране на енджина",
     "enableDescription": "Изпълнява се последен в стека (след като RTK/Caveman изчисти текста, OmniGlyph конвертира остатъка в изображения) и също така работи самостоятелно чрез режим <code>omniglyph</code>. Това е предварителна версия и остава изключена по подразбиране, докато не приключи цялостната валидация.",
+    "profileTitle": "Compression profile",
+    "profileDescription": "The profile is a ceiling, not a floor: a stricter profile cannot be reopened by a per-step override. Measured on this codebase: with coding-safe or balanced, a session that has not accumulated history yet compresses nothing, because both raise the minimum-characters threshold and keep the system prompt, tool schemas and tool results native.",
+    "profiles": {
+      "aggressive": {
+        "label": "Aggressive (default)",
+        "description": "The policy the published receipts measured. Images the system prompt, tool documentation and dense history."
+      },
+      "balanced": {
+        "label": "Balanced",
+        "description": "Keeps live state native and protects the last 8 turns; only collapses older closed history."
+      },
+      "codingSafe": {
+        "label": "Coding-safe",
+        "description": "Keeps authority, tool schemas and live tool output native, protecting the last 12 turns. Compresses nothing until the session accumulates history."
+      },
+      "passthrough": {
+        "label": "Passthrough",
+        "description": "Routes without transforming. The engine is skipped and the request is forwarded untouched."
+      }
+    },
+    "profileAria": "Select the OmniGlyph compression profile",
     "saved": "Запазено.",
     "saveFailed": "Неуспешно запазване.",
     "enableAria": "Активиране на енджина OmniGlyph",
@@ -9066,6 +9184,16 @@
     "grokAutoTopUpMax": "макс",
     "grokAutoTopUpMonth": "месец",
     "grokAdditionalCredits": "Допълнителни кредити",
+    "kimiExtraUsageCredits": "Extra Usage Credits",
+    "kimiExtraUsage": "Extra Usage",
+    "kimiExtraUsageEnabled": "Enabled",
+    "kimiExtraUsageDisabled": "Disabled",
+    "kimiExtraUsageFrozen": "Frozen",
+    "kimiExtraUsageUnavailable": "Unavailable",
+    "kimiMonthlyUsed": "Used this month",
+    "kimiMonthlyLimit": "Monthly limit",
+    "kimiMonthlyLimitUnlimited": "Unlimited",
+    "kimiAdditionalCredits": "Additional Credits",
     "loggerTab": "Дървосекач",
     "proxyTab": "Прокси",
     "budgetManagement": "Управление на бюджета",
@@ -10564,11 +10692,23 @@
   },
   "cursorAuthModal": {
     "title": "Свържете Cursor IDE",
+    "tabLogin": "Login with Cursor",
+    "tabImport": "Import token",
+    "loginDescription": "Opens Cursor's browser login. Works in Docker — approve in your host browser, then return here.",
+    "loginWithCursor": "Login with Cursor",
+    "startingLogin": "Starting…",
+    "waitingApproval": "Waiting for Cursor login approval…",
+    "openUrlHint": "If the browser did not open:",
+    "openLoginLink": "Open login page",
+    "cancelLogin": "Cancel login",
     "autoDetecting": "Автоматично откриване на токени...",
     "readingFromCursor": "Четене от Cursor IDE или cursor-agent",
     "tokensAutoDetected": "Токените са успешно автоматично открити от Cursor IDE!",
     "cursorNotDetected": "IDE на курсора не е открит. Моля, поставете ръчно вашето означение.",
+    "dockerImportHint": "Running in Docker? Prefer Login with Cursor. IDE auto-import and cursor-agent are usually unavailable inside the container. See docs/providers/CURSOR-DOCKER.md.",
     "accessToken": "Токен за достъп",
+    "refreshToken": "Refresh Token",
+    "refreshTokenPlaceholder": "Optional — enables automatic token refresh",
     "required": "*",
     "accessTokenPlaceholder": "Токенът за достъп ще се попълни автоматично...",
     "machineId": "ID на машината",
@@ -10580,7 +10720,10 @@
     "errorAutoDetect": "Не могат да се открият автоматично токени",
     "errorAutoDetectFailed": "Автоматичното откриване на токени не бе успешно",
     "errorEnterToken": "Моля, въведете токен за достъп",
-    "errorImportFailed": "Неуспешно импортиране"
+    "errorImportFailed": "Неуспешно импортиране",
+    "errorLoginStart": "Failed to start Cursor login",
+    "errorLoginPoll": "Cursor login failed",
+    "errorLoginTimeout": "Cursor login timed out — try again"
   },
   "pricingModal": {
     "title": "Конфигурация на цените",
@@ -11070,7 +11213,8 @@
       "compressed": "Компресия",
       "tps": "TPS",
       "duration": "Duration",
-      "time": "Time"
+      "time": "Time",
+      "conversation": "Conversation"
     },
     "loadingLogs": "Loading logs...",
     "noLogs": "No logs yet. Make some API calls to see them here.",
@@ -11932,7 +12076,8 @@
         "title": "ACP агенти",
         "phrase": "CLI, които OmniRoute стартира като бекенд за изпълнение (обратен поток)",
         "flow": "Клиент → OmniRoute → стартиране на CLI (stdio/ACP) → отговор",
-        "seeOther": "Вижте →"
+        "seeOther": "Вижте →",
+        "warning": "Most users can ignore this — use only when an integration requires it."
       }
     },
     "comparison": {
@@ -12122,7 +12267,7 @@
       },
       "omni-webhooks": {
         "name": "Уебхукове",
-        "description": "Register, list, test, and remove webhook endpoints. Configure event subscriptions (request.completed, provider.error, budget.exceeded, etc.) and manage delivery retries."
+        "description": "__MISSING__:Register, list, test, and remove webhook endpoints. Configure event subscriptions (request.completed, request.failed, quota.exceeded, etc.) and manage delivery retries."
       },
       "omni-mcp": {
         "name": "MCP сървър",
@@ -12463,9 +12608,9 @@
     },
     "badges": {
       "radar-supporter": {
-        "name": "__MISSING__:Radar Supporter",
-        "description": "__MISSING__:Verified a live OmniRoute Radar supporter feed",
-        "criteria": "__MISSING__:Verify a signed live Radar supporter feed."
+        "name": "Radar Supporter",
+        "description": "Verified a live OmniRoute Radar supporter feed",
+        "criteria": "Verify a signed live Radar supporter feed."
       },
       "first-token": {
         "name": "Първи токен",
@@ -12756,6 +12901,10 @@
       },
       "SKILLS_SANDBOX_NETWORK_ENABLED": {
         "description": "Активиране на мрежов достъп в пясъчника за умения."
+      },
+      "DISABLE_CONTEXT_WINDOW_CHECKS": {
+        "label": "Disable Context Window Checks",
+        "description": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active."
       }
     }
   },
@@ -13188,7 +13337,7 @@
     "localStateSaveFailed": "Failed to save local Radar settings",
     "guidedCombos": "Guided combos",
     "offers": "Offers",
-    "intel": "__MISSING__:Intel"
+    "intel": "Intel"
   },
   "radarCombosPage": {
     "title": "Radar guided combos",
@@ -13328,6 +13477,13 @@
         "modelLockouts": "Заключвания на Модел",
         "count": "Брой Връзки"
       }
+    },
+    "reassuranceTitle": "Your connections recover automatically",
+    "reassuranceDetail": "Usually no action is needed. OmniRoute temporarily rests a connection after failures, then safely tries it again.",
+    "plainStates": {
+      "healthy": "Requests can be sent",
+      "coolingDown": "Trying again soon",
+      "lockedOut": "Needs your attention"
     }
   },
   "featureFlagCapabilityFilterEnabledDescription": "Отхвърлете заявките преди изпращане, когато целевият модел няма необходимите възможности (визия, инструменти, структурирани изходи, контекстен прозорец). Защитава директните заявки от един доставчик, които заобикалят филтъра за съвместимост на комбинирания слой.",
@@ -13728,36 +13884,36 @@
     "trialDays": "{days, plural, one {# day} other {# days}}"
   },
   "radarIntelPage": {
-    "title": "__MISSING__:Radar Intel",
-    "subtitle": "__MISSING__:Radar-owned ELO rankings and factual catalog movement.",
-    "backToRadar": "__MISSING__:Back to Radar",
-    "loading": "__MISSING__:Loading Intel...",
-    "refresh": "__MISSING__:Refresh Intel",
-    "syncing": "__MISSING__:Refreshing...",
-    "loadFailed": "__MISSING__:We could not refresh Intel. The last verified local cache is kept.",
-    "empty": "__MISSING__:No verified Intel snapshot is available yet.",
-    "supporterBadge": "__MISSING__:Radar Supporter",
-    "methodology": "__MISSING__:Methodology",
-    "eloMethod": "__MISSING__:ELO, initial {initial}, K={factor}",
-    "freshness": "__MISSING__:Catalog freshness",
-    "ageDays": "__MISSING__:{days, plural, one {# day old} other {# days old}}",
-    "trend": "__MISSING__:Catalog trend",
-    "modelDelta": "__MISSING__:{current} models, +{added} / -{removed}",
-    "ranking": "__MISSING__:Model ranking",
-    "noRankings": "__MISSING__:No confirmed comparisons are available yet.",
-    "model": "__MISSING__:Model",
-    "category": "__MISSING__:Category",
-    "rating": "__MISSING__:Rating",
-    "matches": "__MISSING__:Matches",
+    "title": "Radar Intel",
+    "subtitle": "Radar-owned ELO rankings and factual catalog movement.",
+    "backToRadar": "Back to Radar",
+    "loading": "Loading Intel...",
+    "refresh": "Refresh Intel",
+    "syncing": "Refreshing...",
+    "loadFailed": "We could not refresh Intel. The last verified local cache is kept.",
+    "empty": "No verified Intel snapshot is available yet.",
+    "supporterBadge": "Radar Supporter",
+    "methodology": "Methodology",
+    "eloMethod": "ELO, initial {initial}, K={factor}",
+    "freshness": "Catalog freshness",
+    "ageDays": "{days, plural, one {# day old} other {# days old}}",
+    "trend": "Catalog trend",
+    "modelDelta": "{current} models, +{added} / -{removed}",
+    "ranking": "Model ranking",
+    "noRankings": "No confirmed comparisons are available yet.",
+    "model": "Model",
+    "category": "Category",
+    "rating": "Rating",
+    "matches": "Matches",
     "freshnessValues": {
-      "fresh": "__MISSING__:Fresh",
-      "aging": "__MISSING__:Aging",
-      "stale": "__MISSING__:Stale"
+      "fresh": "Fresh",
+      "aging": "Aging",
+      "stale": "Stale"
     },
     "trendValues": {
-      "growing": "__MISSING__:Growing",
-      "stable": "__MISSING__:Stable",
-      "shrinking": "__MISSING__:Shrinking"
+      "growing": "Growing",
+      "stable": "Stable",
+      "shrinking": "Shrinking"
     }
   },
   "capabilityFilter": {
@@ -13765,5 +13921,13 @@
     "toolsMismatch": "Доставчикът не поддържа извикване на инструменти",
     "structuredOutputMismatch": "Доставчикът не поддържа структурирано изходно съдържание",
     "contextWindowMismatch": "Заявката надвишава контекстния прозорец на доставчика"
+  },
+  "featureFlagDisableContextWindowChecksDescription": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active.",
+  "cheaperInferenceSponsorBanner": {
+    "title": "Cheaper Inference is an OmniRoute Open Source Friend",
+    "description": "A cost-ranked gateway reselling dozens of frontier models behind one OpenAI-compatible endpoint — routing each request to the cheapest eligible provider, never above list price.",
+    "cta": "Get an API Key",
+    "partnerLinkNote": "Partner link",
+    "dismissAriaLabel": "Dismiss"
   }
 }

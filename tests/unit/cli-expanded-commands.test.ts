@@ -319,8 +319,8 @@ test("test-provider --all-providers consumes the connections envelope", async ()
     if (url.includes("/api/providers?limit=200")) {
       return Promise.resolve(new Response(JSON.stringify({ connections }), { status: 200 }));
     }
-    if (url.includes("/api/v1/providers/test")) {
-      return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 201 }));
+    if (url.includes("/api/providers/") && url.includes("/test")) {
+      return Promise.resolve(new Response(JSON.stringify({ valid: true }), { status: 200 }));
     }
     throw new Error(`unexpected URL: ${url}`);
   }) as typeof fetch;

@@ -2,6 +2,7 @@ import { buildGitLabOAuthEndpoints, resolveGitLabOAuthBaseUrl } from "@/lib/oaut
 import { ANTIGRAVITY_RUNTIME_BASE_URLS } from "@omniroute/open-sse/config/antigravityUpstream.ts";
 import { getAntigravityContentHeaders } from "@omniroute/open-sse/services/antigravityHeaders.ts";
 import { getAntigravityClientProfile } from "@omniroute/open-sse/services/antigravityClientProfile.ts";
+import { isGeoBlockedError } from "@omniroute/open-sse/services/errorClassifier.ts";
 
 // Real model-surface probe for antigravity/agy. The previous probe only hit the
 // OAuth userinfo endpoint, which is NOT geo-restricted — so "Test Connection"
@@ -79,6 +80,7 @@ export interface OAuthTestConfigEntry {
   extraHeaders?: Record<string, string>;
   body?: string;
   acceptStatuses?: number[];
+  inconclusiveStatuses?: number[];
   checkExpiry?: boolean;
   refreshable?: boolean;
   getUrl?: (connection: any) => string;
@@ -86,6 +88,39 @@ export interface OAuthTestConfigEntry {
     connection: any,
     accessToken: string
   ) => OAuthTestProbeRequest | Promise<OAuthTestProbeRequest>;
+}
+
+export interface OAuthProbeInconclusiveClassification {
+  warning: string;
+  diagnosisType: "ok";
+  diagnosisCode: "probe_inconclusive";
+}
+
+export function classifyOAuthProbeInconclusive(
+  config: OAuthTestConfigEntry,
+  provider: string,
+  status: number,
+  bodyText: string
+): OAuthProbeInconclusiveClassification | null {
+  if (
+    !Array.isArray(config.inconclusiveStatuses) ||
+    !config.inconclusiveStatuses.includes(status)
+  ) {
+    return null;
+  }
+
+  // Preserve the current upstream geo-block contract. Google's explicit
+  // location refusal is an egress/upstream availability failure, not a
+  // successful connection-test result.
+  if ((provider === "antigravity" || provider === "agy") && isGeoBlockedError(bodyText)) {
+    return null;
+  }
+
+  return {
+    warning: `${provider} probe returned HTTP ${status}; credential validity is inconclusive`,
+    diagnosisType: "ok",
+    diagnosisCode: "probe_inconclusive",
+  };
 }
 
 export const OAUTH_TEST_CONFIG: Record<string, OAuthTestConfigEntry> = {
@@ -126,6 +161,7 @@ export const OAUTH_TEST_CONFIG: Record<string, OAuthTestConfigEntry> = {
     // Real model-surface probe (see buildAntigravityProbe above): userinfo-only
     // probing stayed green while the model API was geo-blocked.
     buildProbe: buildAntigravityProbe,
+    inconclusiveStatuses: [400],
     refreshable: true,
   },
   // `agy` is a separate connection id that shares the Antigravity backend and the same
@@ -135,6 +171,7 @@ export const OAUTH_TEST_CONFIG: Record<string, OAuthTestConfigEntry> = {
   // perfectly good account. Probe the same model surface as antigravity.
   agy: {
     buildProbe: buildAntigravityProbe,
+    inconclusiveStatuses: [400],
     refreshable: true,
   },
   xai: XAI_CHAT_OAUTH_TEST_CONFIG,
@@ -174,6 +211,12 @@ export const OAUTH_TEST_CONFIG: Record<string, OAuthTestConfigEntry> = {
     // stored `expiresIn` defaults to 30 days. There is nothing to refresh, so
     // the test is the expiry check on the imported token; without an entry here
     // Test Connection persists testStatus="error" on a healthy account (#8408).
+    checkExpiry: true,
+  },
+  "zed-hosted": {
+    // Zed Hosted Models uses a long-lived native-app access token with no
+    // expiry or refresh token. Validate presence here; real connectivity is
+    // exercised by chat requests through the ZedHostedExecutor.
     checkExpiry: true,
   },
   cline: CLINE_OAUTH_TEST_CONFIG,

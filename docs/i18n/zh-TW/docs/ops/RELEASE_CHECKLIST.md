@@ -322,14 +322,12 @@ npm run build:release
 - [ ] `npm install -g omniroute@<此版本>` 執行 postinstall 而不會致命退出
 - [ ] 更新路徑保留選擇性依賴：`omniroute update --apply` 和自動更新器
       執行 `npm install -g … --include=optional`，因此 `optionalDependencies`（better-sqlite3、
-      keytar、tls-client，以及 llmlingua SLM 堆疊：`@atjsh/llmlingua-2`、
-      `@huggingface/transformers@3.5.2`、`@tensorflow/tfjs`、`js-tiktoken`）在更新後仍會保留。
-      `@huggingface/transformers` 維持選擇性，因此其 `onnxruntime-node` CUDA 提供者的 postinstall
-      不會在 CUDA 11 主機上中斷安裝。Ultra `modelPath` SLM 層還需要
+      keytar、tls-client，以及 llmlingua SLM 堆疊：`@atjsh/llmlingua-2@2.0.5`、
+      `js-tiktoken`）在更新後仍會保留。Ultra `modelPath` SLM 層還需要
       tinybert 模型，會在首次使用時自動下載到 `${DATA_DIR}/models/llmlingua`。Postinstall
       （`scripts/build/colocateOptionals.mjs`）接著將 SLM 選擇性閉包複製到
-      `dist/node_modules`，使工作者解析到**單一** `@huggingface/transformers` 3.5.2
-      選擇性實例——獨立追蹤僅捆綁 transformers，而非動態匯入的
+      `dist/node_modules`，使工作者解析到**單一** `@huggingface/transformers` ^4.2.0
+      實例——獨立追蹤僅捆綁 transformers，而非動態匯入的
       選擇性套件，因此若無此步驟，工作者會載入 llmlingua-2 並使用根目錄的 transformers，
       導致 SLM 層靜默地失敗但仍保持運作。
 - [ ] `omniroute status` 在無 `.env` 的情況下正常運作（僅限 CLI 權杖路徑，迴環介面）

@@ -1,7 +1,7 @@
 ---
 title: "API Reference"
-version: 3.8.40
-lastUpdated: 2026-06-28
+version: 3.8.50
+lastUpdated: 2026-08-18
 ---
 
 # API Reference
@@ -367,11 +367,11 @@ GET /v1/models?prefix=dual         # both forms (server default)
 GET /v1/models?prefix=canonical    # only the full provider-id prefix
 ```
 
-| Mode | Emits | Notes |
-| --- | --- | --- |
-| `dual` | `cc/claude-sonnet-4-6` **and** `claude/claude-sonnet-4-6` | **Default.** Both ids route to the same model; kept so client configs that hardcoded either form keep working. Roughly doubles the catalog. |
-| `alias` | `cc/claude-sonnet-4-6` | One entry per model. Providers without a distinct alias still emit their entry, so nothing is lost. |
-| `canonical` | `claude/claude-sonnet-4-6` | ⚠️ The canonical row is only emitted when the canonical provider id **differs** from the alias, so providers without a distinct alias emit nothing in this mode. Prefer `alias` for a de-duplicated list. |
+| Mode        | Emits                                                     | Notes                                                                                                                                                                                                     |
+| ----------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dual`      | `cc/claude-sonnet-4-6` **and** `claude/claude-sonnet-4-6` | **Default.** Both ids route to the same model; kept so client configs that hardcoded either form keep working. Roughly doubles the catalog.                                                               |
+| `alias`     | `cc/claude-sonnet-4-6`                                    | One entry per model. Providers without a distinct alias still emit their entry, so nothing is lost.                                                                                                       |
+| `canonical` | `claude/claude-sonnet-4-6`                                | ⚠️ The canonical row is only emitted when the canonical provider id **differs** from the alias, so providers without a distinct alias emit nothing in this mode. Prefer `alias` for a de-duplicated list. |
 
 A `dual`-mode mirror can also be recognised without the query parameter: it carries a `parent`
 field pointing at the primary id.
@@ -409,33 +409,33 @@ Use this endpoint when a sidecar runs out-of-process and cannot import
 
 ## Compatibility Endpoints
 
-| Method | Path                                      | Format                           |
-| ------ | ----------------------------------------- | -------------------------------- |
-| POST   | `/v1/chat/completions`                    | OpenAI                           |
-| POST   | `/v1/messages`                            | Anthropic                        |
-| POST   | `/v1/responses`                           | OpenAI Responses                 |
-| POST   | `/v1/embeddings`                          | OpenAI                           |
-| POST   | `/v1/images/generations`                  | OpenAI Images                    |
-| POST   | `/v1/images/edits`                        | OpenAI Images (edit/inpaint)     |
-| POST   | `/v1/videos/generations`                  | OpenAI-style video generation    |
-| POST   | `/v1/music/generations`                   | OpenAI-style music generation    |
-| POST   | `/v1/audio/transcriptions`                | OpenAI Audio (STT)               |
-| POST   | `/v1/audio/speech`                        | OpenAI TTS (returns audio body)  |
-| POST   | `/v1/rerank`                              | Cohere/Voyage-style rerank       |
-| POST   | `/v1/classify`                            | Jina classify (`api.jina.ai`)    |
+| Method | Path                                      | Format                             |
+| ------ | ----------------------------------------- | ---------------------------------- |
+| POST   | `/v1/chat/completions`                    | OpenAI                             |
+| POST   | `/v1/messages`                            | Anthropic                          |
+| POST   | `/v1/responses`                           | OpenAI Responses                   |
+| POST   | `/v1/embeddings`                          | OpenAI                             |
+| POST   | `/v1/images/generations`                  | OpenAI Images                      |
+| POST   | `/v1/images/edits`                        | OpenAI Images (edit/inpaint)       |
+| POST   | `/v1/videos/generations`                  | OpenAI-style video generation      |
+| POST   | `/v1/music/generations`                   | OpenAI-style music generation      |
+| POST   | `/v1/audio/transcriptions`                | OpenAI Audio (STT)                 |
+| POST   | `/v1/audio/speech`                        | OpenAI TTS (returns audio body)    |
+| POST   | `/v1/rerank`                              | Cohere/Voyage-style rerank         |
+| POST   | `/v1/classify`                            | Jina classify (`api.jina.ai`)      |
 | POST   | `/v1/segment`                             | Jina segmenter (`segment.jina.ai`) |
-| POST   | `/v1/moderations`                         | OpenAI Moderations               |
-| GET    | `/v1/models`                              | OpenAI                           |
-| POST   | `/v1/messages/count_tokens`               | Anthropic                        |
-| GET    | `/v1beta/models`                          | Gemini                           |
-| POST   | `/v1beta/models/{...path}`                | Gemini generateContent           |
-| POST   | `/v1/api/chat`                            | Ollama                           |
-| GET    | `/api/v1/vscode/{token}/`                 | OpenAI catalog alias             |
-| GET    | `/api/v1/vscode/{token}/models`           | OpenAI models alias              |
-| POST   | `/api/v1/vscode/{token}/chat/completions` | OpenAI tokenized alias           |
-| POST   | `/api/v1/vscode/{token}/responses`        | OpenAI Responses tokenized alias |
-| POST   | `/api/v1/vscode/{token}/api/chat`         | Ollama tokenized alias           |
-| GET    | `/api/v1/vscode/{token}/api/tags`         | Ollama tags tokenized alias      |
+| POST   | `/v1/moderations`                         | OpenAI Moderations                 |
+| GET    | `/v1/models`                              | OpenAI                             |
+| POST   | `/v1/messages/count_tokens`               | Anthropic                          |
+| GET    | `/v1beta/models`                          | Gemini                             |
+| POST   | `/v1beta/models/{...path}`                | Gemini generateContent             |
+| POST   | `/v1/api/chat`                            | Ollama                             |
+| GET    | `/api/v1/vscode/{token}/`                 | OpenAI catalog alias               |
+| GET    | `/api/v1/vscode/{token}/models`           | OpenAI models alias                |
+| POST   | `/api/v1/vscode/{token}/chat/completions` | OpenAI tokenized alias             |
+| POST   | `/api/v1/vscode/{token}/responses`        | OpenAI Responses tokenized alias   |
+| POST   | `/api/v1/vscode/{token}/api/chat`         | Ollama tokenized alias             |
+| GET    | `/api/v1/vscode/{token}/api/tags`         | Ollama tags tokenized alias        |
 
 All POST routes follow the same shape: `Bearer your-api-key` + Zod-validated JSON body (`v1RerankSchema`, `v1ModerationSchema`, `v1AudioSpeechSchema`, etc., see `src/shared/validation/schemas.ts`). 4xx is returned on schema failure.
 
@@ -636,6 +636,49 @@ completion.
 
 ---
 
+## Self-service usage (`/api/usage/om-usage`)
+
+Any API key can read **its own** usage and quotas — no management auth. This is the endpoint a
+client (CLI, the OmniCopilot panel) uses to show a key holder their spend.
+
+```bash
+# Text form (the historical contract — plain text for a terminal)
+curl -H "Authorization: Bearer <your-api-key>" \
+  http://localhost:20128/api/usage/om-usage
+
+# Structured form — what a UI consumes
+curl -H "Authorization: Bearer <your-api-key>" \
+  "http://localhost:20128/api/usage/om-usage?format=json"
+```
+
+The key must have **`allowUsageCommand`** enabled (off by default — the dashboard's API-key
+manager toggles it per key). Without it the endpoint answers `403`.
+
+`?format=json` returns a discriminated shape so a caller never reads a data field off a
+refusal. On success:
+
+```jsonc
+{
+  "allowed": true,
+  // present only when the key opted into per-key usage limits (daily/weekly USD):
+  "personal": { "dailySpentUsd": 1.25, "dailyLimitUsd": 5, "dailyResetAtIso": "…", "weeklySpentUsd": 8, "weeklyLimitUsd": 20, "weeklyResetAtIso": "…" /* … */ },
+  // the selected provider quota snapshot, or null when nothing is cached yet:
+  "provider": { "connectionId": "…", "provider": "claude", "plan": "…", "quotas": { /* … */ } },
+  // every connection's snapshot, so a UI can render several providers side by side:
+  "providers": [ { "connectionId": "…", "provider": "claude", /* … */ }, { "provider": "codex", /* … */ } ]
+}
+```
+
+On refusal (`401` bad key / `403` not allowed) the same route returns
+`{ "allowed": false, "error": { "message": "…" } }` — a present-but-empty `personal`/`provider`
+(key allowed, nothing learned yet) is a different state from a refusal, and only the JSON form
+distinguishes them.
+
+**Auth:** the caller's own Bearer API key, validated with `isValidApiKey` — this is *not* the
+management surface (`/api/keys/…`), which stays behind `requireManagementAuth`.
+
+---
+
 ## Semantic Cache
 
 ```bash
@@ -702,6 +745,10 @@ X-OmniRoute-No-Cache: true
 ---
 
 ## Dashboard & Management
+
+Management routes (`/api/*` except public auth/login) are **not** authorized by
+ordinary inference API keys. Credential families, scopes, and curl examples:
+[Management Authentication](../guides/MANAGEMENT-AUTH.md).
 
 ### Authentication
 
@@ -1514,16 +1561,16 @@ Admin-only endpoints for operational management.
 Manage CLI tools that integrate with OmniRoute (antigravity, chipotle, commandCode,
 devin-cli, etc.). See [Provider Reference](./PROVIDER_REFERENCE.md) for the full list.
 
-| Method | Path                                    | Description                                                                                    |
-| ------ | --------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| GET    | `/api/cli-tools/all-statuses`           | Status of all CLI tools (installed, version, last seen)                                        |
-| GET    | `/api/cli-tools/[id]/status`            | Status of a specific CLI tool (id can be: antigravity, chipotle, commandCode, devin-cli, etc.) |
-| POST   | `/api/cli-tools/apply`                  | Apply a CLI tool configuration to a provider connection                                        |
-| GET    | `/api/cli-tools/backups`                | List CLI tool configuration backups                                                            |
-| POST   | `/api/cli-tools/backups`                | Create a backup of all CLI tool configurations                                                 |
-| POST   | `/api/cli-tools/[id]/restore`           | Restore a CLI tool from a backup                                                               |
-| GET    | `/api/cli-tools/antigravity-mitm`       | Antigravity MITM proxy status (the "antigravity-mitm" CLI tool)                                |
-| POST   | `/api/cli-tools/antigravity-mitm/alias` | Configure antigravity-mitm aliases                                                             |
+| Method | Path                                    | Description                                                                                                                                       |
+| ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/cli-tools/all-statuses`           | Status of all CLI tools (installed, version, last seen)                                                                                           |
+| GET    | `/api/cli-tools/[id]/status`            | Status of a specific CLI tool (id can be: antigravity, chipotle, commandCode, devin-cli, etc.)                                                    |
+| POST   | `/api/cli-tools/apply`                  | Write a tool's generated config (`dryRun` previews; `422` + `containerEphemeralTarget` when containerized; `migration` notes a legacy Codex YAML) |
+| GET    | `/api/cli-tools/backups`                | List CLI tool configuration backups                                                                                                               |
+| POST   | `/api/cli-tools/backups`                | Create a backup of all CLI tool configurations                                                                                                    |
+| POST   | `/api/cli-tools/[id]/restore`           | Restore a CLI tool from a backup                                                                                                                  |
+| GET    | `/api/cli-tools/antigravity-mitm`       | Antigravity MITM proxy status (the "antigravity-mitm" CLI tool)                                                                                   |
+| POST   | `/api/cli-tools/antigravity-mitm/alias` | Configure antigravity-mitm aliases                                                                                                                |
 
 **Auth:** Requires management session.
 
@@ -1668,9 +1715,14 @@ See [Security > Guardrails](../security/GUARDRAILS.md) for full details.
 
 ## Authentication
 
+See [Management Authentication](../guides/MANAGEMENT-AUTH.md) for the four
+credential families (dashboard session, local CLI token, `oma_live_…` Access
+Token, manage-scoped API key) and how they differ from inference keys.
+
 - Dashboard routes (`/dashboard/*`) use `auth_token` cookie
 - Login uses saved password hash; fallback to `INITIAL_PASSWORD`
 - `requireLogin` toggleable via `/api/settings/require-login`
 - `/v1/*` routes optionally require Bearer API key when `REQUIRE_API_KEY=true`
+- "management token" / "management-scoped API key" in this reference means one of the families in that guide — not an undefined extra secret type
 
 > **Breaking change (v3.8.0)** — `/api/v1/agents/tasks/*` and the cooldown management endpoints now require **management auth** (dashboard `auth_token` cookie or a management-scoped API key). Clients that previously called these routes unauthenticated will receive `401 Unauthorized`. See commit `588a0333` (`fix(auth): require management auth for agent and cooldown APIs`).

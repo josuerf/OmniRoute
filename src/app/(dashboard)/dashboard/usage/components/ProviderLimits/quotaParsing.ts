@@ -10,15 +10,84 @@ const CODEX_QUOTA_ORDER: Record<string, number> = {
   banked_reset_credits: 4,
 };
 const GLM_FAMILY_PROVIDERS = ["glm", "glm-cn", "glmt", "opencode-go"];
+const KIMI_CODING_PROVIDERS = ["kimi-coding", "kimi-coding-apikey"];
 
 /**
- * Providers whose quotas already get a deterministic fixed-window order from
- * sortGlmOrder()/sortCodexOrder() below. Display layers (e.g. QuotaCardExpanded)
+ * Providers whose quotas already get a deterministic fixed-window order below
+ * (Codex, GLM family, and Kimi Coding). Display layers (e.g. QuotaCardExpanded)
  * must not re-sort these by remaining percentage, or they undo this order (#6687).
  */
 export function hasFixedQuotaOrder(providerId: string | undefined): boolean {
   const id = String(providerId || "").toLowerCase();
-  return id === "codex" || GLM_FAMILY_PROVIDERS.includes(id);
+  return id === "codex" || GLM_FAMILY_PROVIDERS.includes(id) || KIMI_CODING_PROVIDERS.includes(id);
+}
+
+/**
+ * Canonical chronological rank of a rolling usage window, derived from the
+ * quota key itself rather than from a provider list.
+ *
+ * Providers name the same two windows in mutually incompatible ways —
+ * `"session (5h)"` (claude, minimax, kimi), `"5 Hours Quota"` (GLM/zai),
+ * `"five_hour"` (command-code, qwen-token-plan), `"code_5h"` (kimi-coding),
+ * plain `"session"` (codex) — so matching on the shape of the key is the only
+ * thing that generalizes. Returns `null` for anything that is not a recognizable
+ * time window (per-model buckets, credit balances, token counters), which is
+ * what keeps this from claiming quotas it has no opinion about.
+ */
+export function quotaWindowRank(name: unknown): number | null {
+  const key = String(name ?? "")
+    .trim()
+    .toLowerCase();
+  if (!key) return null;
+  // Order matters: "mcp_monthly" must not be caught by the weekly probe, and
+  // "5 Hours Quota" must not be caught by anything before the session probe.
+  if (/month/.test(key)) return 2;
+  if (/week|7\s*d\b|_7d\b|seven[_\s-]?day/.test(key)) return 1;
+  if (/session|hour|\b5\s*h\b|_5h\b/.test(key)) return 0;
+  return null;
+}
+
+/**
+ * #7764: whether a quota list is a set of rolling time windows whose relative
+ * order is inherent (session before weekly before monthly) and must therefore
+ * survive rendering.
+ *
+ * This is the structural counterpart to the provider whitelist above. The
+ * whitelist exists because a few providers need an order the window rank cannot
+ * express (Codex interleaves GPT-5.3-Codex-Spark windows and a banked-credit
+ * row between the canonical ones), but it went stale the moment any other
+ * provider started reporting session+weekly — claude, minimax, zai and
+ * command-code all do. Deriving the answer from the data means the next such
+ * provider is covered on arrival.
+ *
+ * Requires at least two DISTINCT ranks: with a single window there is no pair
+ * to keep stable, so the pre-existing worst-status-first sort is left alone.
+ */
+export function hasCanonicalWindowOrder(quotas: unknown): boolean {
+  if (!Array.isArray(quotas)) return false;
+  const ranks = new Set<number>();
+  for (const quota of quotas) {
+    if (!quota || (quota as any).isCredits) continue;
+    const rank = quotaWindowRank((quota as any).name);
+    if (rank !== null) ranks.add(rank);
+  }
+  return ranks.size >= 2;
+}
+
+/**
+ * Stable sort of a quota list into canonical window order. Unrecognized entries
+ * (credits, token counters, per-model buckets) sink below the windows while
+ * keeping their relative order, so nothing is lost or shuffled.
+ */
+export function sortQuotasByWindow<T>(quotas: T[]): T[] {
+  return [...quotas]
+    .map((quota, index) => ({ quota, index }))
+    .sort((a, b) => {
+      const ra = quotaWindowRank((a.quota as any)?.name) ?? 99;
+      const rb = quotaWindowRank((b.quota as any)?.name) ?? 99;
+      return ra - rb || a.index - b.index;
+    })
+    .map((entry) => entry.quota);
 }
 
 function quotaEntries(data: any): Array<[string, any]> {
@@ -269,6 +338,19 @@ function sortCodexOrder(providerId: string, quotas: any[]) {
   quotas.sort((a, b) => (CODEX_QUOTA_ORDER[a.name] ?? 99) - (CODEX_QUOTA_ORDER[b.name] ?? 99));
 }
 
+function sortKimiOrder(providerId: string, quotas: any[]) {
+  if (!KIMI_CODING_PROVIDERS.includes(providerId)) return;
+  const rank = (name: string) => {
+    if (/^code_5h(?:_|$)/.test(name)) return 0;
+    if (/^code_7d(?:_|$)/.test(name)) return 1;
+    return 99;
+  };
+  quotas.sort((a, b) => {
+    const rankDiff = rank(String(a.name)) - rank(String(b.name));
+    return rankDiff || String(a.name).localeCompare(String(b.name));
+  });
+}
+
 export function parseQuotaData(provider: string | undefined, data: any) {
   if (!data || typeof data !== "object") return [];
   const providerId = String(provider || "").toLowerCase();
@@ -278,6 +360,7 @@ export function parseQuotaData(provider: string | undefined, data: any) {
     sortProviderModelOrder(provider, normalizedQuotas);
     sortGlmOrder(providerId, normalizedQuotas);
     sortCodexOrder(providerId, normalizedQuotas);
+    sortKimiOrder(providerId, normalizedQuotas);
     return normalizedQuotas;
   } catch (error) {
     console.error(`Error parsing quota data for ${provider}:`, error);

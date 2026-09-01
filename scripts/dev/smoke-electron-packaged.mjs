@@ -409,45 +409,115 @@ async function settleAfterReady({ getExitState, logs, settleMs }) {
   }
 }
 
-async function main() {
-  const appExecutable = discoverPackagedExecutable();
-  if (!existsSync(appExecutable)) {
+function assertExecutableExists(appExecutable) {
+  if (existsSync(appExecutable)) return;
+
+  throw new Error(
+    `Packaged OmniRoute executable not found at ${appExecutable}. Build it first with \`npm run build:<target> --prefix electron\` or set ELECTRON_SMOKE_APP_EXECUTABLE.`
+  );
+}
+
+// ── CI sandbox workaround ──────────────────────────────────
+// GitHub Actions runners cannot set SUID on chrome-sandbox (Linux)
+// and Windows runners may fail silently without --no-sandbox.
+function buildCiSpawnArgs(currentPlatform = platform()) {
+  if (!process.env.CI) return [];
+
+  const spawnArgs = ["--no-sandbox", "--disable-gpu"];
+  if (currentPlatform === "linux") {
+    spawnArgs.push("--disable-dev-shm-usage");
+  }
+  return spawnArgs;
+}
+
+const NATIVE_DRIVER_LOG_PATTERN = /\[DB\] Driver: (bun:sqlite|better-sqlite3|node:sqlite) \|/;
+const SQLJS_DRIVER_LOG_PATTERN = /\[DB\] Driver: sql\.js \|/;
+
+/**
+ * Regression guard for #7592: on a packaged app's SECOND launch against an
+ * already-persisted DATA_DIR, a stale-ABI better-sqlite3 binary (resolved via
+ * a Turbopack-hashed import) used to fail to load and silently fall through
+ * to the sql.js (WASM) driver — which then OOMs/retry-loops on real-sized
+ * databases. Asserts the startup log shows a native driver was selected.
+ */
+export function assertNativeDriverSelected(logs) {
+  if (NATIVE_DRIVER_LOG_PATTERN.test(logs)) return;
+
+  if (SQLJS_DRIVER_LOG_PATTERN.test(logs)) {
     throw new Error(
-      `Packaged OmniRoute executable not found at ${appExecutable}. Build it first with \`npm run build:<target> --prefix electron\` or set ELECTRON_SMOKE_APP_EXECUTABLE.`
+      "Packaged Electron app fell back to the sql.js (WASM) driver instead of a native SQLite " +
+        "driver — this is the regression #7592 guards against (stale-ABI better-sqlite3 binary)."
     );
   }
 
-  const smokeUrl = process.env.ELECTRON_SMOKE_URL || DEFAULT_URL;
-  const timeoutMs = parsePositiveInteger(process.env.ELECTRON_SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
-  const settleMs = parsePositiveInteger(process.env.ELECTRON_SMOKE_SETTLE_MS, DEFAULT_SETTLE_MS);
-  const dataDir =
-    process.env.ELECTRON_SMOKE_DATA_DIR ||
-    (await mkdtemp(join(tmpdir(), "omniroute-electron-smoke-")));
-  const removeDataDir =
-    !process.env.ELECTRON_SMOKE_DATA_DIR && process.env.ELECTRON_SMOKE_KEEP_DATA !== "1";
-  const smokeEnv = buildSmokeEnv({ dataDir });
+  throw new Error(
+    "Packaged Electron app logs contain no '[DB] Driver: ...' line — cannot confirm which SQLite " +
+      "driver loaded."
+  );
+}
 
+async function waitForReady({ logs, smokeUrl, timeoutMs, settleMs, exitState }) {
+  const startedAt = Date.now();
+  let lastError = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    assertNoFatalLogs(logs.value);
+
+    if (exitState.spawnError !== null) {
+      throw new Error(`Packaged Electron app failed to launch: ${exitState.spawnError.message}`);
+    }
+    if (exitState.exitCode !== null || exitState.signalCode !== null) {
+      throw new Error(
+        `Packaged Electron app exited before readiness: code=${exitState.exitCode} signal=${exitState.signalCode}`
+      );
+    }
+
+    try {
+      const response = await fetchWithTimeout(smokeUrl, 1_000);
+      if (response.status === 200) {
+        assertNoFatalLogs(logs.value);
+        console.log(`[electron-smoke] ready: ${smokeUrl} returned HTTP 200`);
+        await settleAfterReady({
+          getExitState: () => ({ exitCode: exitState.exitCode, signalCode: exitState.signalCode }),
+          logs,
+          settleMs,
+        });
+        console.log(`[electron-smoke] stable for ${settleMs}ms after readiness`);
+        return;
+      }
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+
+    await sleep(500);
+  }
+
+  throw new Error(
+    `Packaged Electron app did not serve ${smokeUrl} within ${timeoutMs}ms. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
+}
+
+/**
+ * Launches the packaged app once against `dataDir`, waits for readiness +
+ * settle, tears it down, and returns the captured stdout/stderr text. Shared
+ * by the single-launch path and the cold-restart (two-launch) path so both
+ * exercise identical spawn/readiness/shutdown behavior.
+ */
+async function launchAndCollectLogs({ appExecutable, smokeUrl, dataDir, timeoutMs, settleMs, streamLogs }) {
+  const smokeEnv = buildSmokeEnv({ dataDir });
   await assertPortIsFree(smokeUrl);
   await ensureSmokeEnvDirs(smokeEnv, dataDir);
 
-  // ── CI sandbox workaround ──────────────────────────────────
-  // GitHub Actions runners cannot set SUID on chrome-sandbox (Linux)
-  // and Windows runners may fail silently without --no-sandbox.
-  const spawnArgs = [];
-  if (process.env.CI) {
-    spawnArgs.push("--no-sandbox", "--disable-gpu");
-    if (platform() === "linux") {
-      spawnArgs.push("--disable-dev-shm-usage");
-    }
-  }
-
+  const spawnArgs = buildCiSpawnArgs();
   console.log(`[electron-smoke] launching ${appExecutable}`);
   if (spawnArgs.length) console.log(`[electron-smoke] CI args: ${spawnArgs.join(" ")}`);
   console.log(`[electron-smoke] DATA_DIR=${dataDir}`);
   console.log(`[electron-smoke] waiting for ${smokeUrl}`);
 
   const logs = { value: "" };
-  const streamLogs = process.env.ELECTRON_SMOKE_STREAM_LOGS === "1";
   const child = spawn(appExecutable, spawnArgs, {
     detached: platform() !== "win32",
     env: smokeEnv,
@@ -457,60 +527,18 @@ async function main() {
   child.stdout?.on("data", (chunk) => appendLog(logs, chunk, "[electron] ", streamLogs));
   child.stderr?.on("data", (chunk) => appendLog(logs, chunk, "[electron:err] ", streamLogs));
 
-  let exitCode = null;
-  let signalCode = null;
-  let spawnError = null;
+  const exitState = { exitCode: null, signalCode: null, spawnError: null };
   child.once("exit", (code, signal) => {
-    exitCode = code;
-    signalCode = signal;
+    exitState.exitCode = code;
+    exitState.signalCode = signal;
   });
   child.once("error", (error) => {
-    spawnError = error;
+    exitState.spawnError = error;
   });
 
   try {
-    const startedAt = Date.now();
-    let lastError = null;
-
-    while (Date.now() - startedAt < timeoutMs) {
-      assertNoFatalLogs(logs.value);
-
-      if (spawnError !== null) {
-        throw new Error(`Packaged Electron app failed to launch: ${spawnError.message}`);
-      }
-
-      if (exitCode !== null || signalCode !== null) {
-        throw new Error(
-          `Packaged Electron app exited before readiness: code=${exitCode} signal=${signalCode}`
-        );
-      }
-
-      try {
-        const response = await fetchWithTimeout(smokeUrl, 1_000);
-        if (response.status === 200) {
-          assertNoFatalLogs(logs.value);
-          console.log(`[electron-smoke] ready: ${smokeUrl} returned HTTP 200`);
-          await settleAfterReady({
-            getExitState: () => ({ exitCode, signalCode }),
-            logs,
-            settleMs,
-          });
-          console.log(`[electron-smoke] stable for ${settleMs}ms after readiness`);
-          return;
-        }
-        lastError = new Error(`HTTP ${response.status}`);
-      } catch (error) {
-        lastError = error;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    throw new Error(
-      `Packaged Electron app did not serve ${smokeUrl} within ${timeoutMs}ms. Last error: ${
-        lastError instanceof Error ? lastError.message : String(lastError)
-      }`
-    );
+    await waitForReady({ logs, smokeUrl, timeoutMs, settleMs, exitState });
+    return logs.value;
   } catch (error) {
     if (!streamLogs) {
       printLogTail(logs.value);
@@ -519,6 +547,43 @@ async function main() {
   } finally {
     await stopApp(child);
     await waitForPortClosed(smokeUrl);
+  }
+}
+
+async function main() {
+  const appExecutable = discoverPackagedExecutable();
+  assertExecutableExists(appExecutable);
+
+  const smokeUrl = process.env.ELECTRON_SMOKE_URL || DEFAULT_URL;
+  const timeoutMs = parsePositiveInteger(process.env.ELECTRON_SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
+  const settleMs = parsePositiveInteger(process.env.ELECTRON_SMOKE_SETTLE_MS, DEFAULT_SETTLE_MS);
+  const streamLogs = process.env.ELECTRON_SMOKE_STREAM_LOGS === "1";
+  // #7592: rerun against the SAME (persisted) DATA_DIR and assert the second
+  // launch selected a native SQLite driver, not the sql.js WASM fallback.
+  const coldRestart = process.env.ELECTRON_SMOKE_COLD_RESTART === "1";
+  const dataDir =
+    process.env.ELECTRON_SMOKE_DATA_DIR ||
+    (await mkdtemp(join(tmpdir(), "omniroute-electron-smoke-")));
+  const removeDataDir =
+    !process.env.ELECTRON_SMOKE_DATA_DIR && process.env.ELECTRON_SMOKE_KEEP_DATA !== "1";
+
+  try {
+    await launchAndCollectLogs({ appExecutable, smokeUrl, dataDir, timeoutMs, settleMs, streamLogs });
+
+    if (!coldRestart) return;
+
+    console.log("[electron-smoke] cold-restart: relaunching against the same DATA_DIR");
+    const secondLaunchLogs = await launchAndCollectLogs({
+      appExecutable,
+      smokeUrl,
+      dataDir,
+      timeoutMs,
+      settleMs,
+      streamLogs,
+    });
+    assertNativeDriverSelected(secondLaunchLogs);
+    console.log("[electron-smoke] cold-restart: native SQLite driver confirmed on second launch");
+  } finally {
     if (removeDataDir) {
       await rm(dataDir, { recursive: true, force: true });
     }

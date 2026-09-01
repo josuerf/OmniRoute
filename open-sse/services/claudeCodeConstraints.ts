@@ -130,18 +130,23 @@ export function ensureCacheControlOnLastUserMessage(body: Record<string, unknown
   if (!Array.isArray(messages) || messages.length === 0) return;
 
   const system = body.system as Array<Record<string, unknown>> | undefined;
-  const systemCacheControlCount = Array.isArray(system)
+  let cacheControlCount = Array.isArray(system)
     ? system.filter((block) => block.cache_control).length
     : 0;
+  let hasFiveMinuteCacheControl = Array.isArray(system)
+    ? system.some(
+        (block) => (block.cache_control as Record<string, unknown> | undefined)?.ttl === "5m"
+      )
+    : false;
 
   for (const message of messages) {
     const content = message.content as Array<Record<string, unknown>> | undefined;
-    if (Array.isArray(content) && content.some((block) => block.cache_control)) {
-      return;
-    }
+    if (!Array.isArray(content)) continue;
+    cacheControlCount += content.filter((block) => block.cache_control).length;
+    hasFiveMinuteCacheControl ||= content.some(
+      (block) => (block.cache_control as Record<string, unknown> | undefined)?.ttl === "5m"
+    );
   }
-
-  if (systemCacheControlCount >= MAX_CACHE_CONTROL_BLOCKS) return;
 
   // Find the last user message
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -149,8 +154,10 @@ export function ensureCacheControlOnLastUserMessage(body: Record<string, unknown
       const content = messages[i].content;
       if (Array.isArray(content) && content.length > 0) {
         const lastBlock = content[content.length - 1] as Record<string, unknown>;
-        if (!lastBlock.cache_control) {
-          lastBlock.cache_control = { type: "ephemeral" };
+        if (!lastBlock.cache_control && cacheControlCount < MAX_CACHE_CONTROL_BLOCKS) {
+          lastBlock.cache_control = hasFiveMinuteCacheControl
+            ? { type: "ephemeral", ttl: "5m" }
+            : { type: "ephemeral" };
         }
       }
       break;
@@ -158,36 +165,29 @@ export function ensureCacheControlOnLastUserMessage(body: Record<string, unknown
   }
 }
 
-/**
- * Real Claude Code (and CC-protocol-compatible clients) commonly send
- * `cache_control: { type: "ephemeral" }` with no `ttl`. On the native Claude
- * OAuth path the outbound anthropic-beta set always includes
- * extended-cache-ttl-2025-04-11 (see ANTHROPIC_BETA_BASE /
- * ANTHROPIC_BETA_CLAUDE_OAUTH in anthropicHeaders.ts), so requesting the 1h
- * TTL is always valid here — but Anthropic only honors it when `ttl` is
- * explicitly set; an absent `ttl` silently falls back to the platform
- * default of 5 minutes even though the 1h beta was negotiated. Any pause
- * longer than 5 minutes between turns then forces a full prefix rewrite
- * instead of a cache hit. Default the ttl to "1h" wherever it's missing;
- * never touch a cache_control that already specifies one (explicit client
- * choice is preserved).
- */
+/** Defaults missing TTLs to 1h until a 5m breakpoint; later defaults stay at 5m. */
 export function normalizeCacheControlTtl(body: Record<string, unknown>): void {
+  let hasFiveMinuteCacheControl = false;
+
   const defaultMissingTtl = (block: Record<string, unknown> | null | undefined) => {
     const cc = block?.cache_control as Record<string, unknown> | undefined;
-    if (cc && cc.type === "ephemeral" && cc.ttl === undefined) {
-      cc.ttl = "1h";
+    if (!cc || cc.type !== "ephemeral") return;
+
+    if (cc.ttl === "5m") {
+      hasFiveMinuteCacheControl = true;
+    } else if (cc.ttl === undefined) {
+      cc.ttl = hasFiveMinuteCacheControl ? "5m" : "1h";
     }
   };
-
-  const system = body.system as Array<Record<string, unknown>> | undefined;
-  if (Array.isArray(system)) {
-    for (const block of system) defaultMissingTtl(block);
-  }
 
   const tools = body.tools as Array<Record<string, unknown>> | undefined;
   if (Array.isArray(tools)) {
     for (const tool of tools) defaultMissingTtl(tool);
+  }
+
+  const system = body.system as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(system)) {
+    for (const block of system) defaultMissingTtl(block);
   }
 
   const messages = body.messages as Array<Record<string, unknown>> | undefined;

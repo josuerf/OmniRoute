@@ -102,7 +102,7 @@ test("auth login route lazily migrates INITIAL_PASSWORD to a persisted hash befo
   assert.equal(
     await managementPassword.verifyManagementPassword(
       "bootstrap-secret",
-      (settings as any).password
+      (settings as Record<string, unknown>).password as string
     ),
     true
   );
@@ -132,4 +132,25 @@ test("auth login route sets a bounded maxAge on the auth_token cookie (Seg3)", a
   assert.equal(options.maxAge, 60 * 60 * 24 * 30);
   assert.equal(options.httpOnly, true);
   assert.equal(options.path, "/");
+});
+
+test("auth login route returns 403 when OIDC password login is disabled", async () => {
+  process.env.INITIAL_PASSWORD = "bootstrap-secret";
+  await settingsDb.updateSettings({
+    requireLogin: true,
+    oidcEnabled: true,
+    oidcDisablePasswordLogin: true,
+  });
+
+  const response = await loginRoute.POST(
+    new Request("http://localhost/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "bootstrap-secret" }),
+    })
+  );
+
+  assert.equal(response.status, 403);
+  const body = (await response.json()) as { error?: string };
+  assert.match(body.error || "", /Password login is disabled when OIDC is active/);
 });

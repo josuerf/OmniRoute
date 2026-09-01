@@ -26,3 +26,8 @@ data = {
 response = requests.post(API_URL, headers=headers, json=data)
 response.raise_for_status()
 print(response.json()["choices"][0]["message"]["content"])
+
+# Fresh install, zero credentials — `auto` already works:
+# curl http://localhost:20128/v1/chat/completions \
+#   -H "Content-Type: application/json" \
+#   -d '{"model":"auto","messages":[{"role":"user","content":"Hello!"}]}'

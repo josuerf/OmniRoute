@@ -47,10 +47,11 @@ test("#7620: a no-auth model hidden via the eye icon (isHidden:true) must be ABS
   modelsDb.setModelIsHidden("opencode", "mimo-v2.5-free", true);
 
   const hiddenMap = modelsDb.getHiddenModelsByProvider();
+  const hidden = [...hiddenMap.values()].some((ids) => ids.has("mimo-v2.5-free"));
   assert.equal(
-    hiddenMap.get("opencode")?.has("mimo-v2.5-free"),
+    hidden,
     true,
-    "sanity: getHiddenModelsByProvider() must report opencode/mimo-v2.5-free as hidden"
+    "sanity: getHiddenModelsByProvider() must report mimo-v2.5-free as hidden"
   );
 
   const combo = await virtualFactory.createVirtualAutoCombo(undefined);

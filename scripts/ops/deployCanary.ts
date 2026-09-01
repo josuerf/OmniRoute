@@ -152,3 +152,80 @@ export function buildRemoteSteps(input: RemoteStepsInput): RemoteStep[] {
     },
   ];
 }
+
+export type InstallOutcomeInput = {
+  exitCode: number;
+  stderr: string;
+  /** BUILD_SHA read back from the installed package AFTER the install ran. */
+  installedSha: string | null | undefined;
+  /** BUILD_SHA of the artifact being shipped. */
+  expectedSha: string;
+};
+
+export type InstallOutcome = {
+  installed: boolean;
+  kind: "installed" | "installed-with-cleanup-failure" | "failed";
+  reason: string;
+};
+
+/**
+ * Decide whether the global install actually landed.
+ *
+ * The exit code alone is not trustworthy in either direction:
+ *
+ *  - `npm install -g` on the .17 gateway writes the whole package and *then* fails renaming
+ *    the old tree into its staging directory (`ENOTEMPTY`, exit 217). Treating that as a
+ *    failure aborts the deploy after the artifact is already on disk — which happened twice
+ *    on 2026-08-18, each time leaving the host with new files and an old running process.
+ *  - The 2026-08-14 outage went the other way: the install exited 0 while shipping a package
+ *    built from the wrong branch.
+ *
+ * So the SHA on disk decides, and it must match exactly. An absent or unreadable SHA fails
+ * closed — an artifact that cannot be identified is never attested (same rule as the
+ * provenance gate).
+ */
+export function classifyInstallOutcome(input: InstallOutcomeInput): InstallOutcome {
+  const { exitCode, stderr, installedSha, expectedSha } = input;
+  const onDisk = (installedSha ?? "").trim();
+
+  if (!onDisk) {
+    return {
+      installed: false,
+      kind: "failed",
+      reason: "no BUILD_SHA could be read from the installed package after the install",
+    };
+  }
+  if (onDisk !== expectedSha) {
+    return {
+      installed: false,
+      kind: "failed",
+      reason: `installed BUILD_SHA is ${onDisk}, expected ${expectedSha}`,
+    };
+  }
+  if (exitCode === 0) {
+    return { installed: true, kind: "installed", reason: `installed ${onDisk}` };
+  }
+
+  const staging = orphanStagingDirFromStderr(stderr);
+  const enotempty = /ENOTEMPTY/.test(stderr);
+  return {
+    installed: true,
+    kind: "installed-with-cleanup-failure",
+    reason:
+      `npm exited ${exitCode} but ${onDisk} is on disk — the package installed and npm failed ` +
+      `during its own cleanup${enotempty ? " (ENOTEMPTY on the staging rename)" : ""}` +
+      (staging ? `; orphaned staging dir left behind: ${staging}` : ""),
+  };
+}
+
+/**
+ * The staging directory npm failed to rename into, if it named one. It blocks the NEXT
+ * install with the same error (npm reuses the name), so the operator has to clear it —
+ * surfacing the exact path is the whole point. Deliberately not removed automatically:
+ * this is a path under /usr/lib and a blind `rm -rf` there is not something a deploy
+ * script should do on its own.
+ */
+export function orphanStagingDirFromStderr(stderr: string): string | null {
+  const match = /npm error dest (\/\S*\/\.\S+)/.exec(stderr || "");
+  return match ? match[1] : null;
+}

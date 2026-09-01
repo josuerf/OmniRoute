@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSettings, getSettingsRevision, updateSettings } from "@/lib/localDb";
-import { SettingsRevisionConflictError } from "@/lib/db/settings";
+import {
+  getSettings,
+  getSettingsRevision,
+  updateSettings,
+  SettingsRevisionConflictError,
+} from "@/lib/db/settings";
 import { getRuntimePorts } from "@/lib/runtime/ports";
 import { updateSettingsSchema } from "@/shared/validation/settingsSchemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
@@ -35,6 +39,7 @@ import {
   AUTHZ_HEADER_AUTH_KIND,
   AUTHZ_HEADER_PEER_LOCALITY,
 } from "@/server/authz/headers";
+import { readSubjectFromHeaders } from "@/server/authz/assertAuth";
 
 /**
  * Force this route to run dynamically per-request and never be cached/prerendered.
@@ -117,6 +122,7 @@ const SECURITY_IMPACTING_KEYS = [
   "requireLogin",
   "newPassword",
   "oidcEnabled",
+  "oidcDisablePasswordLogin",
   "oidcClientSecret",
 ] as const;
 
@@ -133,6 +139,8 @@ async function deriveAuditActor(request: Request): Promise<string> {
   } catch {
     /* fall through */
   }
+  const subject = readSubjectFromHeaders(request.headers);
+  if (subject.kind === "management_key" && subject.label === "local-cli-token") return "cli";
   try {
     if (await isCliTokenAuthValid(request)) return "cli";
   } catch {

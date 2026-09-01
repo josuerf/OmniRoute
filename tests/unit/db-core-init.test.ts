@@ -1,3 +1,13 @@
+// ENVIRONMENT NOTE (sandbox better-sqlite3 / glibc limitation, not a code defect):
+// This test constructs or exercises a real better-sqlite3-backed SQLite database.
+// better-sqlite3 is a native addon; production and CI load it normally, but some
+// sandboxes/dev boxes ship a system glibc older than the prebuilt binary requires
+// ("GLIBC_2.29 not found"), so the native module fails to dlopen and any test that
+// reaches better-sqlite3 directly (or asserts stdout that the load-failure warning
+// would pollute) fails HERE while passing in CI. This is a known environment
+// limitation, not a defect in the code under test: the OmniRoute runtime itself
+// cascades to node:sqlite/sql.js when better-sqlite3 is unavailable. See
+// tests/unit/_helpers/betterSqlite3Availability.ts for a guard helper.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -487,7 +497,13 @@ test(
   }
 );
 
-test("build phase uses an in-memory database without creating sqlite files", serial, async () => {
+test("build phase returns the no-op stub without creating sqlite files", serial, async () => {
+  // Contract changed by #10060 (via #10952): the build phase no longer opens a
+  // real in-memory SQLite with migrations — loading the native better-sqlite3
+  // addon aborts the Next.js build worker on exit (node::
+  // RemoveEnvironmentCleanupHook). getDbInstance() now returns a no-op stub
+  // (pinned by tests/unit/build/10060-build-sqlite-stub.test.ts); queries are
+  // harmless no-ops and no file is touched.
   const dataDir = makeTempDir("omniroute-db-build-");
 
   try {
@@ -500,13 +516,15 @@ test("build phase uses an in-memory database without creating sqlite files", ser
         const core = await importFresh("src/lib/db/core.ts");
         const db = core.getDbInstance();
 
-        assert.ok(
+        assert.notEqual(db.driver, "better-sqlite3");
+        assert.equal(
           db
             .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-            .get("provider_connections")
+            .get("provider_connections"),
+          undefined,
+          "the build stub must answer queries with no-ops, never a real table scan"
         );
         assert.equal(fs.existsSync(path.join(dataDir, "storage.sqlite")), false);
-        assert.equal(db.pragma("journal_mode", { simple: true }), "memory");
 
         core.resetDbInstance();
       }

@@ -23,23 +23,42 @@
  */
 
 import { deleteProxyById, listProxies, updateProxy } from "@/lib/localDb";
+import { isProxyLogIncludeIps } from "@/lib/proxyLogger";
+import {
+  getRecentEgressSharingSummary,
+  type EgressSharingSummary,
+  type EgressSharingWarning,
+} from "@/lib/proxyEgress";
 import {
   createProxyDispatcher,
   clearDispatcherCache,
   proxyConfigToUrl,
 } from "@omniroute/open-sse/utils/proxyDispatcher";
 import { fetch as undiciFetch } from "undici";
-import { decideProxyHealthAction, type ProxyProbeOutcome } from "./decision.ts";
+import {
+  classifyProbeStatus,
+  decideProxyHealthAction,
+  type ProxyProbeOutcome,
+} from "./decision.ts";
+import {
+  resolveProbeConcurrency,
+  resolveProbeStaggerMs,
+  resolveProbeTarget,
+  waitForProbeSlot,
+} from "./probeTarget.ts";
+import { resolveProviderProbeTarget } from "./providerProbeTarget.ts";
 
 // #6246: a HEAD to the public probe target through a legit (often loaded) proxy
 // can exceed a few seconds; the old 5s ceiling produced false negatives that
 // flipped healthy proxies to inactive. Raise it and treat our own timeout as
 // inconclusive (see testOneProxy) rather than a proxy failure.
 const TEST_TIMEOUT_MS = 15000;
-// Reachability probe target for proxy health checks. Configurable so operators
-// can point it at an internal/self-hosted endpoint instead of the public default.
-const TEST_URL = process.env.PROXY_HEALTH_TEST_URL || "https://httpbin.org/ip";
-const CONCURRENCY = 10;
+// Probe target, batch size and intra-batch spacing come from probeTarget.ts, which the
+// auto-test endpoint reads too — one surface to tune instead of two that can drift apart.
+// Resolved at module load, as these constants always were.
+const TEST_URL = resolveProbeTarget();
+const CONCURRENCY = resolveProbeConcurrency();
+const STAGGER_MS = resolveProbeStaggerMs();
 const INITIAL_DELAY_MS = 60_000;
 const DEFAULT_INTERVAL_MS = 600_000;
 const DEFAULT_REMOVE_AFTER = 3;
@@ -55,6 +74,26 @@ function getFailureMap(): Map<string, number> {
     globalThis.__proxyHealthConsecutiveFailures = new Map();
   }
   return globalThis.__proxyHealthConsecutiveFailures;
+}
+
+/**
+ * PURE: one-line anonymous egress-sharing summary for the sweep log (#10677).
+ * Counts only by default; raw shared IPs only when PROXY_LOG_INCLUDE_IPS=true
+ * (the redaction decision from #10348 — never leak IPs or account labels).
+ */
+export function formatEgressSharingSummaryLine(
+  summary: EgressSharingSummary,
+  warnings: EgressSharingWarning[],
+  includeDetails: boolean
+): string {
+  const base =
+    `${LOG_PREFIX} egress: ${summary.sharingByRotationGroup.length} rotation group(s) share an ` +
+    `egress IP (max ${summary.maxAccountsSharingOneIp} accounts)`;
+  if (!includeDetails) return base;
+  const detail = warnings
+    .map((w) => `${w.rotationGroup}: ${w.egressIp} (${w.connections.length} accounts)`)
+    .join(", ");
+  return detail ? `${base} — ${detail}` : base;
 }
 
 function isEnabled(): boolean {
@@ -90,9 +129,12 @@ function isBackgroundServicesDisabled(): boolean {
 }
 
 /**
- * Reachability probe for one proxy, classified into a tri-state so the pure
+ * Reachability probe for one proxy, classified so the pure
  * decision layer can apply the #6246 policy:
- *   - "ok"           — the proxy relayed and the target answered (<500).
+ *   - "ok"           — the proxy relayed and the target served the request.
+ *   - "blocked"      — the proxy relayed, but the TARGET refused this egress IP
+ *                      (401/403/429). Neutral like "inconclusive": the proxy is
+ *                      not at fault, yet it is not serving that destination.
  *   - "inconclusive" — NOT the proxy's fault: our own timeout/abort, or the probe
  *                      TARGET returned a 5xx (the proxy connected fine). Never
  *                      penalizes the proxy.
@@ -114,29 +156,53 @@ async function testOneProxy(proxy: {
     proxyUrl = null;
   }
   if (!proxyUrl) return "fail";
+  // A provider's models endpoint is a real GET-only API surface, unlike httpbin.org/ip: many
+  // reject HEAD outright. HEAD stays the default for the generic target — this changes nothing
+  // for a proxy with no eligible provider assignment.
+  const providerTarget = await resolveProviderProbeTarget(proxy.id);
+  const target = providerTarget ?? TEST_URL;
+  const method = providerTarget ? "GET" : "HEAD";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
   try {
     const dispatcher = createProxyDispatcher(proxyUrl);
-    const resp = await undiciFetch(TEST_URL, {
-      method: "HEAD",
+    const resp = await undiciFetch(target, {
+      method,
       signal: controller.signal,
       dispatcher,
       headers: { "User-Agent": "OmniRoute/1.0" },
     });
-    // A 5xx from the probe target means the proxy DID relay — the target is at
-    // fault, not the proxy. Do not penalize the proxy for that.
-    return resp.status < 500 ? "ok" : "inconclusive";
+    return classifyProbeStatus(resp.status);
   } catch {
     // Our own deadline elapsed → inconclusive (slow, not necessarily dead).
-    // Any other error is a genuine proxy-level connection failure.
-    return controller.signal.aborted ? "inconclusive" : "fail";
+    if (controller.signal.aborted) return "inconclusive";
+    // A provider-resolved target's connection health is not proven the way the
+    // operator-configured generic target is: a registry baseUrl can be a placeholder that
+    // never resolves for anyone (e.g. databricks's default azuredatabricks.net host is
+    // literally 16 zeros). A connection failure there says nothing about this proxy —
+    // same principle as the 5xx case above, extended to connection-level errors.
+    return providerTarget ? "inconclusive" : "fail";
   } finally {
     clearTimeout(timeout);
   }
 }
 
 async function sweep(): Promise<void> {
+  // #10677: anonymous egress-sharing signal from persisted proxy_logs (no live
+  // probes). Logged only when sharing exists — the sweep line is a warning
+  // signal, not a heartbeat. Runs before the empty-registry early return so
+  // sharing from direct connections is still reported when no proxies are
+  // configured. Never let a DB hiccup suppress the completion line or fail the
+  // sweep itself.
+  try {
+    const { summary, warnings } = await getRecentEgressSharingSummary();
+    if (summary.sharingByRotationGroup.length > 0) {
+      console.log(formatEgressSharingSummaryLine(summary, warnings, isProxyLogIncludeIps()));
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Egress summary skipped:`, error);
+  }
+
   const { items: proxies } = await listProxies({ includeSecrets: true });
   if (proxies.length === 0) return;
 
@@ -148,13 +214,17 @@ async function sweep(): Promise<void> {
   let tested = 0;
   let alive = 0;
   let inconclusive = 0;
+  let blocked = 0;
   let removed = 0;
   let disabled = 0;
 
   for (let i = 0; i < proxies.length; i += CONCURRENCY) {
     const batch = proxies.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(
-      batch.map(async (proxy) => {
+      batch.map(async (proxy, indexInBatch) => {
+        // Spread the departures: without this the whole batch leaves at the same tick and a
+        // shared egress IP hits the target with CONCURRENCY simultaneous requests.
+        await waitForProbeSlot(indexInBatch, STAGGER_MS);
         const outcome = await testOneProxy(proxy);
         return { id: proxy.id, outcome };
       })
@@ -166,6 +236,7 @@ async function sweep(): Promise<void> {
       tested++;
       if (outcome === "ok") alive++;
       else if (outcome === "inconclusive") inconclusive++;
+      else if (outcome === "blocked") blocked++;
 
       const decision = decideProxyHealthAction({
         outcome,
@@ -202,8 +273,8 @@ async function sweep(): Promise<void> {
   }
 
   console.log(
-    `${LOG_PREFIX} Sweep complete: ${tested} tested, ${alive} alive, ${inconclusive} inconclusive, ` +
-      `${removed} auto-removed, ${disabled} auto-disabled`
+    `${LOG_PREFIX} Sweep complete: ${tested} tested, ${alive} alive, ${blocked} blocked by target, ` +
+      `${inconclusive} inconclusive, ${removed} auto-removed, ${disabled} auto-disabled`
   );
 }
 

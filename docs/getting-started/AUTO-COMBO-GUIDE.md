@@ -189,7 +189,7 @@ Use `auto/smart` when you want the best quality and are okay with occasional exp
 
 ### "Can I force a specific provider?"
 
-Yes! Use a combo with `priority` strategy instead of `auto`. See the [Technical Reference](../routing/AUTO-COMBO.md) for details.
+Yes! Use a combo with `priority` strategy instead of `auto`, then send the combo's **exact name** as the `model` field (e.g. `model: "my-combo"` — not `auto`). See the [Technical Reference](../routing/AUTO-COMBO.md) for details.
 
 ### "How is this different from round-robin?"
 

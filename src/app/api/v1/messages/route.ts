@@ -1,6 +1,7 @@
 import { handleChat } from "@/sse/handlers/chat";
 import { initTranslators } from "@omniroute/open-sse/translator/index.ts";
 import { withInjectionGuard } from "@/middleware/promptInjectionGuard";
+import { withChatAdmission } from "@/shared/middleware/withChatAdmission";
 import { requireJsonContentType } from "@/shared/middleware/requireJsonContentType";
 import {
   withEarlyStreamKeepalive,
@@ -78,4 +79,4 @@ async function postHandler(request: any, context: any, preParsedBody: any = null
   return await handleChat(request, null, body);
 }
 
-export const POST = withInjectionGuard(postHandler);
+export const POST = withChatAdmission(withInjectionGuard(postHandler));

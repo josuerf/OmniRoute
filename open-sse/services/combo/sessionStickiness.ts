@@ -77,6 +77,8 @@ interface StickyEntry {
   connectionId: string;
   createdAt: number;
   lastUsedAt: number;
+  /** Combo identity that owns this binding (matches `scopeMessageHash` namespace). */
+  namespace?: string;
 }
 
 /**
@@ -357,17 +359,23 @@ function evict(): void {
 }
 
 /** Record (or refresh) a sticky binding after a successful request. */
-export function recordStickyBinding(messageHash: string, connectionId: string): void {
+export function recordStickyBinding(
+  messageHash: string,
+  connectionId: string,
+  namespace?: string
+): void {
   const existing = stickyMap.get(messageHash);
   if (existing) {
     existing.connectionId = connectionId;
     existing.lastUsedAt = Date.now();
+    if (namespace) existing.namespace = namespace;
   } else {
     evict();
     stickyMap.set(messageHash, {
       connectionId,
       createdAt: Date.now(),
       lastUsedAt: Date.now(),
+      ...(namespace ? { namespace } : {}),
     });
   }
 }
@@ -375,6 +383,24 @@ export function recordStickyBinding(messageHash: string, connectionId: string): 
 /** Remove a binding (e.g. after the connection is confirmed unhealthy). */
 export function clearStickyBinding(messageHash: string): void {
   stickyMap.delete(messageHash);
+}
+
+/**
+ * Evict every in-memory sticky binding owned by a combo.
+ *
+ * Stale pins survive combo edits: `updateCombo` clears the persisted
+ * `session_model_history` rows, but the process-global sticky map is only
+ * bounded by TTL (15 min) — a binding recorded before the operator disabled
+ * stickiness or reordered models keeps promoting the old connection to
+ * position 0 for the remainder of the TTL window, silently defeating the
+ * combo's declared priority order (#XXXX). Combo writes call this so a
+ * config/model change takes effect immediately instead of after TTL expiry.
+ */
+export function clearStickyBindingsForCombo(namespace: string): void {
+  if (!namespace) return;
+  for (const [key, entry] of stickyMap) {
+    if (entry.namespace === namespace) stickyMap.delete(key);
+  }
 }
 
 /**
@@ -461,6 +487,10 @@ export async function applySessionStickiness(
 
     const existing = stickyMap.get(messageHash);
     if (!existing) return { targets: orderedTargets, messageHash, stuck: false };
+
+    // Backfill the owning namespace so combo-scoped eviction (combo edit /
+    // stickiness disable) can find bindings recorded before this field existed.
+    if (namespace && existing.namespace !== namespace) existing.namespace = namespace;
 
     // Check TTL
     if (Date.now() - existing.lastUsedAt > TTL_MS) {

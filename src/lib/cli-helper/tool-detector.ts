@@ -104,7 +104,8 @@ async function detectBinaryWindows(
     const { stdout } = await execFileImpl(located.commandPath, ["--version"], {
       timeout: 5000,
       env,
-      ...(useShell ? { shell: true } : {}),
+      windowsHide: true,
+      ...(useShell ? { shell: true, windowsVerbatimArguments: true } : {}),
     });
     return { installed: true, version: stdout.trim().replace(/^v/, "") };
   } catch {

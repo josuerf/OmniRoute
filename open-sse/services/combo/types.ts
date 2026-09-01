@@ -8,6 +8,7 @@
 
 import type { CompressionExclusions } from "../compression/exclusions.ts";
 import type { ProviderCandidate } from "../autoCombo/scoring.ts";
+import type { PerTargetAdmissionHook } from "../admission/types.ts";
 
 export const RESET_WINDOW_NAMES = ["weekly", "session", "monthly"] as const;
 
@@ -99,6 +100,8 @@ export type ComboNestingContext = {
 export type HiddenModelsByProvider = ReadonlyMap<string, ReadonlySet<string>>;
 
 export type HandleComboChatOptions = {
+  /** #10681: optional opaque parent invocation id for the decision trace. */
+  invocationId?: string;
   body: Record<string, unknown>;
   combo: ComboLike;
   handleSingleModel: HandleSingleModel;
@@ -113,6 +116,12 @@ export type HandleComboChatOptions = {
   hiddenModelsByProvider?: HiddenModelsByProvider;
   /** Native Responses clients (for example Codex CLI/Desktop) manage compaction themselves. */
   clientManagedResponsesContext?: boolean;
+  /**
+   * #9654 Wave 2: per-target lane-aware admission probe for fan-out dispatch.
+   * Strictly non-blocking (maxWaitMs 0), no-op when virtual lanes are off,
+   * keyed to the parent's tenantKey. Skipped targets are not dispatched.
+   */
+  perTargetAdmission?: PerTargetAdmissionHook | null;
   /**
    * #10225: request-scoped flag — prompt compression is enabled for this request
    * (global compression switch ON and not opted-out by the API key). When set, the

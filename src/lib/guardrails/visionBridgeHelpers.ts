@@ -526,6 +526,11 @@ function parseSseVisionBody(rawBody: string): unknown {
     if (typeof delta?.reasoning_content === "string" && delta.reasoning_content.length > 0) {
       reasoningParts.push(delta.reasoning_content);
     }
+    // opencode-routed gateways (e.g. mimo-v2.5-free) stream chain-of-thought in
+    // `delta.reasoning` instead of `reasoning_content` (#6623).
+    if (typeof delta?.reasoning === "string" && delta.reasoning.length > 0) {
+      reasoningParts.push(delta.reasoning);
+    }
 
     // Some providers put a full message (not a delta) in the final chunk.
     const message = choice?.message as Record<string, unknown> | undefined;
@@ -534,6 +539,9 @@ function parseSseVisionBody(rawBody: string): unknown {
     }
     if (typeof message?.reasoning_content === "string" && message.reasoning_content.length > 0) {
       reasoningParts.push(message.reasoning_content);
+    }
+    if (typeof message?.reasoning === "string" && message.reasoning.length > 0) {
+      reasoningParts.push(message.reasoning);
     }
 
     // Anthropic-style streaming: `content_block_delta` with `delta.text`.
@@ -602,13 +610,17 @@ async function readVisionResponseBody(response: Response): Promise<unknown> {
 
 /**
  * Extract the description text from an OpenAI-compatible vision response.
- * Falls back to `reasoning_content` when `content` is empty — reasoning models
- * (e.g. xiaomi/mimo-v2.5) can exhaust `max_tokens` on chain-of-thought and
- * return `content: null` with a complete analysis in `reasoning_content`.
+ * Falls back to `reasoning_content` then `reasoning` when `content` is empty —
+ * reasoning models (e.g. xiaomi/mimo-v2.5, opencode/mimo-v2.5-free) can exhaust
+ * `max_tokens` on chain-of-thought and return `content: null` with a complete
+ * analysis in a reasoning field. opencode-routed gateways name that field
+ * `reasoning` rather than `reasoning_content` (#6623 / #10809).
  */
 function extractOpenAICompatibleContent(data: unknown): string {
   const record = data as {
-    choices?: Array<{ message?: { content?: unknown; reasoning_content?: unknown } }>;
+    choices?: Array<{
+      message?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown };
+    }>;
     error?: { message?: string };
   } | null;
 
@@ -625,7 +637,11 @@ function extractOpenAICompatibleContent(data: unknown): string {
   if (content) return content;
 
   const reasoning =
-    typeof message?.reasoning_content === "string" ? message.reasoning_content.trim() : "";
+    typeof message?.reasoning_content === "string"
+      ? message.reasoning_content.trim()
+      : typeof message?.reasoning === "string"
+        ? message.reasoning.trim()
+        : "";
   if (reasoning) return reasoning;
 
   throw new Error("Vision API returned empty or invalid response");

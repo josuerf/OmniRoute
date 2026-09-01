@@ -516,7 +516,7 @@ test("AntigravityExecutor.collectStreamToResponse converts textual tool call SSE
 
   const result = await executor.collectStreamToResponse(
     response,
-    "gemini-3.5-flash-low",
+    "gemini-3.7-flash-low",
     "https://example.com",
     { Authorization: "Bearer ag-token" },
     { request: {} }

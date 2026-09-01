@@ -1,7 +1,7 @@
 ---
 title: "Remote Mode — Drive a remote OmniRoute from your laptop"
-version: 3.8.40
-lastUpdated: 2026-06-28
+version: 3.8.50
+lastUpdated: 2026-08-18
 ---
 
 # Remote Mode
@@ -285,6 +285,26 @@ The written profile references the inference key by env var
 (`OMNIROUTE_API_KEY`) — the secret is never written to disk. For the one-time
 base Codex setup (the `[model_providers.omniroute]` block), see
 [CODEX-CLI-CONFIGURATION.md](./CODEX-CLI-CONFIGURATION.md).
+
+### Launching a CLI against the remote (no config written)
+
+`omniroute run <target>` also honours the active context: the remote base URL
+and the context credential are injected into the spawned process only.
+
+```bash
+omniroute connect 192.168.0.15
+omniroute run claude   --model openai/gpt-5.4          # Claude Code → remote
+omniroute run gemini   --model glm/glm-5.2 -- --skip-trust -p "hello"
+omniroute run opencode --model glm/glm-5.2 -- run "reply OK"
+
+# Preview exactly what would be spawned (env KEY NAMES only, never values):
+omniroute run codex --dry-run --json
+```
+
+Targets: `claude`, `codex`, `aider`, `goose`, `opencode`, `qwen`, `gemini`
+(single source: `bin/cli/cli-manifest.mjs`). Qwen and Gemini run with a
+temporary isolated home that is removed on exit, so the launch never touches —
+or leaks into — your personal tool configuration.
 
 ### Per-CLI setup commands
 

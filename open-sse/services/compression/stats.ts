@@ -77,7 +77,7 @@ function isOpenAIResponsesPngImagePart(value: unknown): value is OpenAIResponses
 }
 
 function pngDimensionsFromDataUrl(value: string): { width: number; height: number } | null {
-  const marker = ",base64,";
+  const marker = ";base64,";
   const markerIndex = value.indexOf(marker);
   if (markerIndex < 0) return null;
   return decodePngDimensions(value.slice(markerIndex + marker.length));

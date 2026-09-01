@@ -498,17 +498,31 @@ function extractMessageText(content: unknown): string {
   return String(content || "");
 }
 
+// #10527 — with no explicit `historyWindow`, genuinely multi-turn conversations (any
+// assistant turn present, or more than one user turn) now auto-replay a bounded
+// trajectory instead of only the last user message, so agentic clients that never send
+// OpenAI-native `tools[]` (e.g. Cline, which embeds its own XML tool convention) don't
+// silently lose the original task after a couple of tool-result turns. This cap keeps
+// the auto-replay bounded for very long agent sessions; set `historyWindow` explicitly
+// on the connection to raise or lower it.
+const DEFAULT_AUTO_HISTORY_WINDOW = 20;
+
 /**
  * Build the single prompt string the DeepSeek web API accepts.
  *
  * The web endpoint (`/api/v0/chat/completion`) takes only a `prompt` string, not a
- * `messages` array. With `historyWindow <= 0` (default) we keep the legacy behavior —
- * system prompt(s) + the last user message only — which is fine for plain chat.
+ * `messages` array. For a genuinely single-turn request (one user message, no prior
+ * assistant turns) we keep the minimal behavior — system prompt(s) + the last user
+ * message only — which is fine for plain chat and avoids inflating token usage.
  *
- * With `historyWindow > 0` we stitch the last N non-system messages into a role-tagged
- * transcript so agentic multi-turn clients keep context across turns (rolling-window
- * memory, #2942). The system prompt(s) still lead the prompt and the newest user turn
- * is the last line of the transcript.
+ * For a multi-turn conversation, `historyWindow > 0` stitches the last N non-system
+ * messages into a role-tagged transcript so agentic multi-turn clients keep context
+ * across turns (rolling-window memory, #2942). With `historyWindow` unset/`<= 0` we now
+ * auto-apply a bounded window (`DEFAULT_AUTO_HISTORY_WINDOW`) instead of dropping every
+ * earlier turn (#10527) — the previous default silently discarded the original task
+ * after a couple of turns for clients (Cline) that never send `tools[]`. The system
+ * prompt(s) still lead the prompt and the newest user turn is the last line of the
+ * transcript.
  */
 export function messagesToPrompt(
   messages: Array<{ role: string; content: string; tool_call_id?: string; name?: string }>,
@@ -551,9 +565,18 @@ export function messagesToPrompt(
     parts.push(systemParts.join("\n\n"));
   }
 
-  if (historyWindow > 0 && conversation.length > 1) {
-    // Rolling-window transcript of the most recent turns (#2942).
-    const recent = conversation.slice(-historyWindow);
+  const effectiveWindow =
+    historyWindow > 0
+      ? historyWindow
+      : conversation.length > 1
+        ? DEFAULT_AUTO_HISTORY_WINDOW
+        : 0;
+
+  if (effectiveWindow > 0 && conversation.length > 1) {
+    // Rolling-window transcript of the most recent turns (#2942, auto-applied per
+    // #10527 when no explicit historyWindow is configured and the conversation is
+    // genuinely multi-turn).
+    const recent = conversation.slice(-effectiveWindow);
     const transcript = recent
       .map((turn) =>
         turn.role === "assistant"

@@ -114,6 +114,9 @@ export type ModelCompatOverride = {
   compatByProtocol?: CompatByProtocolMap;
   upstreamHeaders?: Record<string, string>;
   isHidden?: boolean;
+  apiFormat?: string;
+  targetFormat?: string;
+  supportsVision?: boolean;
 };
 
 export function readCompatList(providerId: string): ModelCompatOverride[] {
@@ -168,6 +171,9 @@ export type ModelCompatPatch = {
   /** Replace top-level extra headers for override-only rows; omit to leave unchanged. */
   upstreamHeaders?: Record<string, string> | null;
   isHidden?: boolean | null;
+  apiFormat?: string | null;
+  targetFormat?: string | null;
+  supportsVision?: boolean | null;
 };
 
 export function compatByProtocolHasEntries(map: CompatByProtocolMap | undefined): boolean {
@@ -230,12 +236,39 @@ export function mergeModelCompatOverride(
       next.isHidden = Boolean(patch.isHidden);
     }
   }
+  if ("apiFormat" in patch) {
+    if (!patch.apiFormat) {
+      delete next.apiFormat;
+    } else {
+      next.apiFormat = patch.apiFormat;
+    }
+  }
+  if ("targetFormat" in patch) {
+    if (!patch.targetFormat) {
+      delete next.targetFormat;
+    } else {
+      next.targetFormat = patch.targetFormat;
+    }
+  }
+  if ("supportsVision" in patch) {
+    if (patch.supportsVision === null) {
+      delete next.supportsVision;
+    } else {
+      next.supportsVision = Boolean(patch.supportsVision);
+    }
+  }
   const hasHiddenFlag = Object.prototype.hasOwnProperty.call(next, "isHidden");
+  const hasApiFormat = Object.prototype.hasOwnProperty.call(next, "apiFormat");
+  const hasTargetFormat = Object.prototype.hasOwnProperty.call(next, "targetFormat");
+  const hasVisionFlag = Object.prototype.hasOwnProperty.call(next, "supportsVision");
   if (
     next.normalizeToolCallId ||
     hasPreserveFlag ||
     hasVideoUrlFlag ||
     hasHiddenFlag ||
+    hasApiFormat ||
+    hasTargetFormat ||
+    hasVisionFlag ||
     compatByProtocolHasEntries(next.compatByProtocol) ||
     hasTopUpstream
   ) {

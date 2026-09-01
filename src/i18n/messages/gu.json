@@ -974,12 +974,20 @@
     "batchFileUsedByCount": "{count, plural, one {# બેચ} other {# બેચો}}",
     "batchFilePreview": "પૂર્વદર્શન",
     "batchFilePreviewTruncated": "પ્રથમ {shown} લાઈનો દર્શાવી રહ્યા છીએ ({total} કુલ લાઈનો)",
-    "batchFileDownloadFull": "પૂર્ણ ફાઇલ ડાઉનલોડ કરો"
+    "batchFileDownloadFull": "પૂર્ણ ફાઇલ ડાઉનલોડ કરો",
+    "batchHeaderSubtitle": "Run many requests as one job",
+    "batchStep1": "1 · Upload JSONL",
+    "batchStep1Desc": "Add requests",
+    "batchStep2": "2 · Create batch",
+    "batchStep2Desc": "Run job",
+    "batchStep3": "3 · Get results",
+    "batchStep3Desc": "Download output"
   },
   "disabled": "નિષ્ક્રિય કરેલ",
   "featureFlagOmnirouteEmergencyFallbackDescription": "બજેટ-સમાપ્ત વિનંતીઓને કટોકટીના મફત ફોલબેક પ્રદાતા/મોડેલ પર રૂટ કરો.",
   "featureFlagArenaEloSyncEnabledDescription": "મોડેલ ઇન્ટેલિજન્સ રેન્કિંગ માટે સમયાંતરે Arena AI લીડરબોર્ડ ELO સિંક સક્ષમ કરો.",
   "featureFlagExposeCcDiscoveryAliasesDescription": "/v1/models પર claude/&lt;provider&gt;/&lt;model&gt; મિરર આઈડીઓનું જાહેરાત કરો જેથી Claude Code ગેટવે મોડલ શોધી કાઢે છે non-Claude મોડલ. ચેતવણી: જ્યારે વૈશ્વિક રીતે સક્રિય કરવામાં આવે ત્યારે તમામ ક્લાયન્ટ માટે કૅટલોગ એન્ટ્રીઓ ડબલ કરે છે.",
+  "featureFlagChatVirtualLanesEnabledDescription": "પ્રોવાઇડર ડિસ્પેચ માટે પ્રતિ-ટેનન્ટ અનુકૂલનશીલ વર્ચ્યુઅલ એડમિશન લેન સક્ષમ કરો (#9654): એક ટેનન્ટનો બર્સ્ટ હવે બીજા ટેનન્ટને 503 આપતો નથી. OMNIROUTE_CHAT_VIRTUAL_LANES એન્વાયર્નમેન્ટ વેરિયેબલ આ ડેશબોર્ડ સેટિંગ કરતાં વધુ પ્રાધાન્ય ધરાવે છે; ફેરફારો સર્વર પુનઃપ્રારંભ પર અસરકારક થાય છે.",
   "sidebar": {
     "home": "Home",
     "dashboard": "Dashboard",
@@ -1164,6 +1172,8 @@
     "consoleLogs": "Console Logs",
     "logsTimeline": "Timeline",
     "logsTimelineSubtitle": "વિઝ્યુઅલ વિનંતી સમયરેખા",
+    "conversations": "Conversations",
+    "conversationsSubtitle": "Multi-turn agentic conversations",
     "globalRouting": "Global Routing",
     "mitmProxy": "MITM Proxy",
     "oneProxy": "1Proxy",
@@ -1290,7 +1300,8 @@
       "open": "ખોલો",
       "close": "બંધ કરો"
     },
-    "noResults": "કોઈ પરિણામો નથી"
+    "noResults": "કોઈ પરિણામો નથી",
+    "trafficInspectorPurpose": "See exactly what your application sends to and receives from AI providers. Works with any OpenAI-compatible client."
   },
   "webhooks": {
     "title": "વેબહુક્સ",
@@ -1736,8 +1747,8 @@
     "quotaShare": "ક્વોટા શેર",
     "discovery": "ડિસ્કવરી",
     "freeProviderRankings": "ફ્રી પ્રોવાઇડર રેન્કિંગ્સ",
-    "radar": "__MISSING__:Radar",
-    "setup": "__MISSING__:Setup",
+    "radar": "Radar",
+    "setup": "Setup",
     "freeTiers": "ફ્રી ટાયર્સ",
     "gamification": "ગેમિફિકેશન",
     "leaderboard": "લીડરબોર્ડ",
@@ -1853,7 +1864,21 @@
     "directDownloadHint": "અથવા સંબંધિત ઇન્સ્ટોલર ફોર્મેટ સીધા ડાઉનલોડ કરો:",
     "releaseNotes": "રિલીઝ નોંધો",
     "readMore": "વધુ વાંચો",
-    "noAuthLabel": "કોઈ ઓથેન્ટિકેશન નથી"
+    "noAuthLabel": "કોઈ ઓથેન્ટિકેશન નથી",
+    "recentRequests": "Recent Requests",
+    "recentRequestsEmpty": "No requests yet.",
+    "recentRequestsModel": "Model",
+    "recentRequestsTokens": "In / Out",
+    "recentRequestsWhen": "When",
+    "readinessEyebrow": "Get ready to route",
+    "readinessTitle": "Send your first request",
+    "readinessSubtitle": "Four small steps. OmniRoute checks readiness as you go.",
+    "readinessStep1": "Connect a provider",
+    "readinessStep2": "Configure endpoint authentication",
+    "readinessStep3": "Copy your endpoint",
+    "readinessStep4": "Send a test request",
+    "readinessContinue": "Continue setup",
+    "readinessDismiss": "Dismiss for now"
   },
   "analytics": {
     "title": "Analytics",
@@ -2215,6 +2240,10 @@
     "fullAccess": "Full Access",
     "keyManagement": "API Key Management",
     "keyManagementDesc": "Create and manage API keys for authenticating requests to your endpoint",
+    "requestFlowAria": "Your app sends requests through an API key to OmniRoute",
+    "requestFlowYourApp": "Your app",
+    "requestFlowApiKey": "API key",
+    "requestFlowOmniRoute": "OmniRoute",
     "totalKeys": "Total Keys",
     "restricted": "Restricted",
     "totalRequests": "Total Requests",
@@ -2894,7 +2923,8 @@
       "omp": "Oh My Pi ટર્મિનલ કોડિંગ એજન્ટ",
       "letta": "પર્સિસ્ટન્ટ મેમરી અને ટૂલ વપરાશ સાથે Letta CLI એજન્ટ",
       "warp": "કસ્ટમ પ્રોવાઇડર સપોર્ટ સાથે Warp AI ટર્મિનલ",
-      "agent-deck": "Agent Deck મલ્ટિ-એજન્ટ ઓર્કેસ્ટ્રેટર"
+      "agent-deck": "Agent Deck મલ્ટિ-એજન્ટ ઓર્કેસ્ટ્રેટર",
+      "prime-agent": "Prime Agent — self-improving RLM coding harness with OpenAI-compatible provider support"
     },
     "guides": {
       "cursor": {
@@ -3603,6 +3633,10 @@
     "wizardStep3Desc": "Pick how requests are distributed across your models - 13 strategies available",
     "wizardStep4Title": "Review & Save",
     "wizardStep4Desc": "Review your configuration and activate the combo",
+    "usageGuideInvokeTitle": "How to call this combo",
+    "usageGuideInvokeDesc": "Send the combo's exact name as the model, e.g. model: \"my-combo\" (or combo/my-combo).",
+    "usageGuideInvokeAutoNote": "auto and auto/* are a separate zero-config router that does not use your combos (unless a combo is literally named auto).",
+    "usageGuideInvokeOpenrouterNote": "openrouter/auto is a real paid OpenRouter product (Auto Best Available), not an OmniRoute alias — exclude it via Settings → Routing → Hide paid models.",
     "emailVisibilityStateOn": "On",
     "emailVisibilityStateOff": "Off",
     "reorderHandle": "Drag to reorder",
@@ -3715,7 +3749,12 @@
     "errorDescription": "અમે હાલમાં કોમ્બો ડેટા લોડ કરી શક્યા નથી. તમારી કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.",
     "errorId": "ભૂલ આઈડી: {id}",
     "errorRetry": "ફરીથી પ્રયાસ કરો",
-    "comboLabel": "કોમ્બો"
+    "comboLabel": "કોમ્બો",
+    "duplicateAutoComboConfirm": "\"{name}\" માંથી સ્ટેટિક કોમ્બો બનાવશો?",
+    "duplicateAutoComboSnapshotMsg": "આ ટેમપ્લેટ સાથે મેચ થતા વર્તમાન જોડાયેલા પ્રદાતાઓ/મોડેલને સંપાદનીય કોમ્બોમાં સ્નેપશોટ લેશે.",
+    "duplicateAutoComboFailedPrefix": "ઓટોકોમ્બો ડુપ્લિકેટ કરવામાં નિષ્ફળ:",
+    "duplicateAutoComboUnknownError": "અજ્ઞાત ભૂલ",
+    "duplicateAutoComboTitle": "{name} માંથી સ્ટેટિક કોમ્બો બનાવો"
   },
   "costs": {
     "title": "Costs",
@@ -4117,7 +4156,10 @@
     "notionIntegrationHelp": "આંતરિક એકીકરણ બનાવો પર",
     "notionIntegrationToken": "Notion આંતરિક ઇન્ટિગ્રેશન ટોકન",
     "notionNotConnected": "જોડાયેલ નથી",
-    "notionTokenConfigured": "ટોકન કન્ફિગર કરાયું છે. Notion ટૂલ્સ MCP દ્વારા ઉપલબ્ધ છે."
+    "notionTokenConfigured": "ટોકન કન્ફિગર કરાયું છે. Notion ટૂલ્સ MCP દ્વારા ઉપલબ્ધ છે.",
+    "subtitle": "Use the OpenAI-compatible endpoint with most SDKs and tools.",
+    "testEndpoint": "Test endpoint →",
+    "advancedProtocols": "Advanced protocols"
   },
   "endpoints": {
     "tabProxy": "Endpoint Proxy",
@@ -4700,7 +4742,14 @@
     "issueCount": "{count} સમસ્યાઓ",
     "score": "સ્કોર",
     "lastRequest": "છેલ્લી વિનંતી",
-    "lastError": "છેલ્લી ભૂલ"
+    "lastError": "છેલ્લી ભૂલ",
+    "healthVerdictReady": "OmniRoute is ready",
+    "healthVerdictActionRequired": "Action required to restore full operation",
+    "healthVerdictCoolingDown": "Cooling down after recent changes",
+    "healthSubtitle": "System health check",
+    "advancedDiagnosticsTitle": "Advanced diagnostics",
+    "hide": "Hide",
+    "show": "Show"
   },
   "telemetry": {
     "title": "સિસ્ટમ ટેલિમેટ્રી",
@@ -4962,7 +5011,9 @@
         "skipped": "હવે જ કન્ફિગર કરેલ છે",
         "failed": "ફેલ થયું"
       }
-    }
+    },
+    "securityDescSkipWarning": "⚠️ Without a password, you won't be able to add providers during setup. You can add them later from the dashboard after setting a password.",
+    "providerRequiresPassword": "You need to set a password first to add providers. Please go back to the security step and set a password, or add providers later from the dashboard."
   },
   "providers": {
     "title": "Providers",
@@ -5094,7 +5145,7 @@
     "deprecatedProvider": "આ પ્રદાતા નાપસંદ કરવામાં આવી છે",
     "riskNotice": {
       "title": "આગળ વધતા પહેલા",
-      "detailsTitle": "__MISSING__:Usage caveats",
+      "detailsTitle": "Usage caveats",
       "tooltip": "વપરાશની ચેતવણીઓ સાથેનો પ્રદાતા — વિગતો માટે ક્લિક કરો",
       "oauth": "આ પ્રદાતા તમારા સત્તાવાર પ્રોડક્ટ સત્ર/OAuth નો ઉપયોગ કરે છે, જે પ્રોક્સી/રાઉટર ઉપયોગ માટે અધિકૃત નથી. અમે સઘન સ્વાયત્ત એજન્ટ વપરાશ (OpenCloud-શૈલી, લાંબા બહુ-પગલાંના પ્રવાહો, મોટા બેચ) ની ભલામણ કરતા નથી — અપસ્ટ્રીમ એકાઉન્ટને પ્રતિબંધિત અથવા બૅન કરીને પ્રતિક્રિયા આપી શકે છે. તમારા પોતાના જોખમે ઉપયોગ કરો.",
       "webCookie": "આ પ્રદાતા તમારા વેબ સત્ર કૂકીઝ દ્વારા પ્રમાણિત કરે છે. અપસ્ટ્રીમ સેવા કોઈપણ સમયે સત્રને અમાન્ય કરી શકે છે, જેના કારણે તમારે ફરીથી લૉગ ઇન કરવું પડશે. લાંબા અડચણ વગરના ઓપરેશન્સ માટે ભલામણ કરેલ નથી. તમારા પોતાના જોખમે ઉપયોગ કરો.",
@@ -5104,9 +5155,9 @@
       "cancel": "રદ કરો"
     },
     "warningNotice": {
-      "tooltip": "__MISSING__:{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
-      "lastFailureSuffix": "__MISSING__: (last failure {time})",
-      "ariaLabel": "__MISSING__:View connection health details, {count} warning(s)"
+      "tooltip": "{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
+      "lastFailureSuffix": " (last failure {time})",
+      "ariaLabel": "View connection health details, {count} warning(s)"
     },
     "disabled": "Disabled",
     "enableProvider": "Enable provider",
@@ -5230,6 +5281,17 @@
     "skippingExistingModels": "Skipping {count} existing models",
     "autoSync": "Auto-Sync",
     "autoSyncShort": "Sync",
+    "autoFetchModels": "આપોઆપ અપસ્ટ્રીમ મોડલ્સ લાવો",
+    "autoFetchModelsTooltip": "જરૂર પડ્યે અપસ્ટ્રીમ મોડલ્સને લાવવા અને કેશ કરવા",
+    "autoFetchModelsEnabled": "અપસ્ટ્રીમ મોડલ આપોઆપ મેળવવું સક્રિય છે",
+    "autoFetchModelsDisabled": "અપસ્ટ્રીમ મોડલ આપોઆપ મેળવનાર બંધ છે",
+    "autoFetchModelsToggleFailed": "અપસ્ટ્રીમ મોડલ ઓટો-ફેચ ટોગલ કરવામાં નિષ્ફળ થયું",
+    "autoFetchModelsPartialFailure": "કેટલાક કનેક્શન અપડેટ થયા, પરંતુ ઉપરવાળા મોડેલનું ઓટો-ફેચ દરેક જગ્યાએ બદલાયું નથી",
+    "overridesUpstreamModel": "અપસ્ટ્રીમને ઓવરરાઈડ કરે છે",
+    "overridesUpstreamModelHint": "તમારા સેટિંગ્સ આ અપસ્ટ્રીમ મોડેલને ઓવરરાઈડ કરે છે",
+    "resetToUpstreamDefaults": "અપસ્ટ્રીમ ડિફોલ્ટ્સ પુનઃસ્થાપિત કરો",
+    "resetToUpstreamDefaultsSuccess": "ઉપરવાળી મોડલ ડિફોલ્ટ્સ પુનઃસ્થાપિત કરવામાં આવ્યા",
+    "resetToUpstreamDefaultsFailed": "અપસ્ટ્રીમ મોડલ ડિફોલ્ટ્સ પુનઃસ્થાપિત કરવામાં નિષ્ફળ થયું",
     "autoSyncTooltip": "Automatically refresh model list every 24h (configurable via MODEL_SYNC_INTERVAL_HOURS)",
     "autoSyncEnabled": "Auto-sync enabled — models will refresh periodically",
     "autoSyncDisabled": "Auto-sync disabled",
@@ -5435,18 +5497,18 @@
     "interceptFetchHint": "મૂળ web_fetch ટૂલ કૉલ્સને OmniRoute ના /v1/web/fetch પર ફરીથી લખો.",
     "interceptionLoadError": "ઇન્ટરસેપ્શન સેટિંગ્સ લોડ કરવામાં નિષ્ફળ: {error}",
     "interceptionSaveError": "ઇન્ટરસેપ્શન સેટિંગ્સ સાચવવામાં નિષ્ફળ: {error}",
-    "ccAliasSectionTitle": "Claude કોડમાં પ્રદર્શિત કરો (claude/…)",
-    "ccAliasSectionHint": "આ પ્રદાતા ના મોડલ્સને claude/&lt;provider&gt;/&lt;model&gt; મિરર આઈડીઓ હેઠળ જાહેરાત આપો જેથી Claude Code ના ગેટવે મોડલ શોધી શકે. ડિફોલ્ટ દ્વારા બંધ - આને સક્રિય કરવાથી તમામ ક્લાયન્ટો માટે કેટલોગ એન્ટ્રીઓ ડબલ થાય છે.",
-    "ccAliasProviderLevelLabel": "પ્રદાતા ડિફોલ્ટ",
-    "ccAliasModelOverridesLabel": "પ્રતિ-મોડલ ઓવરરાઇડ્સ",
-    "ccAliasModelOverrideAriaLabel": "{modelId} માટે ઓવરરાઈડ",
-    "ccAliasStateInherit": "વંશજ",
-    "ccAliasStateOn": "પર",
-    "ccAliasStateOff": "બંધ",
-    "ccAliasAddModelPlaceholder": "મોડલ આઈડી (ઉદાહરણ તરીકે gpt-4o)",
-    "ccAliasAddModelButton": "ઓવરરાઈડ ઉમેરો",
-    "ccAliasLoadError": "ડિસ્કવરી-એલિયસ સેટિંગ્સ લોડ કરવામાં નિષ્ફળ: {error}",
-    "ccAliasSaveError": "ડિસ્કવરી-એલિયસ સેટિંગ સાચવવામાં નિષ્ફળ: {error}",
+    "ccAliasSectionTitle": "Expose in Claude Code (claude/…)",
+    "ccAliasSectionHint": "Advertise this provider's models under claude/&lt;provider&gt;/&lt;model&gt; mirror ids so Claude Code's gateway model discovery can list them. Off by default — enabling this doubles catalog entries for all clients.",
+    "ccAliasProviderLevelLabel": "Provider default",
+    "ccAliasModelOverridesLabel": "Per-model overrides",
+    "ccAliasModelOverrideAriaLabel": "Override for {modelId}",
+    "ccAliasStateInherit": "Inherit",
+    "ccAliasStateOn": "On",
+    "ccAliasStateOff": "Off",
+    "ccAliasAddModelPlaceholder": "Model id (e.g. gpt-4o)",
+    "ccAliasAddModelButton": "Add override",
+    "ccAliasLoadError": "Failed to load discovery-alias settings: {error}",
+    "ccAliasSaveError": "Failed to save discovery-alias setting: {error}",
     "compatUpstreamHeadersLabel": "Extra upstream headers",
     "compatUpstreamHeadersHint": "High-privilege setting — same trust level as editing provider API credentials; only trusted admins should use it. Merged after OmniRoute adds auth from the provider API key. If a custom header uses the same name as an existing one (e.g. Authorization), your value fully replaces the auto-generated header (including the Bearer token) — the upstream only sees what you typed, not the key from settings. Misconfiguration can cause 401 or broken upstream auth. One row per header (e.g. extra Authentication for some gateways). Hover or focus the value to preview. Saves on blur, outside click, or closing this panel.",
     "compatUpstreamHeaderName": "Header name",
@@ -5805,6 +5867,8 @@
     "rateLimitOverridesSection": "રેટ લિમિટ ઓવરરાઇડ્સ",
     "rateLimitOverridesMaxConcurrentHint": "આ કનેક્શન માટે મહત્તમ સમવર્તી વિનંતીઓ ઓવરરાઇડ. એકાઉન્ટ-સ્તરની મર્યાદાને ઓવરરાઇડ કરે છે.",
     "rateLimitOverridesMaxConcurrentLabel": "મહત્તમ સમવર્તી (રેટ લિમિટ)",
+    "rateLimitOverridesMaxWaitMsHint": "__MISSING__:Maximum time (ms) a request may wait for a rate-limit slot before failing. Overrides the global Resilience setting for this connection only.",
+    "rateLimitOverridesMaxWaitMsLabel": "__MISSING__:Max Queue Wait (ms)",
     "rateLimitOverridesMinTimeHint": "વિનંતીઓ વચ્ચેનો ન્યૂનતમ સમય (ms). ડિફૉલ્ટ રેટ લિમિટર વિલંબને ઓવરરાઇડ કરે છે.",
     "rateLimitOverridesMinTimeLabel": "ન્યૂનતમ અંતરાલ (ms)",
     "rateLimitOverridesRpmHint": "આ કનેક્શન માટે પ્રતિ મિનિટ મહત્તમ વિનંતીઓ. પ્રદાતા ડિફૉલ્ટને ઓવરરાઇડ કરે છે.",
@@ -6082,7 +6146,6 @@
       "glmt": "ઉચ્ચ ટોકન બજેટ, વિચારવાની ક્ષમતા સક્ષમ અને લાંબા સમયસમાપ્તિ સાથે પ્રીસેટ GLM પ્રોફાઇલ.",
       "getgoapi": "API કી વડે GoAPI ને કનેક્ટ કરો.",
       "groq": "મફત સ્તર: 30 RPM / 14.4K RPD — કોઈ ક્રેડિટ કાર્ડ નહીં",
-      "hackclub": "ai.hackclub.com પર તમારા Hack Club એકાઉન્ટ વડે સાઇન ઇન કરો.",
       "haiper": "haiper.ai/haiper-api પર API કી મેળવો",
       "heroku": "API કી વડે Heroku AI ને કનેક્ટ કરો.",
       "hcnsec": "api.hcnsec.cn પર API કી મેળવો",
@@ -6191,7 +6254,7 @@
       "galadriel": "API કી વડે Galadriel ને કનેક્ટ કરો.",
       "predibase": "$25 મફત ટ્રાયલ ક્રેડિટ્સ (30-દિવસની માન્યતા)",
       "chenzk": "chenzk.top પર લાઇવ મોડલ કેટલોગ સાથે OpenAI-સુસંગત ગેટવે.",
-      "freepik": "Freepik ના Mystic API વડે છબીઓ જનરેટ કરો.",
+      "magnific": "Freepik ના Mystic API વડે છબીઓ જનરેટ કરો.",
       "freetheai": "પાસથ્રુ મોડલ સપોર્ટ સાથે મફત OpenAI-સુસંગત ગેટવે.",
       "g4f-gemini": "Gemini માટે મફત નો-કી g4f.space રિવર્સ પ્રોક્સી, પ્રતિ મિનિટ 5 વિનંતીઓ સુધી મર્યાદિત.",
       "g4f-groq": "Groq માટે મફત નો-કી g4f.space રિવર્સ પ્રોક્સી, પ્રતિ મિનિટ 5 વિનંતીઓ સુધી મર્યાદિત.",
@@ -6206,6 +6269,7 @@
       "claude": "હાલના OAuth ફ્લો વડે Claude Code ને કનેક્ટ કરો.",
       "cline": "હાલના OAuth ફ્લો વડે Cline ને કનેક્ટ કરો.",
       "cursor": "હાલના OAuth ફ્લો વડે Cursor IDE ને કનેક્ટ કરો.",
+      "cursor-api": "Connect Cursor with a user API key (crsr_...) from cursor.com/dashboard/api; no IDE session needed.",
       "github": "હાલના OAuth ફ્લો વડે GitHub Copilot ને કનેક્ટ કરો.",
       "gitlab-duo": "ai_features + read_user સ્કોપ્સ સાથેની OAuth એપ્લિકેશન. આ OmniRoute ઇન્સ્ટન્સ પર GITLAB_DUO_OAUTH_CLIENT_ID અને વૈકલ્પિક રીતે GITLAB_DUO_OAUTH_CLIENT_SECRET કન્ફિગર કરો.",
       "kilocode": "હાલના OAuth ફ્લો વડે Kilo Code ને કનેક્ટ કરો.",
@@ -6268,6 +6332,15 @@
     "cheaperInferenceSupporterBadge": "ઓપન સોર્સ મિત્ર",
     "cheaperInferenceSupporterTooltip": "Cheaper Inference ઓપન સોર્સ મિત્ર તરીકે OmniRoute ને સમર્થન આપે છે",
     "kimiPartnerLinkNote": "પાર્ટનર લિંક — તમારા માટે કોઈ વધારાના ખર્ચ વિના OmniRoute ને સપોર્ટ કરે છે",
+    "codexQuotaPools": "Codex ક્વોટા પૂલ",
+    "codexPoolAvailable": "ઉપલબ્ધ",
+    "codexPoolPartiallyLimited": "આંશિક રીતે મર્યાદિત",
+    "codexPoolFullyLimited": "સંપૂર્ણ રીતે મર્યાદિત",
+    "codexPoolLimited": "{count} મર્યાદિત",
+    "codexPoolQuotaExhausted": "ક્વોટા સમાપ્ત",
+    "codexPoolCoolingDown": "વિરામ અવધિમાં",
+    "codexPoolUsed": "વપરાયેલ",
+    "codexPoolUntil": "{value} સુધી",
     "anonymousFallbackTitle": "ગૂઢ ફોલબેક",
     "anonymousFallbackDesc": "જ્યારે તમામ કન્ફિગર કરેલ કનેક્શનનો ઉપયોગ થઈ જાય છે (ક્વોટા, ક્રેડિટ, અથવા સમાપ્તી), ત્યારે આ પ્રદાતા ની કીલેસ ટિયરનો તાત્કાલિક ઉપયોગ કરો. અનામિક વિનંતીઓ મોકલવા માટે આ પ્રદાતાને છોડી દેવા માટે બંધ કરો - જ્યારે કીલેસ ટિયર તેમને નકારી દે ત્યારે ભલામણ કરવામાં આવે છે (401).",
     "anonymousFallbackEnabled": "{provider} માટે અજ્ઞાત ફોલબેક સક્રિય છે",
@@ -6344,17 +6417,20 @@
     "searchByModelAria": "મોડલ દ્વારા શોધો",
     "selectSupportedEndpoint": "કમથી કમ એક સમર્થિત અંતિમ બિંદુ પસંદ કરો",
     "antigravityClientProfileHarness": "Harness / CLI",
-    "autoFetchModels": "આપોઆપ અપસ્ટ્રીમ મોડલ્સ લાવો",
-    "autoFetchModelsEnabled": "અપસ્ટ્રીમ મોડલ આપોઆપ મેળવવું સક્રિય છે",
-    "autoFetchModelsDisabled": "અપસ્ટ્રીમ મોડલ આપોઆપ મેળવનાર બંધ છે",
-    "autoFetchModelsTooltip": "જરૂર પડ્યે અપસ્ટ્રીમ મોડલ્સને લાવવા અને કેશ કરવા",
-    "autoFetchModelsToggleFailed": "અપસ્ટ્રીમ મોડલ ઓટો-ફેચ ટોગલ કરવામાં નિષ્ફળ થયું",
-    "overridesUpstreamModel": "અપસ્ટ્રીમને ઓવરરાઈડ કરે છે",
-    "autoFetchModelsPartialFailure": "કેટલાક કનેક્શન અપડેટ થયા, પરંતુ ઉપરવાળા મોડેલનું ઓટો-ફેચ દરેક જગ્યાએ બદલાયું નથી",
-    "overridesUpstreamModelHint": "તમારા સેટિંગ્સ આ અપસ્ટ્રીમ મોડેલને ઓવરરાઈડ કરે છે",
-    "resetToUpstreamDefaultsSuccess": "ઉપરવાળી મોડલ ડિફોલ્ટ્સ પુનઃસ્થાપિત કરવામાં આવ્યા",
-    "resetToUpstreamDefaults": "અપસ્ટ્રીમ ડિફોલ્ટ્સ પુનઃસ્થાપિત કરો",
-    "resetToUpstreamDefaultsFailed": "અપસ્ટ્રીમ મોડલ ડિફોલ્ટ્સ પુનઃસ્થાપિત કરવામાં નિષ્ફળ થયું"
+    "harImportButtonLabel": "Import .har file",
+    "harImportButtonBusy": "Importing…",
+    "harImportButtonHint": "Export from DevTools Network tab after sending at least one chat message.",
+    "harImportStatusValid": "Imported — valid for ~{minutes}m.",
+    "harImportStatusExpiringSoon": "Imported — valid for only ~{minutes}m more.",
+    "harImportStatusExpired": "Imported, but this token already expired ({minutes}m ago) — export a fresh HAR.",
+    "harImportStatusUnknownExpiry": "Imported. Couldn't read its expiry.",
+    "harImportErrorNotJson": "That file isn't valid JSON — is it really a .har export?",
+    "harImportErrorNoEntries": "This HAR has no network entries recorded.",
+    "harImportErrorNoChathubUrl": "No Copilot chat connection found in this HAR. Send at least one chat message in m365.cloud.microsoft before exporting.",
+    "harImportErrorUnparsableUrl": "Found the chat connection, but couldn't read its URL.",
+    "harImportErrorMissingFields": "Found the chat connection, but the token was missing from it.",
+    "harImportErrorReadFailed": "Couldn't read that file.",
+    "harImportErrorUnknown": "Couldn't extract a credential from that HAR file."
   },
   "settings": {
     "title": "Settings",
@@ -6573,12 +6649,12 @@
     "autoDisableDescription": "Permanently mark provider connections as deactivated if they return specific terminal ban signals (e.g. HTTP 403 'verify your account'). This removes them from the combo rotation.",
     "autoDisableThreshold": "Ban Threshold",
     "autoDisableThresholdDesc": "Consecutive ban signals required before permanent deactivation.",
-    "autoDisableBannedScope": "__MISSING__:Apply auto-disable to",
-    "autoDisableBannedScopeDesc": "__MISSING__:Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
-    "autoDisableBannedScopeAll": "__MISSING__:All connections",
-    "autoDisableBannedScopeAllDesc": "__MISSING__:Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
-    "autoDisableBannedScopeSubscription": "__MISSING__:Login / subscription accounts only",
-    "autoDisableBannedScopeSubscriptionDesc": "__MISSING__:Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
+    "autoDisableBannedScope": "Apply auto-disable to",
+    "autoDisableBannedScopeDesc": "Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
+    "autoDisableBannedScopeAll": "All connections",
+    "autoDisableBannedScopeAllDesc": "Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
+    "autoDisableBannedScopeSubscription": "Login / subscription accounts only",
+    "autoDisableBannedScopeSubscriptionDesc": "Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
     "customBannedSignals": "પ્રતિબંધિત કીવર્ડ્સ",
     "customBannedSignalsDesc": "વધારાના કીવર્ડ્સ જે કાયમી એકાઉન્ટ પ્રતિબંધ શોધને ટ્રિગર કરે છે. બિલ્ટ-ઇન કીવર્ડ્સ હંમેશા લાગુ પડે છે.",
     "customBannedSignalsPlaceholder": "દા.ત. api key revoked",
@@ -7186,6 +7262,7 @@
     "configured": "કન્ફિગર કરેલ",
     "none": "કોઈ નહીં",
     "modelOverrideValuePlaceholder": "સંખ્યાત્મક મૂલ્ય",
+    "modelOverrideReasoningEffortsPlaceholder": "English comma-separated, e.g. low, medium, high",
     "addKeyValue": "કી વેલ્યુ ઉમેરો",
     "noModelOverrides": "આ મોડેલ માટે કોઈ ઓવરરાઇડ્સ કન્ફિગર કરેલ નથી.",
     "modelOverrideLoadFailed": "મોડેલ ઓવરરાઇડ્સ લોડ કરવામાં નિષ્ફળ",
@@ -7757,6 +7834,10 @@
         "label": "Ponytail (lazy senior dev)",
         "description": "Lazy senior-dev discipline: climb the YAGNI ladder, fix root cause, smallest working diff."
       },
+      "i-have-adhd": {
+        "label": "I have ADHD (action-first)",
+        "description": "Action-first output: next action leads, steps numbered, one concrete next step, no preamble."
+      },
       "terse-cjk": {
         "label": "સંક્ષિપ્ત CJK (文言)",
         "description": "ક્લાસિકલ-ચાઇનીઝ અલ્ટ્રા-સંક્ષિપ્ત શૈલી (ફક્ત ચાઇનીઝ માટે ઉપલબ્ધ)."
@@ -8037,6 +8118,10 @@
     "disableSessionStickinessDesc": "રાઉન્ડ-રોબિન અને રેન્ડમ કોમ્બોઝ પ્રથમ-સંદેશ હેશ દ્વારા સમગ્ર વાતચીતને એક કનેક્શન પર પિન કરવાને બદલે દરેક વિનંતી પર અલગ કનેક્શન પર ફરે છે. મલ્ટિ-ટર્ન ચેટ્સ માટે પ્રોમ્પ્ટ-કેશ હિટ્સ સાચવવા માટે આને બંધ રાખો. પ્રતિ-કોમ્બો ઓવરરાઇડ્સ અગ્રતા લે છે.",
     "promptCacheAffinity": "Prompt-cache locality routing",
     "promptCacheAffinityDesc": "Prefer the same provider account for matching prompt-cache keys while preserving health and quota failover.",
+    "reasoningTokenBuffer": "Reasoning token buffer",
+    "reasoningTokenBufferDesc": "Allow combo routing to add max_tokens headroom only for known reasoning models when the full buffer fits inside a known output cap.",
+    "zeroLatencyOptimizations": "Zero-latency optimizations",
+    "zeroLatencyOptimizationsDesc": "Opt in to hedging, predictive TTFT skips, and proactive fallback compression. Leave off to prevent these latency features from racing targets or compressing fallback requests.",
     "credentialRedaction": "ઓળખપત્ર રેડેક્શન",
     "credentialRedactionDesc": "પ્રદાતાઓ તરફ મોકલવામાં આવેલા સંદર્ભમાંથી અને પ્રતિસાદોમાંથી API કી, ટોકન્સ અને સિક્રેટ્સને રેડેક્ટ કરો.",
     "enableCredentialRedaction": "ઓળખપત્ર રેડેક્શન સક્ષમ કરો",
@@ -8192,7 +8277,19 @@
     "cliproxyapiHealth": "આરોગ્ય",
     "cliproxyapiPort": "પોર્ટ",
     "qdrantHost": "હોસ્ટ",
-    "qdrantCollection": "સંગ્રહ"
+    "qdrantCollection": "સંગ્રહ",
+    "presetAll": "All",
+    "presetAllDesc": "Show everything",
+    "presetEssentials": "Essentials",
+    "presetEssentialsDesc": "Beginner path - Advanced tools stay searchable",
+    "presetMinimal": "Minimal",
+    "presetMinimalDesc": "Core pages only",
+    "presetDeveloper": "Developer",
+    "presetDeveloperDesc": "Dev & proxy tools",
+    "presetAdmin": "Admin",
+    "presetAdminDesc": "Monitoring & audit",
+    "settingsSidebarTitle": "Sidebar Customization",
+    "settingsSidebarDesc": "Choose which sidebar items to show. Essentials keeps Advanced tools searchable."
   },
   "contextRtk": {
     "title": "RTK Engine",
@@ -8597,6 +8694,27 @@
     },
     "enableTitle": "એન્જિન સક્ષમ કરો",
     "enableDescription": "સ્ટેકમાં છેલ્લે ચાલે છે (RTK/Caveman લખાણ સાફ કરે તે પછી, OmniGlyph બાકીના ભાગને છબીઓમાં રૂપાંતરિત કરે છે) અને <code>omniglyph</code> મોડ દ્વારા સ્વતંત્ર રીતે પણ ચાલે છે. આ એક પૂર્વાવલોકન છે અને એન્ડ-ટુ-એન્ડ માન્યતા પૂર્ણ ન થાય ત્યાં સુધી ડિફૉલ્ટ રૂપે બંધ રહે છે.",
+    "profileTitle": "Compression profile",
+    "profileDescription": "The profile is a ceiling, not a floor: a stricter profile cannot be reopened by a per-step override. Measured on this codebase: with coding-safe or balanced, a session that has not accumulated history yet compresses nothing, because both raise the minimum-characters threshold and keep the system prompt, tool schemas and tool results native.",
+    "profiles": {
+      "aggressive": {
+        "label": "Aggressive (default)",
+        "description": "The policy the published receipts measured. Images the system prompt, tool documentation and dense history."
+      },
+      "balanced": {
+        "label": "Balanced",
+        "description": "Keeps live state native and protects the last 8 turns; only collapses older closed history."
+      },
+      "codingSafe": {
+        "label": "Coding-safe",
+        "description": "Keeps authority, tool schemas and live tool output native, protecting the last 12 turns. Compresses nothing until the session accumulates history."
+      },
+      "passthrough": {
+        "label": "Passthrough",
+        "description": "Routes without transforming. The engine is skipped and the request is forwarded untouched."
+      }
+    },
+    "profileAria": "Select the OmniGlyph compression profile",
     "saved": "સાચવ્યું.",
     "saveFailed": "સાચવી શકાયું નથી.",
     "enableAria": "OmniGlyph એન્જિન સક્ષમ કરો",
@@ -9066,6 +9184,16 @@
     "grokAutoTopUpMax": "મહત્તમ",
     "grokAutoTopUpMonth": "મહિનો",
     "grokAdditionalCredits": "વધુ ક્રેડિટ",
+    "kimiExtraUsageCredits": "Extra Usage Credits",
+    "kimiExtraUsage": "Extra Usage",
+    "kimiExtraUsageEnabled": "Enabled",
+    "kimiExtraUsageDisabled": "Disabled",
+    "kimiExtraUsageFrozen": "Frozen",
+    "kimiExtraUsageUnavailable": "Unavailable",
+    "kimiMonthlyUsed": "Used this month",
+    "kimiMonthlyLimit": "Monthly limit",
+    "kimiMonthlyLimitUnlimited": "Unlimited",
+    "kimiAdditionalCredits": "Additional Credits",
     "loggerTab": "Logger",
     "proxyTab": "Proxy",
     "budgetManagement": "Budget Management",
@@ -10564,11 +10692,23 @@
   },
   "cursorAuthModal": {
     "title": "Connect Cursor IDE",
+    "tabLogin": "Login with Cursor",
+    "tabImport": "Import token",
+    "loginDescription": "Opens Cursor's browser login. Works in Docker — approve in your host browser, then return here.",
+    "loginWithCursor": "Login with Cursor",
+    "startingLogin": "Starting…",
+    "waitingApproval": "Waiting for Cursor login approval…",
+    "openUrlHint": "If the browser did not open:",
+    "openLoginLink": "Open login page",
+    "cancelLogin": "Cancel login",
     "autoDetecting": "Auto-detecting tokens...",
     "readingFromCursor": "Reading from Cursor IDE or cursor-agent",
     "tokensAutoDetected": "Tokens successfully auto-detected from Cursor IDE!",
     "cursorNotDetected": "Cursor IDE not detected. Please manually paste your token.",
+    "dockerImportHint": "Running in Docker? Prefer Login with Cursor. IDE auto-import and cursor-agent are usually unavailable inside the container. See docs/providers/CURSOR-DOCKER.md.",
     "accessToken": "Access Token",
+    "refreshToken": "Refresh Token",
+    "refreshTokenPlaceholder": "Optional — enables automatic token refresh",
     "required": "*",
     "accessTokenPlaceholder": "Access token will auto-populate...",
     "machineId": "Machine ID",
@@ -10580,7 +10720,10 @@
     "errorAutoDetect": "Unable to auto-detect tokens",
     "errorAutoDetectFailed": "Auto-detect tokens failed",
     "errorEnterToken": "Please enter access token",
-    "errorImportFailed": "Import failed"
+    "errorImportFailed": "Import failed",
+    "errorLoginStart": "Failed to start Cursor login",
+    "errorLoginPoll": "Cursor login failed",
+    "errorLoginTimeout": "Cursor login timed out — try again"
   },
   "pricingModal": {
     "title": "Pricing Configuration",
@@ -11070,7 +11213,8 @@
       "compressed": "સંકોચન",
       "tps": "TPS",
       "duration": "Duration",
-      "time": "Time"
+      "time": "Time",
+      "conversation": "Conversation"
     },
     "loadingLogs": "Loading logs...",
     "noLogs": "No logs yet. Make some API calls to see them here.",
@@ -11932,7 +12076,8 @@
         "title": "ACP એજન્ટ્સ",
         "phrase": "CLIs જે OmniRoute એક્ઝિક્યુશન બેકએન્ડ તરીકે શરૂ કરે છે (રિવર્સ ફ્લો)",
         "flow": "ક્લાયન્ટ → OmniRoute → spawn CLI (stdio/ACP) → પ્રતિસાદ",
-        "seeOther": "જુઓ →"
+        "seeOther": "જુઓ →",
+        "warning": "Most users can ignore this — use only when an integration requires it."
       }
     },
     "comparison": {
@@ -12122,7 +12267,7 @@
       },
       "omni-webhooks": {
         "name": "વેબહૂક્સ",
-        "description": "વેબહૂક એન્ડપોઇન્ટ્સ રજીસ્ટર કરો, સૂચિબદ્ધ કરો, ટેસ્ટ કરો અને દૂર કરો. ઇવેન્ટ સબ્સ્ક્રિપ્શન્સ (request.completed, provider.error, budget.exceeded, વગેરે) કન્ફિગર કરો અને ડિલિવરી પુનઃપ્રયાસો મેનેજ કરો."
+        "description": "__MISSING__:Register, list, test, and remove webhook endpoints. Configure event subscriptions (request.completed, request.failed, quota.exceeded, etc.) and manage delivery retries."
       },
       "omni-mcp": {
         "name": "MCP સર્વર",
@@ -12463,9 +12608,9 @@
     },
     "badges": {
       "radar-supporter": {
-        "name": "__MISSING__:Radar Supporter",
-        "description": "__MISSING__:Verified a live OmniRoute Radar supporter feed",
-        "criteria": "__MISSING__:Verify a signed live Radar supporter feed."
+        "name": "Radar Supporter",
+        "description": "Verified a live OmniRoute Radar supporter feed",
+        "criteria": "Verify a signed live Radar supporter feed."
       },
       "first-token": {
         "name": "પ્રથમ ટોકન",
@@ -12756,6 +12901,10 @@
       },
       "SKILLS_SANDBOX_NETWORK_ENABLED": {
         "description": "સ્કિલ્સ સેન્ડબોક્સમાં નેટવર્ક એક્સેસ સક્ષમ કરો."
+      },
+      "DISABLE_CONTEXT_WINDOW_CHECKS": {
+        "label": "Disable Context Window Checks",
+        "description": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active."
       }
     }
   },
@@ -13188,7 +13337,7 @@
     "localStateSaveFailed": "Failed to save local Radar settings",
     "guidedCombos": "Guided combos",
     "offers": "Offers",
-    "intel": "__MISSING__:Intel"
+    "intel": "Intel"
   },
   "radarCombosPage": {
     "title": "Radar guided combos",
@@ -13328,6 +13477,13 @@
         "modelLockouts": "મોડેલ લોકઆઉટ",
         "count": "કનેક્શન ગણતરી"
       }
+    },
+    "reassuranceTitle": "Your connections recover automatically",
+    "reassuranceDetail": "Usually no action is needed. OmniRoute temporarily rests a connection after failures, then safely tries it again.",
+    "plainStates": {
+      "healthy": "Requests can be sent",
+      "coolingDown": "Trying again soon",
+      "lockedOut": "Needs your attention"
     }
   },
   "featureFlagCapabilityFilterEnabledDescription": "જ્યારે લક્ષ્ય મોડેલમાં જરૂરી ક્ષમતાઓ (દૃષ્ટિ, સાધનો, રચિત આઉટપુટ, સંદર્ભ વિન્ડો) નથી ત્યારે વિતરણ પહેલાં વિનંતીઓને નકારી નાખો. કોમ્બો-લેયર સુસંગતતા ફિલ્ટરને બાયપાસ કરતી સીધી એકલ-પ્રદાતા વિનંતિઓને સુરક્ષિત કરે છે.",
@@ -13728,36 +13884,36 @@
     "trialDays": "{days, plural, one {# day} other {# days}}"
   },
   "radarIntelPage": {
-    "title": "__MISSING__:Radar Intel",
-    "subtitle": "__MISSING__:Radar-owned ELO rankings and factual catalog movement.",
-    "backToRadar": "__MISSING__:Back to Radar",
-    "loading": "__MISSING__:Loading Intel...",
-    "refresh": "__MISSING__:Refresh Intel",
-    "syncing": "__MISSING__:Refreshing...",
-    "loadFailed": "__MISSING__:We could not refresh Intel. The last verified local cache is kept.",
-    "empty": "__MISSING__:No verified Intel snapshot is available yet.",
-    "supporterBadge": "__MISSING__:Radar Supporter",
-    "methodology": "__MISSING__:Methodology",
-    "eloMethod": "__MISSING__:ELO, initial {initial}, K={factor}",
-    "freshness": "__MISSING__:Catalog freshness",
-    "ageDays": "__MISSING__:{days, plural, one {# day old} other {# days old}}",
-    "trend": "__MISSING__:Catalog trend",
-    "modelDelta": "__MISSING__:{current} models, +{added} / -{removed}",
-    "ranking": "__MISSING__:Model ranking",
-    "noRankings": "__MISSING__:No confirmed comparisons are available yet.",
-    "model": "__MISSING__:Model",
-    "category": "__MISSING__:Category",
-    "rating": "__MISSING__:Rating",
-    "matches": "__MISSING__:Matches",
+    "title": "Radar Intel",
+    "subtitle": "Radar-owned ELO rankings and factual catalog movement.",
+    "backToRadar": "Back to Radar",
+    "loading": "Loading Intel...",
+    "refresh": "Refresh Intel",
+    "syncing": "Refreshing...",
+    "loadFailed": "We could not refresh Intel. The last verified local cache is kept.",
+    "empty": "No verified Intel snapshot is available yet.",
+    "supporterBadge": "Radar Supporter",
+    "methodology": "Methodology",
+    "eloMethod": "ELO, initial {initial}, K={factor}",
+    "freshness": "Catalog freshness",
+    "ageDays": "{days, plural, one {# day old} other {# days old}}",
+    "trend": "Catalog trend",
+    "modelDelta": "{current} models, +{added} / -{removed}",
+    "ranking": "Model ranking",
+    "noRankings": "No confirmed comparisons are available yet.",
+    "model": "Model",
+    "category": "Category",
+    "rating": "Rating",
+    "matches": "Matches",
     "freshnessValues": {
-      "fresh": "__MISSING__:Fresh",
-      "aging": "__MISSING__:Aging",
-      "stale": "__MISSING__:Stale"
+      "fresh": "Fresh",
+      "aging": "Aging",
+      "stale": "Stale"
     },
     "trendValues": {
-      "growing": "__MISSING__:Growing",
-      "stable": "__MISSING__:Stable",
-      "shrinking": "__MISSING__:Shrinking"
+      "growing": "Growing",
+      "stable": "Stable",
+      "shrinking": "Shrinking"
     }
   },
   "capabilityFilter": {
@@ -13765,5 +13921,13 @@
     "toolsMismatch": "પ્રદાતા ટૂલ કોલિંગને સપોર્ટ કરતો નથી",
     "structuredOutputMismatch": "પ્રદાતા સંરચિત આઉટપુટને સમર્થન આપતો નથી",
     "contextWindowMismatch": "વિનંતી પ્રદાતા સંદર્ભ વિન્ડોને પાર કરે છે"
+  },
+  "featureFlagDisableContextWindowChecksDescription": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active.",
+  "cheaperInferenceSponsorBanner": {
+    "title": "Cheaper Inference is an OmniRoute Open Source Friend",
+    "description": "A cost-ranked gateway reselling dozens of frontier models behind one OpenAI-compatible endpoint — routing each request to the cheapest eligible provider, never above list price.",
+    "cta": "Get an API Key",
+    "partnerLinkNote": "Partner link",
+    "dismissAriaLabel": "Dismiss"
   }
 }

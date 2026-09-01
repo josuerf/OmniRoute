@@ -66,6 +66,15 @@ as the default reflex (minutes, reversible); `npm unpublish` only inside the 72h
 window and never as the first move. Docker: never rewrite a version tag — rollback is
 repointing `latest` to the last good digest.
 
+**Docker Hub `latest` (required on every stable SemVer publish):** the
+`docker-publish` workflow must tag **both** `X.Y.Z` and, when
+`should-promote-latest.sh` agrees this is the highest stable SemVer, `:latest`
+with the **same digest**. After the job: Hub `latest` digest equals the new
+SemVer digest and `last_updated` moved. Do not leave `:latest` on an older
+build while release notes talk about fixes that only exist on git. Compose
+quickstarts use `:latest`; GitOps should keep pinning `X.Y.Z`. See
+[Docker release channels](../guides/DOCKER_GUIDE.md#release-channels) and #10317.
+
 ## Hotfix Fast-Lane (label `hotfix`)
 
 A PR labeled `hotfix` skips the heavy CI matrix (9-shard E2E, coverage ratchet,
@@ -342,14 +351,12 @@ Before shipping any v3.8.x release, verify these additional items:
 - [ ] `npm install -g omniroute@<this-version>` runs postinstall without fatal exit
 - [ ] Update path keeps optional deps: `omniroute update --apply` and the auto-updater
       run `npm install -g … --include=optional` so `optionalDependencies` (better-sqlite3,
-      keytar, tls-client, and the llmlingua SLM stack: `@atjsh/llmlingua-2`,
-      `@huggingface/transformers@3.5.2`, `@tensorflow/tfjs`, `js-tiktoken`) survive an update.
-      `@huggingface/transformers` stays optional so its `onnxruntime-node` CUDA provider postinstall
-      cannot abort installation on CUDA 11 hosts. The ultra `modelPath` SLM tier also needs the
+      keytar, tls-client, and the llmlingua SLM stack: `@atjsh/llmlingua-2@2.0.5`,
+      `js-tiktoken`) survive an update. The ultra `modelPath` SLM tier also needs the
       tinybert model, auto-downloaded to `${DATA_DIR}/models/llmlingua` on first use. Postinstall
       (`scripts/build/colocateOptionals.mjs`) then co-locates the SLM optional closure into
-      `dist/node_modules` so the worker resolves a SINGLE `@huggingface/transformers` 3.5.2
-      optional instance — the standalone trace bundles only transformers, not the dynamically-imported
+      `dist/node_modules` so the worker resolves a SINGLE `@huggingface/transformers` ^4.2.0
+      instance — the standalone trace bundles only transformers, not the dynamically-imported
       optionals, so without this the worker would load llmlingua-2 against the root's transformers
       and the SLM tier would silently fail-open.
 - [ ] `omniroute status` works with no `.env` (CLI token path, loopback only)

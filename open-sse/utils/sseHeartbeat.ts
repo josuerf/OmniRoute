@@ -5,7 +5,15 @@
  * @changes
  * - [2026-07-28] [Cursor Grok 4.5] - Brand-neutral default OpenAI keepalive id/model
  */
+const HEARTBEAT_ENCODER = new TextEncoder();
+const OPENAI_RESPONSES_IN_PROGRESS_PAYLOAD = 'data: {"type":"response.in_progress"}\n\n';
+
 export const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+
+/** Shared Responses API heartbeat frame for early and mid-stream keepalives. */
+export const OPENAI_RESPONSES_IN_PROGRESS_FRAME = HEARTBEAT_ENCODER.encode(
+  OPENAI_RESPONSES_IN_PROGRESS_PAYLOAD
+);
 
 export const HEARTBEAT_SHAPES = {
   COMMENT: "comment",
@@ -41,7 +49,7 @@ function buildHeartbeatPayload(
     case HEARTBEAT_SHAPES.ANTHROPIC_PING:
       return 'event: ping\ndata: {"type":"ping"}\n\n';
     case HEARTBEAT_SHAPES.OPENAI_RESPONSES_IN_PROGRESS:
-      return 'data: {"type":"response.in_progress"}\n\n';
+      return OPENAI_RESPONSES_IN_PROGRESS_PAYLOAD;
     case HEARTBEAT_SHAPES.OPENAI_CHUNK: {
       const payload = {
         id: opts.chunkId ?? "chatcmpl-keepalive",
@@ -65,8 +73,6 @@ type SseHeartbeatTransformOptions = {
   chunkId?: string;
   chunkModel?: string;
 };
-
-const HEARTBEAT_ENCODER = new TextEncoder();
 
 /**
  * Whether OmniRoute may emit SSE `:` comment lines (e.g. the `: keepalive` heartbeat).

@@ -32,6 +32,12 @@ export function buildRecoveryHint(
         next_step:
           "No active accounts are connected for this combo. Open /dashboard/providers, reconnect at least one, then retry.",
       };
+    case "quota_exhausted":
+      return {
+        action: "switch-combo",
+        next_step:
+          "Every target in this combo failed with a quota or account-balance exhaustion error. Top up the account/wallet or switch to a combo/provider with available quota — this will not recover on retry.",
+      };
     case "all_models_failed":
       return {
         action: "try-auto",

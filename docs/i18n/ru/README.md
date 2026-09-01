@@ -298,7 +298,7 @@ Combo: "always-on"                         strategy: priority
 <b>＋ также</b> · Aider · Goose · Hermes · Kiro · Antigravity · Windsurf · AMP · <b>любой OpenAI-compatible tool</b>
 </div>
 
-<sub>📖 Setup 33 tools → [`docs/reference/CLI-TOOLS.md`](../../reference/CLI-TOOLS.md) · OpenCode plugin → [`@omniroute/opencode-provider`](https://www.npmjs.com/package/@omniroute/opencode-provider)</sub>
+<sub>📖 Setup 34 tools → [`docs/reference/CLI-TOOLS.md`](../../reference/CLI-TOOLS.md) · OpenCode plugin → [`@omniroute/opencode-provider`](https://www.npmjs.com/package/@omniroute/opencode-provider)</sub>
 
 <br/>
 

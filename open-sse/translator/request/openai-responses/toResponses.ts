@@ -4,6 +4,8 @@
  * Extracted verbatim from openai-responses.ts. Registration stays in the host.
  */
 import { isOpenAIResponsesStoreEnabled } from "@/lib/providers/requestDefaults";
+import { isInternalReasoningPlaceholder } from "../../../utils/reasoningPlaceholder.ts";
+import { getReadableReasoningValue } from "../../../utils/reasoningFields.ts";
 import { generateToolCallId } from "../../helpers/toolCallHelper.ts";
 import {
   JsonRecord,
@@ -192,12 +194,26 @@ export function openaiToOpenAIResponsesRequest(
 
     // Convert assistant messages
     if (role === "assistant") {
-      // Skip reasoning_content — OpenAI Responses API requires server-generated
-      // rs_* IDs for reasoning items. Synthesizing client-side IDs (e.g. reasoning_N)
-      // causes 400 errors from Responses-compatible upstreams. (#224)
+      const reasoning = getReadableReasoningValue(msg).trim();
+      if (reasoning && !isInternalReasoningPlaceholder(reasoning)) {
+        // Compatibility is decided before protocol translation; this adapter
+        // only encodes the surviving portable plaintext state.
+        input.push({
+          type: "reasoning",
+          content: [{ type: "reasoning_text", text: reasoning }],
+          // Strict Responses-API upstreams (e.g. opencode/zen) require `summary`
+          // on every `input[]` item of type "reasoning", plaintext or opaque —
+          // omitting it rejects the request with `input[N] missing required
+          // field summary`. This item is always freshly built from a chat
+          // client's plaintext reasoning, so there is no source summary to
+          // preserve; default to an empty array like the replay sanitizer does
+          // for opaque items in reasoningInputPolicy.ts (#11108).
+          summary: [],
+        });
+      }
 
-      // Skip thinking blocks in array content — same rs_* ID constraint applies
-
+      // Thinking blocks remain display-only here. They do not prove that the
+      // selected target accepts their provider-specific replay representation.
       // Build assistant output content
       const outputContent: unknown[] = [];
       if (typeof msg.content === "string" && msg.content) {

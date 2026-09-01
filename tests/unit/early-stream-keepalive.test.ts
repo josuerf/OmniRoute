@@ -3,7 +3,7 @@
  * @description Unit tests for withEarlyStreamKeepalive (fast/slow path, frames, abort).
  *
  * @changes
- * - [2026-07-28] [Cursor Grok 4.5] - Assert brand-neutral startup thinking text (✨)
+ * - [2026-08-16] - Assert Responses startup and recurring keepalives are neutral JSON events
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -13,12 +13,11 @@ import {
   ANTHROPIC_PING_FRAME,
   OPENAI_KEEPALIVE_FRAME,
   OPENAI_STARTUP_FRAME,
-  RESPONSES_STARTUP_THINKING_FRAME,
   OPENAI_CHAT_ERROR_FRAME,
   OPENAI_RESPONSES_ERROR_FRAME,
 } from "../../open-sse/utils/earlyStreamKeepalive.ts";
-import { assertResponsesOutputIndexLifecycle } from "../helpers/assertResponsesOutputIndexLifecycle.ts";
 import { takeEarlyKeepaliveBytes } from "../../open-sse/utils/earlyKeepaliveByteBuffer.ts";
+import { OPENAI_RESPONSES_IN_PROGRESS_FRAME } from "../../open-sse/utils/sseHeartbeat.ts";
 
 async function readAll(response: Response): Promise<string> {
   const reader = response.body!.getReader();
@@ -175,131 +174,46 @@ test("startupFrame defaults to keepaliveFrame when omitted (no behavior change)"
   );
 });
 
-// #7360 follow-up round 2: OpenClaw calls via /v1/responses (Responses API
-// format), which only had the generic bare-comment keepalive — a live
-// incident showed it disconnecting after ~56s waiting on a slow gemma-4
-// response. RESPONSES_STARTUP_THINKING_FRAME gives Responses-API clients the
-// same real-content keepalive OpenAI chat/completions already got, as a
-// self-contained (opened AND closed within this one frame) synthetic
-// reasoning item — it never claims a response_id, so it can't collide with
-// the real response's own independent response.created lifecycle that follows.
-test("RESPONSES_STARTUP_THINKING_FRAME is a self-closed synthetic reasoning item with the expected text", () => {
-  const decoded = new TextDecoder().decode(RESPONSES_STARTUP_THINKING_FRAME);
-  const events = decoded
-    .split("\n\n")
-    .filter(Boolean)
-    .map((frame) => {
-      const [eventLine, dataLine] = frame.split("\n");
-      return {
-        event: eventLine.replace(/^event: /, ""),
-        data: JSON.parse(dataLine.replace(/^data: /, "")),
-      };
-    });
-
-  assert.deepEqual(
-    events.map((e) => e.event),
-    [
-      "response.output_item.added",
-      "response.reasoning_summary_part.added",
-      "response.reasoning_summary_text.delta",
-      "response.reasoning_summary_part.done",
-      "response.output_item.done",
-    ]
-  );
-
-  const [added, partAdded, delta, partDone, itemDone] = events;
-  assert.equal(added.data.item.type, "reasoning");
-  const itemId = added.data.item.id;
-  assert.ok(itemId, "reasoning item must have an id");
-
-  assert.equal(partAdded.data.item_id, itemId);
-  assert.equal(delta.data.item_id, itemId);
-  assert.equal(delta.data.delta, "✨");
-  assert.equal(partDone.data.item_id, itemId);
-  assert.equal(partDone.data.part.text, "✨");
-
-  // Regression for the live 2026-08-13 incident (OpenClaw issue #123342):
-  // reasoning_summary_part.done only closes the nested summary part, not the
-  // output item itself. Without a matching response.output_item.done here,
-  // a client tracking open items by output_index still sees this synthetic
-  // item open at index 0 when the real upstream response later reuses that
-  // same index for its own response.output_item.added, and throws a
-  // collision ("Responses stream reused active output index 0").
-  assert.equal(itemDone.data.output_index, added.data.output_index);
-  assert.equal(itemDone.data.item.id, itemId);
-  assert.equal(itemDone.data.item.type, "reasoning");
-
-  // General-purpose form of the same check: this frame alone must be a fully
-  // self-closed lifecycle (no output_item left open at the end).
-  assertResponsesOutputIndexLifecycle(events);
-});
-
-test("RESPONSES_STARTUP_THINKING_FRAME does not collide when the real upstream response reuses output_index 0", () => {
-  // Reproduces the actual live failure shape (OpenClaw issue #123342): the
-  // keepalive placeholder fires, then the real upstream response starts its
-  // own independent response.created lifecycle and reuses output_index 0 for
-  // its own real reasoning item. Concatenating the two and replaying them
-  // through the same output_index-lifecycle contract a real client enforces
-  // is what actually would have caught the missing output_item.done — the
-  // frame-shape-only test above could pass while this still failed.
-  const decoded = new TextDecoder().decode(RESPONSES_STARTUP_THINKING_FRAME);
-  const keepaliveEvents = decoded
-    .split("\n\n")
-    .filter(Boolean)
-    .map((frame) => {
-      const [eventLine, dataLine] = frame.split("\n");
-      return {
-        event: eventLine.replace(/^event: /, ""),
-        data: JSON.parse(dataLine.replace(/^data: /, "")),
-      };
-    });
-
-  const realResponseEvents = [
-    { event: "response.created", data: { type: "response.created" } },
-    { event: "response.in_progress", data: { type: "response.in_progress" } },
-    {
-      event: "response.output_item.added",
-      data: {
-        type: "response.output_item.added",
-        output_index: 0,
-        item: { id: "rs_real", type: "reasoning", summary: [] },
-      },
-    },
-    {
-      event: "response.output_item.done",
-      data: {
-        type: "response.output_item.done",
-        output_index: 0,
-        item: { id: "rs_real", type: "reasoning", summary: [] },
-      },
-    },
-  ];
-
-  assert.doesNotThrow(() =>
-    assertResponsesOutputIndexLifecycle([...keepaliveEvents, ...realResponseEvents])
-  );
-});
-
-test("slow handler emits the Responses API startup frame before the real body", async () => {
+// Responses clients need both frequent raw bytes and occasional parsed events while
+// upstream readiness is pending. Keep those cadences separate: comments cover the
+// short idle-read timeout, while sparse response.in_progress events reset parsers that
+// ignore comments without flooding the application event stream.
+test("slow Responses handler uses comments plus sparse in_progress events", async () => {
   const slow = new Promise<Response>((resolve) => {
-    setTimeout(
-      () => resolve(sseResponse("event: response.created\ndata: {}\n\ndata: [DONE]\n\n")),
-      120
-    );
+    setTimeout(() => resolve(sseResponse('data: {"type":"response.completed"}\n\n')), 900);
   });
 
   const result = await withEarlyStreamKeepalive(slow, {
-    thresholdMs: 25,
-    intervalMs: 20,
-    startupFrame: RESPONSES_STARTUP_THINKING_FRAME,
+    thresholdMs: 20,
+    intervalMs: 250,
+    startupFrame: OPENAI_RESPONSES_IN_PROGRESS_FRAME,
+    applicationKeepalive: {
+      frame: OPENAI_RESPONSES_IN_PROGRESS_FRAME,
+      intervalMs: 500,
+    },
   });
 
   const body = await readAll(result);
-  assert.match(body, /event: response\.output_item\.added/);
-  assert.match(body, /✨/);
-  assert.match(body, /event: response\.reasoning_summary_part\.done/);
-  assert.match(body, /event: response\.created/, "should forward the real upstream body");
-  assert.match(body, /data: \[DONE\]/);
+  const frames = body.split("\n\n").filter(Boolean);
+  const earlyFrames = frames.slice(0, -1);
+  assert.equal(earlyFrames[0], 'data: {"type":"response.in_progress"}');
+  assert.ok(
+    earlyFrames.some((frame) => frame === ": keepalive"),
+    "transport ticks must remain lightweight SSE comments"
+  );
+  const applicationFrames = earlyFrames.filter((frame) => frame.startsWith("data: "));
+  assert.ok(applicationFrames.length >= 2, "expected startup and sparse application keepalives");
+  for (const frame of applicationFrames) {
+    assert.deepEqual(JSON.parse(frame.slice("data: ".length)), {
+      type: "response.in_progress",
+    });
+    assert.doesNotMatch(frame, /output_item|reasoning|✨/);
+  }
+  assert.ok(
+    applicationFrames.length < earlyFrames.length,
+    "application events must be sparser than transport heartbeats"
+  );
+  assert.match(body, /data: {"type":"response.completed"}/, "real upstream body forwarded");
 });
 
 test("a correlationId records the startup frame and keepalive ticks, but not the forwarded body", async () => {
@@ -307,20 +221,29 @@ test("a correlationId records the startup frame and keepalive ticks, but not the
   const slow = new Promise<Response>((resolve) => {
     setTimeout(
       () => resolve(sseResponse("event: response.created\ndata: {}\n\ndata: [DONE]\n\n")),
-      65
+      650
     );
   });
 
   const result = await withEarlyStreamKeepalive(slow, {
     thresholdMs: 25,
-    intervalMs: 20,
-    startupFrame: RESPONSES_STARTUP_THINKING_FRAME,
+    intervalMs: 250,
+    startupFrame: OPENAI_RESPONSES_IN_PROGRESS_FRAME,
+    applicationKeepalive: {
+      frame: OPENAI_RESPONSES_IN_PROGRESS_FRAME,
+      intervalMs: 500,
+    },
     correlationId,
   });
   await readAll(result);
 
   const recorded = takeEarlyKeepaliveBytes(correlationId).join("");
-  assert.match(recorded, /event: response\.output_item\.added/, "startup frame must be recorded");
+  assert.match(
+    recorded,
+    /data: {"type":"response\.in_progress"}/,
+    "startup frame must be recorded"
+  );
+  assert.match(recorded, /: keepalive/, "transport heartbeat must be recorded");
   assert.doesNotMatch(
     recorded,
     /event: response\.created/,
@@ -337,7 +260,8 @@ test("omitting correlationId leaves the buffer untouched (today's behavior, unch
   const result = await withEarlyStreamKeepalive(slow, {
     thresholdMs: 25,
     intervalMs: 20,
-    startupFrame: RESPONSES_STARTUP_THINKING_FRAME,
+    keepaliveFrame: OPENAI_RESPONSES_IN_PROGRESS_FRAME,
+    startupFrame: OPENAI_RESPONSES_IN_PROGRESS_FRAME,
   });
   await readAll(result);
 

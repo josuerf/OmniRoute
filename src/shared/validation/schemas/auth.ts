@@ -172,6 +172,7 @@ export const oauthPasteCredentialsSchema = z.object({
 export const cursorImportSchema = z.object({
   accessToken: z.string().trim().min(1, "Access token is required"),
   machineId: z.string().trim().optional(),
+  refreshToken: z.string().trim().min(1).optional(),
 });
 
 export const traeImportSchema = z.object({

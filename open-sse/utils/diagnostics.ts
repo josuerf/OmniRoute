@@ -299,8 +299,15 @@ export function detectMalformedNonStream(resp: unknown): MalformedReason | null 
     )
       return true;
     if (Array.isArray(msg?.tool_calls) && (msg.tool_calls as unknown[]).length > 0) return true;
+    // Reasoning-only completions are real output: a reasoning model that
+    // exhausts max_tokens on chain-of-thought returns `content: null` with the
+    // analysis in a reasoning field. Some OpenAI-compatible upstreams (e.g.
+    // opencode/mimo-v2.5-free via the OpenCode gateway) name it `reasoning`
+    // rather than `reasoning_content` — missing either variant falsely flagged
+    // these as empty_choices → 502 (#6623).
     if (typeof msg?.reasoning_content === "string" && (msg.reasoning_content as string).length > 0)
       return true;
+    if (typeof msg?.reasoning === "string" && (msg.reasoning as string).length > 0) return true;
     return false;
   });
 

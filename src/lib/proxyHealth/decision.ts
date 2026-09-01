@@ -2,7 +2,7 @@
  * Pure, network-free decision for the proxy health scheduler (#6246).
  *
  * Separated from the sweep so the status/removal policy can be unit-tested
- * exhaustively without any I/O. The sweep classifies each probe into a tri-state
+ * exhaustively without any I/O. The sweep classifies each probe into a
  * {@link ProxyProbeOutcome} and applies the returned {@link ProxyHealthDecision}.
  *
  * Policy (agreed for #6246, extended for the auto-disable mode below):
@@ -27,12 +27,33 @@
  *       is free once autoDisable participates in `managesStatus` below. If
  *       both flags are set, auto-remove (destructive) wins: a proxy that is
  *       about to be deleted has no use for a soft-disable in between.
+ *   E — a `blocked` probe (the TARGET refused this egress IP: 401/403/429) is
+ *       neutral like `inconclusive`. The proxy relayed correctly, so it is not
+ *       failing; but it is not serving that destination either, which `ok` hid.
+ *       Kept out of the failure count on purpose: one target refusing an IP
+ *       does not make the proxy dead, and the operator owns the removal policy.
  */
 
-export type ProxyProbeOutcome = "ok" | "fail" | "inconclusive";
+export type ProxyProbeOutcome = "ok" | "fail" | "inconclusive" | "blocked";
+
+/** Statuses that mean the TARGET refused this egress IP rather than served it. */
+const TARGET_BLOCK_STATUSES: ReadonlySet<number> = new Set([401, 403, 429]);
+
+/**
+ * PURE: classify a probe response status into a {@link ProxyProbeOutcome}.
+ *
+ * `ok` requires the target to have actually served the request. A 401/403/429
+ * means the proxy relayed but the destination refused the egress IP — the case
+ * a generic "status < 500" test reported as a healthy proxy.
+ */
+export function classifyProbeStatus(status: number): ProxyProbeOutcome {
+  if (TARGET_BLOCK_STATUSES.has(status)) return "blocked";
+  // A 5xx means the proxy DID relay — the target is at fault, not the proxy.
+  return status < 500 ? "ok" : "inconclusive";
+}
 
 export interface ProxyHealthDecisionInput {
-  /** Tri-state result of the reachability probe for this proxy. */
+  /** Classified result of the reachability probe for this proxy. */
   outcome: ProxyProbeOutcome;
   /** Consecutive failure count recorded BEFORE this probe. */
   priorFailures: number;
@@ -65,8 +86,8 @@ export function decideProxyHealthAction(input: ProxyHealthDecisionInput): ProxyH
   // Either opt-in flag hands status control from the operator to the sweep.
   const managesStatus = autoRemove || autoDisable;
 
-  // B: inconclusive probes are neutral — do not touch count or status.
-  if (outcome === "inconclusive") {
+  // B/E: inconclusive and blocked probes are neutral — no count, no status.
+  if (outcome === "inconclusive" || outcome === "blocked") {
     return { failures: priorFailures, clearFailures: false, setStatus: null, remove: false };
   }
 

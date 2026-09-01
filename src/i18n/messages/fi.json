@@ -974,12 +974,20 @@
     "batchFileUsedByCount": "Käytetään {count, plural, one {# erä} other {# erää}}",
     "batchFilePreview": "Esikatselu",
     "batchFilePreviewTruncated": "Näytetään ensimmäiset {shown} riviä ({total} yhteensä riviä)",
-    "batchFileDownloadFull": "Lataa Koko Tiedosto"
+    "batchFileDownloadFull": "Lataa Koko Tiedosto",
+    "batchHeaderSubtitle": "Run many requests as one job",
+    "batchStep1": "1 · Upload JSONL",
+    "batchStep1Desc": "Add requests",
+    "batchStep2": "2 · Create batch",
+    "batchStep2Desc": "Run job",
+    "batchStep3": "3 · Get results",
+    "batchStep3Desc": "Download output"
   },
   "disabled": "Poistettu käytöstä",
   "featureFlagOmnirouteEmergencyFallbackDescription": "Reititä budjettinsa ylittäneet pyynnöt varalla olevalle ilmaiselle varatarjoajalle/-mallille.",
   "featureFlagArenaEloSyncEnabledDescription": "Ota käyttöön jaksottainen Arena AI -tulostaulukon ELO-synkronointi mallien älykkyysluokituksia varten.",
   "featureFlagExposeCcDiscoveryAliasesDescription": "Mainosta claude/&lt;provider&gt;/&lt;model&gt; peilid tunnuksia /v1/models, jotta Claude Code -portin mallin löytölistalla näkyvät ei-Claude-mallit. Varoitus: kaksinkertaistaa luettelo-merkinnät kaikille asiakkaille, kun se on otettu käyttöön globaalisti.",
+  "featureFlagChatVirtualLanesEnabledDescription": "Ota käyttöön mukautuvat virtuaaliset sisäänottokaistat vuokraajaa (tenant) kohti palveluntarjoajien välitystä varten (#9654): yhden vuokraajan kuormapiikki ei enää aiheuta 503-virhettä toiselle. Ympäristömuuttuja OMNIROUTE_CHAT_VIRTUAL_LANES ohittaa tämän hallintapaneelin asetuksen; muutokset tulevat voimaan palvelimen uudelleenkäynnistyksessä.",
   "sidebar": {
     "home": "Kotiin",
     "dashboard": "Kojelauta",
@@ -1164,6 +1172,8 @@
     "consoleLogs": "Console Logs",
     "logsTimeline": "Timeline",
     "logsTimelineSubtitle": "Visuaalinen pyyntöaikajana",
+    "conversations": "Conversations",
+    "conversationsSubtitle": "Multi-turn agentic conversations",
     "globalRouting": "Global Routing",
     "mitmProxy": "MITM Proxy",
     "oneProxy": "1Proxy",
@@ -1256,7 +1266,7 @@
     "agentBridge": "Agent Bridge",
     "agentBridgeSubtitle": "Kaappaa IDE-agentin liikenne",
     "trafficInspector": "Liikennetarkastin",
-    "trafficInspectorSubtitle": "Valvo LLM-kutsuja + vianmääritä mitä tahansa HTTPS-liikennettä",
+    "trafficInspectorSubtitle": "__MISSING__:Inspect request and response traffic from your apps",
     "cliCode": "CLI-koodi",
     "cliCodeSubtitle": "OmniRouteen osoittavat koodityökalut",
     "cliAgents": "CLI-agentit",
@@ -1290,7 +1300,8 @@
       "open": "avaa",
       "close": "sulje"
     },
-    "noResults": "Ei tuloksia"
+    "noResults": "Ei tuloksia",
+    "trafficInspectorPurpose": "See exactly what your application sends to and receives from AI providers. Works with any OpenAI-compatible client."
   },
   "webhooks": {
     "title": "Webhooks",
@@ -1736,8 +1747,8 @@
     "quotaShare": "Kiintiöosuus",
     "discovery": "Löytäminen",
     "freeProviderRankings": "Ilmaisten tarjoajien sijoitukset",
-    "radar": "__MISSING__:Radar",
-    "setup": "__MISSING__:Setup",
+    "radar": "Radar",
+    "setup": "Setup",
     "freeTiers": "Ilmaiset tasot",
     "gamification": "Pelillistäminen",
     "leaderboard": "Tulostaulukko",
@@ -1853,7 +1864,21 @@
     "directDownloadHint": "Tai lataa vastaava asennustiedosto suoraan:",
     "releaseNotes": "Julkaisutiedot",
     "readMore": "Lue lisää",
-    "noAuthLabel": "Ei todennusta"
+    "noAuthLabel": "Ei todennusta",
+    "recentRequests": "Recent Requests",
+    "recentRequestsEmpty": "No requests yet.",
+    "recentRequestsModel": "Model",
+    "recentRequestsTokens": "In / Out",
+    "recentRequestsWhen": "When",
+    "readinessEyebrow": "Get ready to route",
+    "readinessTitle": "Send your first request",
+    "readinessSubtitle": "Four small steps. OmniRoute checks readiness as you go.",
+    "readinessStep1": "Connect a provider",
+    "readinessStep2": "Configure endpoint authentication",
+    "readinessStep3": "Copy your endpoint",
+    "readinessStep4": "Send a test request",
+    "readinessContinue": "Continue setup",
+    "readinessDismiss": "Dismiss for now"
   },
   "analytics": {
     "title": "Analytics",
@@ -2215,6 +2240,10 @@
     "fullAccess": "Täysi pääsy",
     "keyManagement": "API-avainten hallinta",
     "keyManagementDesc": "Luo ja hallitse API-avaimia päätepisteesi pyyntöjen todentamiseksi",
+    "requestFlowAria": "Your app sends requests through an API key to OmniRoute",
+    "requestFlowYourApp": "Your app",
+    "requestFlowApiKey": "API key",
+    "requestFlowOmniRoute": "OmniRoute",
     "totalKeys": "Avaimet yhteensä",
     "restricted": "Rajoitettu",
     "totalRequests": "Pyyntöjä yhteensä",
@@ -2894,7 +2923,8 @@
       "omp": "Oh My Pi -terminaalikoodausagentti",
       "letta": "Letta CLI -agentti pysyvällä muistilla ja työkalujen käytöllä",
       "warp": "Warp AI -terminaali mukautetun palveluntarjoajan tuella",
-      "agent-deck": "Agent Deck -moniagenttiorkestraattori"
+      "agent-deck": "Agent Deck -moniagenttiorkestraattori",
+      "prime-agent": "Prime Agent — self-improving RLM coding harness with OpenAI-compatible provider support"
     },
     "guides": {
       "cursor": {
@@ -3603,6 +3633,10 @@
     "wizardStep3Desc": "Pick how requests are distributed across your models - 13 strategies available",
     "wizardStep4Title": "Review & Save",
     "wizardStep4Desc": "Review your configuration and activate the combo",
+    "usageGuideInvokeTitle": "How to call this combo",
+    "usageGuideInvokeDesc": "Send the combo's exact name as the model, e.g. model: \"my-combo\" (or combo/my-combo).",
+    "usageGuideInvokeAutoNote": "auto and auto/* are a separate zero-config router that does not use your combos (unless a combo is literally named auto).",
+    "usageGuideInvokeOpenrouterNote": "openrouter/auto is a real paid OpenRouter product (Auto Best Available), not an OmniRoute alias — exclude it via Settings → Routing → Hide paid models.",
     "emailVisibilityStateOn": "On",
     "emailVisibilityStateOff": "Off",
     "reorderHandle": "Drag to reorder",
@@ -3715,7 +3749,12 @@
     "errorDescription": "Emme voi ladata yhdistelmädataa juuri nyt. Tarkista yhteytesi ja yritä uudelleen.",
     "errorId": "Virhe ID: {id}",
     "errorRetry": "Yritä uudelleen",
-    "comboLabel": "Yhdistelmä"
+    "comboLabel": "Yhdistelmä",
+    "duplicateAutoComboConfirm": "Luodaanko staattinen yhdistelmä \"{name}\"?",
+    "duplicateAutoComboSnapshotMsg": "Tämä tallentaa tämän mallin mukaiset tällä hetkellä yhdistetyt tarjoajat/mallit muokattavaan yhdistelmään.",
+    "duplicateAutoComboFailedPrefix": "Automaattisen yhdistelmän kaksoiskappaleen luonti epäonnistui:",
+    "duplicateAutoComboUnknownError": "Tuntematon virhe",
+    "duplicateAutoComboTitle": "Luo staattinen yhdistelmä kohteesta {name}"
   },
   "costs": {
     "title": "Kustannukset",
@@ -4117,7 +4156,10 @@
     "notionIntegrationHelp": "Luo sisäinen integraatio kohdassa",
     "notionIntegrationToken": "Notionin sisäinen integraatiotunnus",
     "notionNotConnected": "Ei yhdistetty",
-    "notionTokenConfigured": "Token on määritetty. Notion-työkalut ovat saatavilla MCP:n kautta."
+    "notionTokenConfigured": "Token on määritetty. Notion-työkalut ovat saatavilla MCP:n kautta.",
+    "subtitle": "Use the OpenAI-compatible endpoint with most SDKs and tools.",
+    "testEndpoint": "Test endpoint →",
+    "advancedProtocols": "Advanced protocols"
   },
   "endpoints": {
     "tabProxy": "Endpoint Proxy",
@@ -4700,7 +4742,14 @@
     "issueCount": "{count} ongelmaa",
     "score": "Pisteet",
     "lastRequest": "Viimeisin pyyntö",
-    "lastError": "Viimeisin virhe"
+    "lastError": "Viimeisin virhe",
+    "healthVerdictReady": "OmniRoute is ready",
+    "healthVerdictActionRequired": "Action required to restore full operation",
+    "healthVerdictCoolingDown": "Cooling down after recent changes",
+    "healthSubtitle": "System health check",
+    "advancedDiagnosticsTitle": "Advanced diagnostics",
+    "hide": "Hide",
+    "show": "Show"
   },
   "telemetry": {
     "title": "Järjestelmän telemetria",
@@ -4962,7 +5011,9 @@
         "skipped": "jo määritetty",
         "failed": "epäonnistui"
       }
-    }
+    },
+    "securityDescSkipWarning": "⚠️ Without a password, you won't be able to add providers during setup. You can add them later from the dashboard after setting a password.",
+    "providerRequiresPassword": "You need to set a password first to add providers. Please go back to the security step and set a password, or add providers later from the dashboard."
   },
   "providers": {
     "title": "Palveluntarjoajat",
@@ -5094,7 +5145,7 @@
     "deprecatedProvider": "Tämä palveluntarjoaja on poistettu käytöstä",
     "riskNotice": {
       "title": "Ennen jatkamista",
-      "detailsTitle": "__MISSING__:Usage caveats",
+      "detailsTitle": "Usage caveats",
       "tooltip": "Tarjoaja, jolla on käyttöä koskevia huomautuksia — napsauta nähdäksesi lisätiedot",
       "oauth": "Tämä tarjoaja käyttää virallista tuote-istuntoasi/OAuthia, jota ei ole valtuutettu välityspalvelin-/reititinkäyttöön. Emme suosittele intensiivistä autonomisten agenttien käyttöä (OpenCloud-tyyliset, pitkät monivaiheiset työnkulut, suuret erät) — ylävirta saattaa reagoida rajoittamalla tiliä tai estämällä sen. Käyttö omalla vastuulla.",
       "webCookie": "Tämä tarjoaja todennetaan verkkosessiosi evästeiden kautta. Ylävirran palvelu voi mitätöidä istunnon milloin tahansa, jolloin sinun on kirjauduttava uudelleen sisään. Ei suositella pitkiin valvomattomiin toimintoihin. Käyttö omalla vastuulla.",
@@ -5104,9 +5155,9 @@
       "cancel": "Peruuta"
     },
     "warningNotice": {
-      "tooltip": "__MISSING__:{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
-      "lastFailureSuffix": "__MISSING__: (last failure {time})",
-      "ariaLabel": "__MISSING__:View connection health details, {count} warning(s)"
+      "tooltip": "{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
+      "lastFailureSuffix": " (last failure {time})",
+      "ariaLabel": "View connection health details, {count} warning(s)"
     },
     "disabled": "Ei käytössä",
     "enableProvider": "Ota palveluntarjoaja käyttöön",
@@ -5230,6 +5281,17 @@
     "skippingExistingModels": "Ohitetaan {count} olemassa olevaa mallia",
     "autoSync": "Automaattinen synkronointi",
     "autoSyncShort": "Synkronointi",
+    "autoFetchModels": "Hae automaattisesti upstream-malleja",
+    "autoFetchModelsTooltip": "Hae ja vältä ylösvirtaisten mallien välimuisti tarvittaessa",
+    "autoFetchModelsEnabled": "Ylävirran mallin automaattinen haku käytössä",
+    "autoFetchModelsDisabled": "Ylöspäin suuntautuvan mallin automaattinen haku pois käytöstä",
+    "autoFetchModelsToggleFailed": "Epäonnistui ylösvirran mallin automaattihaku kytkemisessä",
+    "autoFetchModelsPartialFailure": "Joitakin yhteyksiä päivitettiin, mutta ylävirran mallin automaattista hakua ei muutettu kaikkialla",
+    "overridesUpstreamModel": "Ylikirjoittaa ylävirran",
+    "overridesUpstreamModelHint": "Asetuksesi ohittavat tämän ylävirran mallin",
+    "resetToUpstreamDefaults": "Palauta upstream-oletukset",
+    "resetToUpstreamDefaultsSuccess": "Palautettiin ylävirran mallin oletukset",
+    "resetToUpstreamDefaultsFailed": "Palautus upstream-mallin oletusasetuksista epäonnistui",
     "autoSyncTooltip": "Päivitä malliluettelo automaattisesti 24 tunnin välein (konfiguroitavissa kohdassa MODEL_SYNC_INTERVAL_HOURS)",
     "autoSyncEnabled": "Automaattinen synkronointi käytössä – mallit päivittyvät säännöllisesti",
     "autoSyncDisabled": "Automaattinen synkronointi poistettu käytöstä",
@@ -5435,18 +5497,18 @@
     "interceptFetchHint": "Uudelleenkirjoita natiivit web_fetch-työkalukutsut OmniRouten osoitteeseen /v1/web/fetch.",
     "interceptionLoadError": "Sieppausasetusten lataaminen epäonnistui: {error}",
     "interceptionSaveError": "Sieppausasetusten tallentaminen epäonnistui: {error}",
-    "ccAliasSectionTitle": "Avaa Claude-koodissa (claude/…)",
-    "ccAliasSectionHint": "Mainosta tämän tarjoajan malleja claude/&lt;provider&gt;/&lt;model&gt; peilidien alla, jotta Claude Coden porttimallin löytö voi listata ne. Oletusarvoisesti pois päältä — tämän aktivointi kaksinkertaistaa luettelon merkinnät kaikille asiakkaille.",
-    "ccAliasProviderLevelLabel": "Palveluntarjoajan oletus",
-    "ccAliasModelOverridesLabel": "Per-mallin ylitykset",
-    "ccAliasModelOverrideAriaLabel": "Ylikirjoitus {modelId} varten",
-    "ccAliasStateInherit": "Peri",
-    "ccAliasStateOn": "Päällä",
-    "ccAliasStateOff": "Pois",
-    "ccAliasAddModelPlaceholder": "Mallin tunnus (esim. gpt-4o)",
-    "ccAliasAddModelButton": "Lisää ohitus",
-    "ccAliasLoadError": "Epäonnistui lataamaan discovery-alias-asetuksia: {error}",
-    "ccAliasSaveError": "Asetuksen discovery-alias tallentaminen epäonnistui: {error}",
+    "ccAliasSectionTitle": "Expose in Claude Code (claude/…)",
+    "ccAliasSectionHint": "Advertise this provider's models under claude/&lt;provider&gt;/&lt;model&gt; mirror ids so Claude Code's gateway model discovery can list them. Off by default — enabling this doubles catalog entries for all clients.",
+    "ccAliasProviderLevelLabel": "Provider default",
+    "ccAliasModelOverridesLabel": "Per-model overrides",
+    "ccAliasModelOverrideAriaLabel": "Override for {modelId}",
+    "ccAliasStateInherit": "Inherit",
+    "ccAliasStateOn": "On",
+    "ccAliasStateOff": "Off",
+    "ccAliasAddModelPlaceholder": "Model id (e.g. gpt-4o)",
+    "ccAliasAddModelButton": "Add override",
+    "ccAliasLoadError": "Failed to load discovery-alias settings: {error}",
+    "ccAliasSaveError": "Failed to save discovery-alias setting: {error}",
     "compatUpstreamHeadersLabel": "Extra upstream headers",
     "compatUpstreamHeadersHint": "High-privilege setting — same trust level as editing provider API credentials; only trusted admins should use it. Merged after OmniRoute adds auth from the provider API key. If a custom header uses the same name as an existing one (e.g. Authorization), your value fully replaces the auto-generated header (including the Bearer token) — the upstream only sees what you typed, not the key from settings. Misconfiguration can cause 401 or broken upstream auth. One row per header (e.g. extra Authentication for some gateways). Hover or focus the value to preview. Saves on blur, outside click, or closing this panel.",
     "compatUpstreamHeaderName": "Header name",
@@ -5805,6 +5867,8 @@
     "rateLimitOverridesSection": "Pyyntörajojen ohitukset",
     "rateLimitOverridesMaxConcurrentHint": "Samanaikaisten pyyntöjen enimmäismäärän ohitus tälle yhteydelle. Ohittaa tilitason rajoituksen.",
     "rateLimitOverridesMaxConcurrentLabel": "Samanaikaisia enintään (pyyntöraja)",
+    "rateLimitOverridesMaxWaitMsHint": "__MISSING__:Maximum time (ms) a request may wait for a rate-limit slot before failing. Overrides the global Resilience setting for this connection only.",
+    "rateLimitOverridesMaxWaitMsLabel": "__MISSING__:Max Queue Wait (ms)",
     "rateLimitOverridesMinTimeHint": "Vähimmäisaika (ms) pyyntöjen välillä. Ohittaa oletusarvoisen pyyntörajoittimen viiveen.",
     "rateLimitOverridesMinTimeLabel": "Vähimmäisväli (ms)",
     "rateLimitOverridesRpmHint": "Pyyntöjen enimmäismäärä minuutissa tälle yhteydelle. Ohittaa tarjoajan oletusarvon.",
@@ -6082,7 +6146,6 @@
       "glmt": "Esiasetettu GLM-profiili suuremmalla token-budjetilla, ajattelu käytössä ja pidemmällä aikakatkaisulla.",
       "getgoapi": "Yhdistä GoAPI API-avaimella.",
       "groq": "Ilmainen taso: 30 RPM / 14,4K RPD — ei luottokorttia",
-      "hackclub": "Kirjaudu sisään Hack Club -tililläsi osoitteessa ai.hackclub.com.",
       "haiper": "Hanki API-avain osoitteesta haiper.ai/haiper-api",
       "heroku": "Yhdistä Heroku AI API-avaimella.",
       "hcnsec": "Hanki API-avain osoitteesta api.hcnsec.cn",
@@ -6191,7 +6254,7 @@
       "galadriel": "Yhdistä Galadriel API-avaimella.",
       "predibase": "$25 ilmaista kokeilusaldoa (voimassa 30 päivää)",
       "chenzk": "OpenAI-yhteensopiva yhdyskäytävä reaaliaikaisella malliluettelolla osoitteessa chenzk.top.",
-      "freepik": "Luo kuvia Freepikin Mystic API:lla.",
+      "magnific": "Luo kuvia Freepikin Mystic API:lla.",
       "freetheai": "Ilmainen OpenAI-yhteensopiva yhdyskäytävä läpivientimallien tuella.",
       "g4f-gemini": "Ilmainen avaimeton g4f.space-käänteisvälityspalvelin Geminiin, rajoitettu 5 pyyntöön minuutissa.",
       "g4f-groq": "Ilmainen avaimeton g4f.space-käänteisvälityspalvelin Groqiin, rajoitettu 5 pyyntöön minuutissa.",
@@ -6206,6 +6269,7 @@
       "claude": "Yhdistä Claude Code olemassa olevalla OAuth-työnkululla.",
       "cline": "Yhdistä Cline olemassa olevalla OAuth-työnkululla.",
       "cursor": "Yhdistä Cursor IDE olemassa olevalla OAuth-työnkululla.",
+      "cursor-api": "Connect Cursor with a user API key (crsr_...) from cursor.com/dashboard/api; no IDE session needed.",
       "github": "Yhdistä GitHub Copilot olemassa olevalla OAuth-työnkululla.",
       "gitlab-duo": "OAuth-sovellus ai_features + read_user -käyttöoikeuksilla. Määritä GITLAB_DUO_OAUTH_CLIENT_ID ja valinnaisesti GITLAB_DUO_OAUTH_CLIENT_SECRET tälle OmniRoute-instanssille.",
       "kilocode": "Yhdistä Kilo Code olemassa olevalla OAuth-työnkululla.",
@@ -6268,6 +6332,15 @@
     "cheaperInferenceSupporterBadge": "Avoimen lähdekoodin ystävä",
     "cheaperInferenceSupporterTooltip": "Cheaper Inference tukee OmniRoutea avoimen lähdekoodin ystävänä",
     "kimiPartnerLinkNote": "Kumppanilinkki — tukee OmniRoutea ilman lisäkustannuksia sinulle",
+    "codexQuotaPools": "Codex-kiintiöpoolit",
+    "codexPoolAvailable": "Käytettävissä",
+    "codexPoolPartiallyLimited": "Osittain rajoitettu",
+    "codexPoolFullyLimited": "Täysin rajoitettu",
+    "codexPoolLimited": "{count} rajoitettua",
+    "codexPoolQuotaExhausted": "Kiintiö käytetty loppuun",
+    "codexPoolCoolingDown": "Jäähdytysjaksolla",
+    "codexPoolUsed": "käytetty",
+    "codexPoolUntil": "{value} asti",
     "anonymousFallbackTitle": "Anonyymi varajärjestelmä",
     "anonymousFallbackDesc": "Kun kaikki määritetyt yhteydet on käytetty loppuun (kiintiö, krediitit tai vanhentuminen), käytä väliaikaisesti tämän tarjoajan avaimettomaa tasoa. Poista käytöstä tämän tarjoajan ohittamiseksi sen sijaan, että lähetät nimettömiä pyyntöjä — suositellaan, kun avaimeton taso hylkää ne (401).",
     "anonymousFallbackEnabled": "Anonyymi varajärjestelmä käytössä {provider} varten",
@@ -6344,17 +6417,20 @@
     "searchByModelAria": "Hae mallin mukaan",
     "selectSupportedEndpoint": "Valitse vähintään yksi tuettu päätepiste",
     "antigravityClientProfileHarness": "Harness / CLI",
-    "autoFetchModels": "Hae automaattisesti upstream-malleja",
-    "autoFetchModelsEnabled": "Ylävirran mallin automaattinen haku käytössä",
-    "autoFetchModelsTooltip": "Hae ja vältä ylösvirtaisten mallien välimuisti tarvittaessa",
-    "autoFetchModelsDisabled": "Ylöspäin suuntautuvan mallin automaattinen haku pois käytöstä",
-    "overridesUpstreamModel": "Ylikirjoittaa ylävirran",
-    "autoFetchModelsToggleFailed": "Epäonnistui ylösvirran mallin automaattihaku kytkemisessä",
-    "autoFetchModelsPartialFailure": "Joitakin yhteyksiä päivitettiin, mutta ylävirran mallin automaattista hakua ei muutettu kaikkialla",
-    "resetToUpstreamDefaults": "Palauta upstream-oletukset",
-    "resetToUpstreamDefaultsSuccess": "Palautettiin ylävirran mallin oletukset",
-    "resetToUpstreamDefaultsFailed": "Palautus upstream-mallin oletusasetuksista epäonnistui",
-    "overridesUpstreamModelHint": "Asetuksesi ohittavat tämän ylävirran mallin"
+    "harImportButtonLabel": "Import .har file",
+    "harImportButtonBusy": "Importing…",
+    "harImportButtonHint": "Export from DevTools Network tab after sending at least one chat message.",
+    "harImportStatusValid": "Imported — valid for ~{minutes}m.",
+    "harImportStatusExpiringSoon": "Imported — valid for only ~{minutes}m more.",
+    "harImportStatusExpired": "Imported, but this token already expired ({minutes}m ago) — export a fresh HAR.",
+    "harImportStatusUnknownExpiry": "Imported. Couldn't read its expiry.",
+    "harImportErrorNotJson": "That file isn't valid JSON — is it really a .har export?",
+    "harImportErrorNoEntries": "This HAR has no network entries recorded.",
+    "harImportErrorNoChathubUrl": "No Copilot chat connection found in this HAR. Send at least one chat message in m365.cloud.microsoft before exporting.",
+    "harImportErrorUnparsableUrl": "Found the chat connection, but couldn't read its URL.",
+    "harImportErrorMissingFields": "Found the chat connection, but the token was missing from it.",
+    "harImportErrorReadFailed": "Couldn't read that file.",
+    "harImportErrorUnknown": "Couldn't extract a credential from that HAR file."
   },
   "settings": {
     "title": "Asetukset",
@@ -6573,12 +6649,12 @@
     "autoDisableDescription": "Permanently mark provider connections as deactivated if they return specific terminal ban signals (e.g. HTTP 403 'verify your account'). This removes them from the combo rotation.",
     "autoDisableThreshold": "Ban Threshold",
     "autoDisableThresholdDesc": "Consecutive ban signals required before permanent deactivation.",
-    "autoDisableBannedScope": "__MISSING__:Apply auto-disable to",
-    "autoDisableBannedScopeDesc": "__MISSING__:Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
-    "autoDisableBannedScopeAll": "__MISSING__:All connections",
-    "autoDisableBannedScopeAllDesc": "__MISSING__:Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
-    "autoDisableBannedScopeSubscription": "__MISSING__:Login / subscription accounts only",
-    "autoDisableBannedScopeSubscriptionDesc": "__MISSING__:Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
+    "autoDisableBannedScope": "Apply auto-disable to",
+    "autoDisableBannedScopeDesc": "Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
+    "autoDisableBannedScopeAll": "All connections",
+    "autoDisableBannedScopeAllDesc": "Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
+    "autoDisableBannedScopeSubscription": "Login / subscription accounts only",
+    "autoDisableBannedScopeSubscriptionDesc": "Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
     "customBannedSignals": "Kielletyt avainsanat",
     "customBannedSignalsDesc": "Muut avainsanat, jotka käynnistävät tilin pysyvän eston tunnistuksen. Sisäänrakennetut avainsanat ovat aina käytössä.",
     "customBannedSignalsPlaceholder": "esim. api key revoked",
@@ -7186,6 +7262,7 @@
     "configured": "määritetty",
     "none": "Ei mitään",
     "modelOverrideValuePlaceholder": "Numeerinen arvo",
+    "modelOverrideReasoningEffortsPlaceholder": "English comma-separated, e.g. low, medium, high",
     "addKeyValue": "Lisää avain-arvo",
     "noModelOverrides": "Tälle mallille ei ole määritetty ohituksia.",
     "modelOverrideLoadFailed": "Mallin ohitusten lataaminen epäonnistui",
@@ -7757,6 +7834,10 @@
         "label": "Ponytail (lazy senior dev)",
         "description": "Lazy senior-dev discipline: climb the YAGNI ladder, fix root cause, smallest working diff."
       },
+      "i-have-adhd": {
+        "label": "I have ADHD (action-first)",
+        "description": "Action-first output: next action leads, steps numbered, one concrete next step, no preamble."
+      },
       "terse-cjk": {
         "label": "Tiivis CJK (文言)",
         "description": "Klassisen kiinan ultra-tiivis tyyli (saatavilla vain kiinaksi)."
@@ -8037,6 +8118,10 @@
     "disableSessionStickinessDesc": "Round-robin- ja satunnaisyhdistelmät vaihtavat eri yhteyteen jokaisella pyynnöllä sen sijaan, että koko keskustelu kiinnitettäisiin yhteen yhteyteen ensimmäisen viestin tiivisteen (hash) perusteella. Jätä pois käytöstä säilyttääksesi prompt-välimuistin osumat monivaiheisissa keskusteluissa. Yhdistelmäkohtaiset ohitukset ovat etusijalla.",
     "promptCacheAffinity": "Prompt-cache locality routing",
     "promptCacheAffinityDesc": "Prefer the same provider account for matching prompt-cache keys while preserving health and quota failover.",
+    "reasoningTokenBuffer": "Reasoning token buffer",
+    "reasoningTokenBufferDesc": "Allow combo routing to add max_tokens headroom only for known reasoning models when the full buffer fits inside a known output cap.",
+    "zeroLatencyOptimizations": "Zero-latency optimizations",
+    "zeroLatencyOptimizationsDesc": "Opt in to hedging, predictive TTFT skips, and proactive fallback compression. Leave off to prevent these latency features from racing targets or compressing fallback requests.",
     "credentialRedaction": "Tunnistetietojen peittäminen",
     "credentialRedactionDesc": "Peitä API-avaimet, tokenit ja salaisuudet tarjoajille lähetettävästä kontekstista sekä vastauksista.",
     "enableCredentialRedaction": "Ota tunnistetietojen peittäminen käyttöön",
@@ -8192,7 +8277,19 @@
     "cliproxyapiHealth": "Terveys",
     "cliproxyapiPort": "Portti",
     "qdrantHost": "Isäntä",
-    "qdrantCollection": "Kokoelma"
+    "qdrantCollection": "Kokoelma",
+    "presetAll": "All",
+    "presetAllDesc": "Show everything",
+    "presetEssentials": "Essentials",
+    "presetEssentialsDesc": "Beginner path - Advanced tools stay searchable",
+    "presetMinimal": "Minimal",
+    "presetMinimalDesc": "Core pages only",
+    "presetDeveloper": "Developer",
+    "presetDeveloperDesc": "Dev & proxy tools",
+    "presetAdmin": "Admin",
+    "presetAdminDesc": "Monitoring & audit",
+    "settingsSidebarTitle": "Sidebar Customization",
+    "settingsSidebarDesc": "Choose which sidebar items to show. Essentials keeps Advanced tools searchable."
   },
   "contextRtk": {
     "title": "RTK Engine",
@@ -8597,6 +8694,27 @@
     },
     "enableTitle": "Ota moottori käyttöön",
     "enableDescription": "Suoritetaan pinossa viimeisenä (sen jälkeen kun RTK/Caveman puhdistaa tekstin ja OmniGlyph muuntaa loput kuviksi) ja suoritetaan myös itsenäisesti <code>omniglyph</code>-tilan kautta. Tämä on esikatseluversio ja pysyy oletusarvoisesti poissa käytöstä, kunnes päästä päähän -validointi on valmis.",
+    "profileTitle": "Compression profile",
+    "profileDescription": "The profile is a ceiling, not a floor: a stricter profile cannot be reopened by a per-step override. Measured on this codebase: with coding-safe or balanced, a session that has not accumulated history yet compresses nothing, because both raise the minimum-characters threshold and keep the system prompt, tool schemas and tool results native.",
+    "profiles": {
+      "aggressive": {
+        "label": "Aggressive (default)",
+        "description": "The policy the published receipts measured. Images the system prompt, tool documentation and dense history."
+      },
+      "balanced": {
+        "label": "Balanced",
+        "description": "Keeps live state native and protects the last 8 turns; only collapses older closed history."
+      },
+      "codingSafe": {
+        "label": "Coding-safe",
+        "description": "Keeps authority, tool schemas and live tool output native, protecting the last 12 turns. Compresses nothing until the session accumulates history."
+      },
+      "passthrough": {
+        "label": "Passthrough",
+        "description": "Routes without transforming. The engine is skipped and the request is forwarded untouched."
+      }
+    },
+    "profileAria": "Select the OmniGlyph compression profile",
     "saved": "Tallennettu.",
     "saveFailed": "Tallennus epäonnistui.",
     "enableAria": "Ota OmniGlyph-moottori käyttöön",
@@ -9066,6 +9184,16 @@
     "grokAutoTopUpMax": "max",
     "grokAutoTopUpMonth": "kuukausi",
     "grokAdditionalCredits": "Lisäluotit",
+    "kimiExtraUsageCredits": "Extra Usage Credits",
+    "kimiExtraUsage": "Extra Usage",
+    "kimiExtraUsageEnabled": "Enabled",
+    "kimiExtraUsageDisabled": "Disabled",
+    "kimiExtraUsageFrozen": "Frozen",
+    "kimiExtraUsageUnavailable": "Unavailable",
+    "kimiMonthlyUsed": "Used this month",
+    "kimiMonthlyLimit": "Monthly limit",
+    "kimiMonthlyLimitUnlimited": "Unlimited",
+    "kimiAdditionalCredits": "Additional Credits",
     "loggerTab": "Kirjaaja",
     "proxyTab": "Välityspalvelin",
     "budgetManagement": "Budjetin hallinta",
@@ -10564,11 +10692,23 @@
   },
   "cursorAuthModal": {
     "title": "Yhdistä kohdistin IDE",
+    "tabLogin": "Login with Cursor",
+    "tabImport": "Import token",
+    "loginDescription": "Opens Cursor's browser login. Works in Docker — approve in your host browser, then return here.",
+    "loginWithCursor": "Login with Cursor",
+    "startingLogin": "Starting…",
+    "waitingApproval": "Waiting for Cursor login approval…",
+    "openUrlHint": "If the browser did not open:",
+    "openLoginLink": "Open login page",
+    "cancelLogin": "Cancel login",
     "autoDetecting": "Tunnistetaan automaattisesti...",
     "readingFromCursor": "Lukeminen Cursor IDE:stä tai cursor-agentista",
     "tokensAutoDetected": "Tokenit tunnistettiin automaattisesti Cursor IDE:stä!",
     "cursorNotDetected": "Kohdistimen IDE:tä ei havaittu. Liitä tunnus manuaalisesti.",
+    "dockerImportHint": "Running in Docker? Prefer Login with Cursor. IDE auto-import and cursor-agent are usually unavailable inside the container. See docs/providers/CURSOR-DOCKER.md.",
     "accessToken": "Käyttöoikeustunnus",
+    "refreshToken": "Refresh Token",
+    "refreshTokenPlaceholder": "Optional — enables automatic token refresh",
     "required": "*",
     "accessTokenPlaceholder": "Käyttöoikeustunnus täytetään automaattisesti...",
     "machineId": "Koneen tunnus",
@@ -10580,7 +10720,10 @@
     "errorAutoDetect": "Tunnuksia ei voi tunnistaa automaattisesti",
     "errorAutoDetectFailed": "Tunnusten automaattinen tunnistus epäonnistui",
     "errorEnterToken": "Anna käyttöoikeustunnus",
-    "errorImportFailed": "Tuonti epäonnistui"
+    "errorImportFailed": "Tuonti epäonnistui",
+    "errorLoginStart": "Failed to start Cursor login",
+    "errorLoginPoll": "Cursor login failed",
+    "errorLoginTimeout": "Cursor login timed out — try again"
   },
   "pricingModal": {
     "title": "Hinnoitteluasetukset",
@@ -11070,7 +11213,8 @@
       "compressed": "Puristus",
       "tps": "TPS",
       "duration": "Duration",
-      "time": "Time"
+      "time": "Time",
+      "conversation": "Conversation"
     },
     "loadingLogs": "Loading logs...",
     "noLogs": "No logs yet. Make some API calls to see them here.",
@@ -11932,7 +12076,8 @@
         "title": "ACP-agentit",
         "phrase": "CLI:t, jotka OmniRoute käynnistää suoritustaustana (käänteinen virtaus)",
         "flow": "Asiakas → OmniRoute → käynnistä CLI (stdio/ACP) → vastaus",
-        "seeOther": "Katso →"
+        "seeOther": "Katso →",
+        "warning": "Most users can ignore this — use only when an integration requires it."
       }
     },
     "comparison": {
@@ -12122,7 +12267,7 @@
       },
       "omni-webhooks": {
         "name": "Webhookit",
-        "description": "Rekisteröi, listaa, testaa ja poista webhook-päätepisteitä. Määritä tapahtumatilaukset (request.completed, provider.error, budget.exceeded jne.) ja hallitse toimituksen uudelleenyrityksiä."
+        "description": "__MISSING__:Register, list, test, and remove webhook endpoints. Configure event subscriptions (request.completed, request.failed, quota.exceeded, etc.) and manage delivery retries."
       },
       "omni-mcp": {
         "name": "MCP-palvelin",
@@ -12463,9 +12608,9 @@
     },
     "badges": {
       "radar-supporter": {
-        "name": "__MISSING__:Radar Supporter",
-        "description": "__MISSING__:Verified a live OmniRoute Radar supporter feed",
-        "criteria": "__MISSING__:Verify a signed live Radar supporter feed."
+        "name": "Radar Supporter",
+        "description": "Verified a live OmniRoute Radar supporter feed",
+        "criteria": "Verify a signed live Radar supporter feed."
       },
       "first-token": {
         "name": "Ensimmäinen tokeni",
@@ -12756,6 +12901,10 @@
       },
       "SKILLS_SANDBOX_NETWORK_ENABLED": {
         "description": "Ota käyttöön verkkoyhteys taitojen hiekkalaatikossa."
+      },
+      "DISABLE_CONTEXT_WINDOW_CHECKS": {
+        "label": "Disable Context Window Checks",
+        "description": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active."
       }
     }
   },
@@ -13188,7 +13337,7 @@
     "localStateSaveFailed": "Failed to save local Radar settings",
     "guidedCombos": "Guided combos",
     "offers": "Offers",
-    "intel": "__MISSING__:Intel"
+    "intel": "Intel"
   },
   "radarCombosPage": {
     "title": "Radar guided combos",
@@ -13328,6 +13477,13 @@
         "modelLockouts": "Mallilukitukset",
         "count": "Yhteyksien Määrä"
       }
+    },
+    "reassuranceTitle": "Your connections recover automatically",
+    "reassuranceDetail": "Usually no action is needed. OmniRoute temporarily rests a connection after failures, then safely tries it again.",
+    "plainStates": {
+      "healthy": "Requests can be sent",
+      "coolingDown": "Trying again soon",
+      "lockedOut": "Needs your attention"
     }
   },
   "featureFlagCapabilityFilterEnabledDescription": "Hylkää pyynnöt ennen lähettämistä, kun kohdemallilta puuttuu vaadittuja ominaisuuksia (näkö, työkalut, jäsennelty ulostulo, kontekstikkelu). Suojaa suorat yhden tarjoajan pyynnöt, jotka ohittavat yhdistelmäkerroksen yhteensopivuussuodattimen.",
@@ -13728,36 +13884,36 @@
     "trialDays": "{days, plural, one {# day} other {# days}}"
   },
   "radarIntelPage": {
-    "title": "__MISSING__:Radar Intel",
-    "subtitle": "__MISSING__:Radar-owned ELO rankings and factual catalog movement.",
-    "backToRadar": "__MISSING__:Back to Radar",
-    "loading": "__MISSING__:Loading Intel...",
-    "refresh": "__MISSING__:Refresh Intel",
-    "syncing": "__MISSING__:Refreshing...",
-    "loadFailed": "__MISSING__:We could not refresh Intel. The last verified local cache is kept.",
-    "empty": "__MISSING__:No verified Intel snapshot is available yet.",
-    "supporterBadge": "__MISSING__:Radar Supporter",
-    "methodology": "__MISSING__:Methodology",
-    "eloMethod": "__MISSING__:ELO, initial {initial}, K={factor}",
-    "freshness": "__MISSING__:Catalog freshness",
-    "ageDays": "__MISSING__:{days, plural, one {# day old} other {# days old}}",
-    "trend": "__MISSING__:Catalog trend",
-    "modelDelta": "__MISSING__:{current} models, +{added} / -{removed}",
-    "ranking": "__MISSING__:Model ranking",
-    "noRankings": "__MISSING__:No confirmed comparisons are available yet.",
-    "model": "__MISSING__:Model",
-    "category": "__MISSING__:Category",
-    "rating": "__MISSING__:Rating",
-    "matches": "__MISSING__:Matches",
+    "title": "Radar Intel",
+    "subtitle": "Radar-owned ELO rankings and factual catalog movement.",
+    "backToRadar": "Back to Radar",
+    "loading": "Loading Intel...",
+    "refresh": "Refresh Intel",
+    "syncing": "Refreshing...",
+    "loadFailed": "We could not refresh Intel. The last verified local cache is kept.",
+    "empty": "No verified Intel snapshot is available yet.",
+    "supporterBadge": "Radar Supporter",
+    "methodology": "Methodology",
+    "eloMethod": "ELO, initial {initial}, K={factor}",
+    "freshness": "Catalog freshness",
+    "ageDays": "{days, plural, one {# day old} other {# days old}}",
+    "trend": "Catalog trend",
+    "modelDelta": "{current} models, +{added} / -{removed}",
+    "ranking": "Model ranking",
+    "noRankings": "No confirmed comparisons are available yet.",
+    "model": "Model",
+    "category": "Category",
+    "rating": "Rating",
+    "matches": "Matches",
     "freshnessValues": {
-      "fresh": "__MISSING__:Fresh",
-      "aging": "__MISSING__:Aging",
-      "stale": "__MISSING__:Stale"
+      "fresh": "Fresh",
+      "aging": "Aging",
+      "stale": "Stale"
     },
     "trendValues": {
-      "growing": "__MISSING__:Growing",
-      "stable": "__MISSING__:Stable",
-      "shrinking": "__MISSING__:Shrinking"
+      "growing": "Growing",
+      "stable": "Stable",
+      "shrinking": "Shrinking"
     }
   },
   "capabilityFilter": {
@@ -13765,5 +13921,13 @@
     "toolsMismatch": "Toimittaja ei tue työkalun kutsumista",
     "structuredOutputMismatch": "Palveluntarjoaja ei tue jäsenneltyä tulostusta",
     "contextWindowMismatch": "Pyyntö ylittää tarjoajan kontekstin ikkunan"
+  },
+  "featureFlagDisableContextWindowChecksDescription": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active.",
+  "cheaperInferenceSponsorBanner": {
+    "title": "Cheaper Inference is an OmniRoute Open Source Friend",
+    "description": "A cost-ranked gateway reselling dozens of frontier models behind one OpenAI-compatible endpoint — routing each request to the cheapest eligible provider, never above list price.",
+    "cta": "Get an API Key",
+    "partnerLinkNote": "Partner link",
+    "dismissAriaLabel": "Dismiss"
   }
 }

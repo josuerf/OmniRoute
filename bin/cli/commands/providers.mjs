@@ -129,7 +129,34 @@ function buildTestInput(connection, apiKey) {
   };
 }
 
-async function runProviderTest(db, connection) {
+async function testProviderConnectionThroughServer(connection) {
+  try {
+    const res = await apiFetch(`/api/providers/${encodeURIComponent(connection.id)}/test`, {
+      method: "POST",
+      body: {},
+      retry: false,
+      timeout: 30000,
+      acceptNotOk: true,
+    });
+    const data = res.ok ? await res.json() : { valid: false, error: `HTTP ${res.status}` };
+    return {
+      connection: publicConnection(connection),
+      ...data,
+      valid: data.valid === true,
+      skipped: false,
+    };
+  } catch (error) {
+    return {
+      connection: publicConnection(connection),
+      valid: false,
+      skipped: false,
+      error: error instanceof Error ? error.message : String(error),
+      statusCode: null,
+    };
+  }
+}
+
+async function runProviderTest(db, connection, { serverUp = false } = {}) {
   // Only API-key connections can be probed with a stored credential. OAuth /
   // no-auth connections have nothing for testProviderApiKey() to send, and
   // getProviderApiKey() throws for them by design — reporting that as a FAILED
@@ -151,6 +178,9 @@ async function runProviderTest(db, connection) {
     // means the CLI has no probe recipe, not that the provider is unhealthy.
     // Persisting it would overwrite a good test_status with a failure.
     if (result.unsupported) {
+      if (serverUp) {
+        return testProviderConnectionThroughServer(connection);
+      }
       return {
         connection: publicConnection(connection),
         ...result,
@@ -266,6 +296,7 @@ export async function runTestCommand(selector, opts = {}) {
 }
 
 export async function runTestAllCommand(opts = {}) {
+  const serverUp = await isServerUp();
   const { db } = await openOmniRouteDb();
   try {
     const connections = listProviderConnections(db);
@@ -280,7 +311,7 @@ export async function runTestAllCommand(opts = {}) {
         });
         continue;
       }
-      results.push(await runProviderTest(db, connection));
+      results.push(await runProviderTest(db, connection, { serverUp }));
     }
 
     if (opts.json) {

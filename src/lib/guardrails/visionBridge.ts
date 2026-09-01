@@ -419,12 +419,25 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
     // callVisionModel may fall back internally to another vision model, and
     // keying by attempt would fragment the cache and leak router state into the
     // key. Intentional and stable — do not "fix" this to key per attempt.
+    //
+    // The prompt component is the BASE prompt (`config.prompt`), deliberately
+    // NOT the task-aware composed prompt (`composedPrompt`): the composed
+    // prompt appends the LAST user text, which changes on every conversation
+    // turn. Zoo Code / Claude Code clients resend the FULL transcript each
+    // turn, so a text-only follow-up still carries the turn-1 image in the
+    // history — the bridge re-enters the describe path — but if the key
+    // changed with each new turn it would miss the cache and re-call the
+    // vision model (e.g. mimo-v2.5) for byte-identical images. Keying on the
+    // stable base prompt makes an unchanged history image reuse the cached
+    // description; a genuinely NEW image has a different contentRef and still
+    // misses. The task-aware prompt is what the vision model actually receives
+    // on the first describe, so no description quality is lost.
     const cache = runtime.cacheEnabled ? getSharedBridgeCacheFor(runtime) : null;
 
     // Process all images in parallel using Promise.allSettled for fail-partial behavior
     const results = await Promise.allSettled(
       limitedParts.map(async (imagePart, i) => {
-        const key = cache ? bridgeCacheKey(imagePart.imageUrl, composedPrompt, config.model) : null;
+        const key = cache ? bridgeCacheKey(imagePart.imageUrl, config.prompt, config.model) : null;
         const cached = key && cache ? cache.get(key) : undefined;
         const description = cached ?? (await callVision(imagePart.imageUrl, describeConfig));
         if (cached === undefined && key && cache) cache.set(key, description);

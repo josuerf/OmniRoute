@@ -974,12 +974,20 @@
     "batchFileUsedByCount": "{count, plural, one {# 배치} other {# 배치들}}",
     "batchFilePreview": "미리보기",
     "batchFilePreviewTruncated": "첫 번째 {shown} 줄 표시 ({total} 총 줄)",
-    "batchFileDownloadFull": "전체 파일 다운로드"
+    "batchFileDownloadFull": "전체 파일 다운로드",
+    "batchHeaderSubtitle": "Run many requests as one job",
+    "batchStep1": "1 · Upload JSONL",
+    "batchStep1Desc": "Add requests",
+    "batchStep2": "2 · Create batch",
+    "batchStep2Desc": "Run job",
+    "batchStep3": "3 · Get results",
+    "batchStep3Desc": "Download output"
   },
   "disabled": "비활성화됨",
   "featureFlagOmnirouteEmergencyFallbackDescription": "예산이 소진된 요청을 긴급 무료 폴백 제공자/모델로 라우팅합니다.",
   "featureFlagArenaEloSyncEnabledDescription": "모델 지능 순위를 위해 주기적인 Arena AI 리더보드 ELO 동기화를 활성화합니다.",
   "featureFlagExposeCcDiscoveryAliasesDescription": "/v1/models에서 Claude Code 게이트웨이 모델 검색 목록에 비Claude 모델이 포함되도록 claude/&lt;provider&gt;/&lt;model&gt; 미러 ID를 광고합니다. 경고: 전역적으로 활성화하면 모든 클라이언트에 대해 카탈로그 항목이 두 배로 증가합니다.",
+  "featureFlagChatVirtualLanesEnabledDescription": "공급자 디스패치를 위해 테넌트별 적응형 가상 승인 레인을 활성화합니다(#9654): 한 테넌트의 폭증이 더 이상 다른 테넌트에 503을 반환하지 않습니다. OMNIROUTE_CHAT_VIRTUAL_LANES 환경 변수가 이 대시보드 설정보다 우선하며, 변경 사항은 서버 재시작 시 적용됩니다.",
   "sidebar": {
     "home": "홈",
     "dashboard": "대시보드",
@@ -1164,6 +1172,8 @@
     "consoleLogs": "Console Logs",
     "logsTimeline": "Timeline",
     "logsTimelineSubtitle": "비주얼 요청 타임라인",
+    "conversations": "Conversations",
+    "conversationsSubtitle": "Multi-turn agentic conversations",
     "globalRouting": "Global Routing",
     "mitmProxy": "MITM Proxy",
     "oneProxy": "1Proxy",
@@ -1256,7 +1266,7 @@
     "agentBridge": "에이전트 브리지",
     "agentBridgeSubtitle": "IDE 에이전트 트래픽 가로채기",
     "trafficInspector": "트래픽 인스펙터",
-    "trafficInspectorSubtitle": "LLM 호출 모니터링 + 모든 HTTPS 트래픽 디버깅",
+    "trafficInspectorSubtitle": "__MISSING__:Inspect request and response traffic from your apps",
     "cliCode": "CLI 코드",
     "cliCodeSubtitle": "OmniRoute를 가리키는 코드 도구",
     "cliAgents": "CLI 에이전트",
@@ -1290,7 +1300,8 @@
       "open": "열기",
       "close": "닫기"
     },
-    "noResults": "결과가 없습니다"
+    "noResults": "결과가 없습니다",
+    "trafficInspectorPurpose": "See exactly what your application sends to and receives from AI providers. Works with any OpenAI-compatible client."
   },
   "webhooks": {
     "title": "웹훅",
@@ -1736,8 +1747,8 @@
     "quotaShare": "할당량 공유",
     "discovery": "탐색",
     "freeProviderRankings": "무료 제공업체 순위",
-    "radar": "__MISSING__:Radar",
-    "setup": "__MISSING__:Setup",
+    "radar": "Radar",
+    "setup": "Setup",
     "freeTiers": "무료 티어",
     "gamification": "게이미피케이션",
     "leaderboard": "리더보드",
@@ -1853,7 +1864,21 @@
     "directDownloadHint": "또는 해당 설치 프로그램 형식을 직접 다운로드하십시오:",
     "releaseNotes": "릴리스 노트",
     "readMore": "더 읽기",
-    "noAuthLabel": "인증 없음"
+    "noAuthLabel": "인증 없음",
+    "recentRequests": "Recent Requests",
+    "recentRequestsEmpty": "No requests yet.",
+    "recentRequestsModel": "Model",
+    "recentRequestsTokens": "In / Out",
+    "recentRequestsWhen": "When",
+    "readinessEyebrow": "Get ready to route",
+    "readinessTitle": "Send your first request",
+    "readinessSubtitle": "Four small steps. OmniRoute checks readiness as you go.",
+    "readinessStep1": "Connect a provider",
+    "readinessStep2": "Configure endpoint authentication",
+    "readinessStep3": "Copy your endpoint",
+    "readinessStep4": "Send a test request",
+    "readinessContinue": "Continue setup",
+    "readinessDismiss": "Dismiss for now"
   },
   "analytics": {
     "title": "분석",
@@ -2215,6 +2240,10 @@
     "fullAccess": "전체 액세스",
     "keyManagement": "API 키 관리",
     "keyManagementDesc": "엔드포인트에 대한 요청을 인증하기 위한 API 키 생성 및 관리",
+    "requestFlowAria": "Your app sends requests through an API key to OmniRoute",
+    "requestFlowYourApp": "Your app",
+    "requestFlowApiKey": "API key",
+    "requestFlowOmniRoute": "OmniRoute",
     "totalKeys": "총 키",
     "restricted": "제한됨",
     "totalRequests": "총 요청",
@@ -2894,7 +2923,8 @@
       "omp": "Oh My Pi 터미널 코딩 에이전트",
       "letta": "지속성 메모리 및 도구 사용 기능이 포함된 Letta CLI 에이전트",
       "warp": "사용자 정의 제공자 지원 기능이 포함된 Warp AI 터미널",
-      "agent-deck": "Agent Deck 다중 에이전트 오케스트레이터"
+      "agent-deck": "Agent Deck 다중 에이전트 오케스트레이터",
+      "prime-agent": "Prime Agent — self-improving RLM coding harness with OpenAI-compatible provider support"
     },
     "guides": {
       "cursor": {
@@ -3603,6 +3633,10 @@
     "wizardStep3Desc": "모델 전반에 요청이 분산되는 방식을 선택하세요 - 14가지 전략 사용 가능",
     "wizardStep4Title": "Review & Save",
     "wizardStep4Desc": "Review your configuration and activate the combo",
+    "usageGuideInvokeTitle": "How to call this combo",
+    "usageGuideInvokeDesc": "Send the combo's exact name as the model, e.g. model: \"my-combo\" (or combo/my-combo).",
+    "usageGuideInvokeAutoNote": "auto and auto/* are a separate zero-config router that does not use your combos (unless a combo is literally named auto).",
+    "usageGuideInvokeOpenrouterNote": "openrouter/auto is a real paid OpenRouter product (Auto Best Available), not an OmniRoute alias — exclude it via Settings → Routing → Hide paid models.",
     "emailVisibilityStateOn": "On",
     "emailVisibilityStateOff": "Off",
     "reorderHandle": "Drag to reorder",
@@ -3715,7 +3749,12 @@
     "errorDescription": "현재 콤보 데이터를 불러올 수 없습니다. 연결을 확인하고 다시 시도하세요.",
     "errorId": "오류 ID: {id}",
     "errorRetry": "다시 시도해 주세요",
-    "comboLabel": "콤보"
+    "comboLabel": "콤보",
+    "duplicateAutoComboConfirm": "\"{name}\"에서 정적 콤보를 만드시겠습니까?",
+    "duplicateAutoComboSnapshotMsg": "이 템플릿과 일치하는 현재 연결된 제공자/모델을 편집 가능한 콤보로 스냅샷합니다.",
+    "duplicateAutoComboFailedPrefix": "자동 콤보 복제 실패:",
+    "duplicateAutoComboUnknownError": "알 수 없는 오류",
+    "duplicateAutoComboTitle": "{name}에서 정적 콤보 만들기"
   },
   "costs": {
     "title": "비용",
@@ -4117,7 +4156,10 @@
     "notionIntegrationHelp": "내부 통합을 생성합니다.",
     "notionIntegrationToken": "Notion 내부 통합 토큰",
     "notionNotConnected": "연결되지 않음",
-    "notionTokenConfigured": "토큰이 구성되었습니다. Notion 도구는 MCP를 통해 사용할 수 있습니다."
+    "notionTokenConfigured": "토큰이 구성되었습니다. Notion 도구는 MCP를 통해 사용할 수 있습니다.",
+    "subtitle": "Use the OpenAI-compatible endpoint with most SDKs and tools.",
+    "testEndpoint": "Test endpoint →",
+    "advancedProtocols": "Advanced protocols"
   },
   "endpoints": {
     "tabProxy": "엔드포인트 프록시",
@@ -4700,7 +4742,14 @@
     "issueCount": "{count}개 이슈",
     "score": "점수",
     "lastRequest": "최근 요청",
-    "lastError": "최근 오류"
+    "lastError": "최근 오류",
+    "healthVerdictReady": "OmniRoute is ready",
+    "healthVerdictActionRequired": "Action required to restore full operation",
+    "healthVerdictCoolingDown": "Cooling down after recent changes",
+    "healthSubtitle": "System health check",
+    "advancedDiagnosticsTitle": "Advanced diagnostics",
+    "hide": "Hide",
+    "show": "Show"
   },
   "telemetry": {
     "title": "시스템 원격 측정",
@@ -4962,7 +5011,9 @@
         "skipped": "이미 구성됨",
         "failed": "실패했습니다"
       }
-    }
+    },
+    "securityDescSkipWarning": "⚠️ Without a password, you won't be able to add providers during setup. You can add them later from the dashboard after setting a password.",
+    "providerRequiresPassword": "You need to set a password first to add providers. Please go back to the security step and set a password, or add providers later from the dashboard."
   },
   "providers": {
     "title": "공급자",
@@ -5094,7 +5145,7 @@
     "deprecatedProvider": "이 공급자는 더 이상 사용되지 않습니다.",
     "riskNotice": {
       "title": "계속하기 전에",
-      "detailsTitle": "__MISSING__:Usage caveats",
+      "detailsTitle": "Usage caveats",
       "tooltip": "사용 시 주의 사항이 있는 제공자 — 자세한 내용을 보려면 클릭하세요",
       "oauth": "이 제공자는 공식 제품 세션/OAuth를 사용하며, 이는 프록시/라우터 사용에 대해 승인되지 않았습니다. 집중적인 자율 에이전트 사용(OpenCloud 스타일, 긴 다단계 흐름, 대량 배치)은 권장하지 않습니다. 업스트림에서 계정을 제한하거나 차단할 수 있습니다. 본인 책임 하에 사용하십시오.",
       "webCookie": "이 제공자는 웹 세션 쿠키를 통해 인증합니다. 업스트림 서비스가 언제든지 세션을 무효화할 수 있어 다시 로그인해야 할 수 있습니다. 장시간 자리를 비우는 작업에는 권장하지 않습니다. 본인 책임 하에 사용하십시오.",
@@ -5104,9 +5155,9 @@
       "cancel": "취소"
     },
     "warningNotice": {
-      "tooltip": "__MISSING__:{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
-      "lastFailureSuffix": "__MISSING__: (last failure {time})",
-      "ariaLabel": "__MISSING__:View connection health details, {count} warning(s)"
+      "tooltip": "{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
+      "lastFailureSuffix": " (last failure {time})",
+      "ariaLabel": "View connection health details, {count} warning(s)"
     },
     "disabled": "비활성화됨",
     "enableProvider": "공급자 활성화",
@@ -5230,6 +5281,17 @@
     "skippingExistingModels": "{count}개의 기존 모델 건너뛰기",
     "autoSync": "자동 동기화",
     "autoSyncShort": "동기화",
+    "autoFetchModels": "업스트림 모델 자동 가져오기",
+    "autoFetchModelsTooltip": "필요할 때 업스트림 모델을 가져와 캐시합니다.",
+    "autoFetchModelsEnabled": "업스트림 모델 자동 가져오기 활성화됨",
+    "autoFetchModelsDisabled": "업스트림 모델 자동 가져오기 비활성화됨",
+    "autoFetchModelsToggleFailed": "업스트림 모델 자동 가져오기를 전환하지 못했습니다.",
+    "autoFetchModelsPartialFailure": "일부 연결이 업데이트되었지만, 업스트림 모델 자동 가져오기가 모든 곳에서 변경되지 않았습니다.",
+    "overridesUpstreamModel": "업스트림 재정의",
+    "overridesUpstreamModelHint": "귀하의 설정이 이 업스트림 모델을 덮어씁니다.",
+    "resetToUpstreamDefaults": "업스트림 기본값 복원",
+    "resetToUpstreamDefaultsSuccess": "복원된 업스트림 모델 기본값",
+    "resetToUpstreamDefaultsFailed": "업스트림 모델 기본값을 복원하지 못했습니다.",
     "autoSyncTooltip": "24시간마다 모델 목록 자동 업데이트 (MODEL_SYNC_INTERVAL_HOURS로 구성 가능)",
     "autoSyncEnabled": "자동 동기화 활성화 — 모델이 주기적으로 업데이트됩니다",
     "autoSyncDisabled": "자동 동기화 비활성화",
@@ -5435,18 +5497,18 @@
     "interceptFetchHint": "네이티브 web_fetch 도구 호출을 OmniRoute의 /v1/web/fetch로 재작성합니다.",
     "interceptionLoadError": "가로채기 설정을 불러오지 못했습니다: {error}",
     "interceptionSaveError": "가로채기 설정을 저장하지 못했습니다: {error}",
-    "ccAliasSectionTitle": "Claude 코드에서 노출하기 (claude/…)",
-    "ccAliasSectionHint": "이 공급자의 모델을 claude/&lt;provider&gt;/&lt;model&gt; 미러 ID 아래에 광고하여 Claude Code의 게이트웨이 모델 검색이 이를 나열할 수 있도록 합니다. 기본적으로 비활성화되어 있으며, 이를 활성화하면 모든 클라이언트에 대해 카탈로그 항목이 두 배로 증가합니다.",
-    "ccAliasProviderLevelLabel": "제공자 기본값",
-    "ccAliasModelOverridesLabel": "모델별 재정의",
-    "ccAliasModelOverrideAriaLabel": "{modelId}에 대한 재정의",
-    "ccAliasStateInherit": "상속",
-    "ccAliasStateOn": "켜짐",
-    "ccAliasStateOff": "꺼짐",
-    "ccAliasAddModelPlaceholder": "모델 ID (예: gpt-4o)",
-    "ccAliasAddModelButton": "오버라이드 추가",
-    "ccAliasLoadError": "discovery-alias 설정을 로드하지 못했습니다: {error}",
-    "ccAliasSaveError": "discovery-alias 설정을 저장하지 못했습니다: {error}",
+    "ccAliasSectionTitle": "Expose in Claude Code (claude/…)",
+    "ccAliasSectionHint": "Advertise this provider's models under claude/&lt;provider&gt;/&lt;model&gt; mirror ids so Claude Code's gateway model discovery can list them. Off by default — enabling this doubles catalog entries for all clients.",
+    "ccAliasProviderLevelLabel": "Provider default",
+    "ccAliasModelOverridesLabel": "Per-model overrides",
+    "ccAliasModelOverrideAriaLabel": "Override for {modelId}",
+    "ccAliasStateInherit": "Inherit",
+    "ccAliasStateOn": "On",
+    "ccAliasStateOff": "Off",
+    "ccAliasAddModelPlaceholder": "Model id (e.g. gpt-4o)",
+    "ccAliasAddModelButton": "Add override",
+    "ccAliasLoadError": "Failed to load discovery-alias settings: {error}",
+    "ccAliasSaveError": "Failed to save discovery-alias setting: {error}",
     "compatUpstreamHeadersLabel": "Extra upstream headers",
     "compatUpstreamHeadersHint": "High-privilege setting — same trust level as editing provider API credentials; only trusted admins should use it. Merged after OmniRoute adds auth from the provider API key. If a custom header uses the same name as an existing one (e.g. Authorization), your value fully replaces the auto-generated header (including the Bearer token) — the upstream only sees what you typed, not the key from settings. Misconfiguration can cause 401 or broken upstream auth. One row per header (e.g. extra Authentication for some gateways). Hover or focus the value to preview. Saves on blur, outside click, or closing this panel.",
     "compatUpstreamHeaderName": "Header name",
@@ -5805,6 +5867,8 @@
     "rateLimitOverridesSection": "속도 제한 재정의",
     "rateLimitOverridesMaxConcurrentHint": "이 연결에 대한 최대 동시 요청 수 재정의입니다. 계정 수준의 제한을 재정의합니다.",
     "rateLimitOverridesMaxConcurrentLabel": "최대 동시 요청 수 (속도 제한)",
+    "rateLimitOverridesMaxWaitMsHint": "__MISSING__:Maximum time (ms) a request may wait for a rate-limit slot before failing. Overrides the global Resilience setting for this connection only.",
+    "rateLimitOverridesMaxWaitMsLabel": "__MISSING__:Max Queue Wait (ms)",
     "rateLimitOverridesMinTimeHint": "요청 간 최소 시간(ms)입니다. 기본 속도 제한기 지연 시간을 재정의합니다.",
     "rateLimitOverridesMinTimeLabel": "최소 간격 (ms)",
     "rateLimitOverridesRpmHint": "이 연결에 대한 분당 최대 요청 수입니다. 제공업체 기본값을 재정의합니다.",
@@ -6082,7 +6146,6 @@
       "glmt": "더 높은 토큰 예산, 생각하기(thinking) 활성화 및 더 긴 타임아웃이 설정된 프리셋 GLM 프로필.",
       "getgoapi": "API 키로 GoAPI 연결.",
       "groq": "무료 티어: 30 RPM / 14.4K RPD — 신용카드 불필요",
-      "hackclub": "ai.hackclub.com 에서 Hack Club 계정으로 로그인하세요.",
       "haiper": "haiper.ai/haiper-api 에서 API 키를 가져오세요.",
       "heroku": "API 키로 Heroku AI 연결.",
       "hcnsec": "api.hcnsec.cn 에서 API 키를 가져오세요.",
@@ -6191,7 +6254,7 @@
       "galadriel": "API 키로 Galadriel을 연결합니다.",
       "predibase": "$25 무료 체험 크레딧 (30일 유효)",
       "chenzk": "chenzk.top의 실시간 모델 카탈로그를 지원하는 OpenAI 호환 게이트웨이입니다.",
-      "freepik": "Freepik의 Mystic API로 이미지를 생성합니다.",
+      "magnific": "Freepik의 Mystic API로 이미지를 생성합니다.",
       "freetheai": "패스스루 모델을 지원하는 무료 OpenAI 호환 게이트웨이입니다.",
       "g4f-gemini": "키가 필요 없는 무료 g4f.space Gemini 리버스 프록시(분당 5회 요청으로 제한).",
       "g4f-groq": "키가 필요 없는 무료 g4f.space Groq 리버스 프록시(분당 5회 요청으로 제한).",
@@ -6206,6 +6269,7 @@
       "claude": "기존 OAuth 흐름으로 Claude Code를 연결합니다.",
       "cline": "기존 OAuth 흐름으로 Cline을 연결합니다.",
       "cursor": "기존 OAuth 흐름으로 Cursor IDE를 연결합니다.",
+      "cursor-api": "Connect Cursor with a user API key (crsr_...) from cursor.com/dashboard/api; no IDE session needed.",
       "github": "기존 OAuth 흐름으로 GitHub Copilot을 연결합니다.",
       "gitlab-duo": "ai_features + read_user 스코프가 있는 OAuth 애플리케이션입니다. 이 OmniRoute 인스턴스에서 GITLAB_DUO_OAUTH_CLIENT_ID 및 선택적으로 GITLAB_DUO_OAUTH_CLIENT_SECRET을 구성하세요.",
       "kilocode": "기존 OAuth 흐름으로 Kilo Code를 연결합니다.",
@@ -6268,6 +6332,15 @@
     "cheaperInferenceSupporterBadge": "오픈 소스 친구",
     "cheaperInferenceSupporterTooltip": "Cheaper Inference는 오픈 소스 친구로서 OmniRoute를 후원합니다",
     "kimiPartnerLinkNote": "파트너 링크 — 추가 비용 없이 OmniRoute를 지원합니다",
+    "codexQuotaPools": "Codex 할당량 풀",
+    "codexPoolAvailable": "사용 가능",
+    "codexPoolPartiallyLimited": "일부 제한됨",
+    "codexPoolFullyLimited": "모두 제한됨",
+    "codexPoolLimited": "{count}개 제한됨",
+    "codexPoolQuotaExhausted": "할당량 소진",
+    "codexPoolCoolingDown": "대기 시간 적용 중",
+    "codexPoolUsed": "사용됨",
+    "codexPoolUntil": "{value}까지",
     "anonymousFallbackTitle": "익명 대체",
     "anonymousFallbackDesc": "모든 구성된 연결이 소진되면(쿼터, 크레딧 또는 만료), 이 공급자의 키 없는 계층을 임시로 사용합니다. 익명 요청을 보내는 대신 이 공급자를 건너뛰려면 끄세요. 키 없는 계층이 요청을 거부할 때(401) 권장됩니다.",
     "anonymousFallbackEnabled": "{provider}에 대한 익명 대체가 활성화되었습니다.",
@@ -6344,17 +6417,20 @@
     "searchByModelAria": "모델로 검색",
     "selectSupportedEndpoint": "지원되는 엔드포인트를 최소한 하나 선택하세요.",
     "antigravityClientProfileHarness": "Harness / CLI",
-    "autoFetchModels": "업스트림 모델 자동 가져오기",
-    "autoFetchModelsEnabled": "업스트림 모델 자동 가져오기 활성화됨",
-    "autoFetchModelsDisabled": "업스트림 모델 자동 가져오기 비활성화됨",
-    "autoFetchModelsTooltip": "필요할 때 업스트림 모델을 가져와 캐시합니다.",
-    "overridesUpstreamModel": "업스트림 재정의",
-    "autoFetchModelsPartialFailure": "일부 연결이 업데이트되었지만, 업스트림 모델 자동 가져오기가 모든 곳에서 변경되지 않았습니다.",
-    "autoFetchModelsToggleFailed": "업스트림 모델 자동 가져오기를 전환하지 못했습니다.",
-    "overridesUpstreamModelHint": "귀하의 설정이 이 업스트림 모델을 덮어씁니다.",
-    "resetToUpstreamDefaultsSuccess": "복원된 업스트림 모델 기본값",
-    "resetToUpstreamDefaults": "업스트림 기본값 복원",
-    "resetToUpstreamDefaultsFailed": "업스트림 모델 기본값을 복원하지 못했습니다."
+    "harImportButtonLabel": "Import .har file",
+    "harImportButtonBusy": "Importing…",
+    "harImportButtonHint": "Export from DevTools Network tab after sending at least one chat message.",
+    "harImportStatusValid": "Imported — valid for ~{minutes}m.",
+    "harImportStatusExpiringSoon": "Imported — valid for only ~{minutes}m more.",
+    "harImportStatusExpired": "Imported, but this token already expired ({minutes}m ago) — export a fresh HAR.",
+    "harImportStatusUnknownExpiry": "Imported. Couldn't read its expiry.",
+    "harImportErrorNotJson": "That file isn't valid JSON — is it really a .har export?",
+    "harImportErrorNoEntries": "This HAR has no network entries recorded.",
+    "harImportErrorNoChathubUrl": "No Copilot chat connection found in this HAR. Send at least one chat message in m365.cloud.microsoft before exporting.",
+    "harImportErrorUnparsableUrl": "Found the chat connection, but couldn't read its URL.",
+    "harImportErrorMissingFields": "Found the chat connection, but the token was missing from it.",
+    "harImportErrorReadFailed": "Couldn't read that file.",
+    "harImportErrorUnknown": "Couldn't extract a credential from that HAR file."
   },
   "settings": {
     "title": "설정",
@@ -6573,12 +6649,12 @@
     "autoDisableDescription": "Permanently mark provider connections as deactivated if they return specific terminal ban signals (e.g. HTTP 403 'verify your account'). This removes them from the combo rotation.",
     "autoDisableThreshold": "Ban Threshold",
     "autoDisableThresholdDesc": "Consecutive ban signals required before permanent deactivation.",
-    "autoDisableBannedScope": "__MISSING__:Apply auto-disable to",
-    "autoDisableBannedScopeDesc": "__MISSING__:Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
-    "autoDisableBannedScopeAll": "__MISSING__:All connections",
-    "autoDisableBannedScopeAllDesc": "__MISSING__:Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
-    "autoDisableBannedScopeSubscription": "__MISSING__:Login / subscription accounts only",
-    "autoDisableBannedScopeSubscriptionDesc": "__MISSING__:Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
+    "autoDisableBannedScope": "Apply auto-disable to",
+    "autoDisableBannedScopeDesc": "Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
+    "autoDisableBannedScopeAll": "All connections",
+    "autoDisableBannedScopeAllDesc": "Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
+    "autoDisableBannedScopeSubscription": "Login / subscription accounts only",
+    "autoDisableBannedScopeSubscriptionDesc": "Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
     "customBannedSignals": "차단 키워드",
     "customBannedSignalsDesc": "영구 계정 차단 감지를 트리거하는 추가 키워드입니다. 기본 제공 키워드는 항상 적용됩니다.",
     "customBannedSignalsPlaceholder": "예: api key revoked",
@@ -7186,6 +7262,7 @@
     "configured": "configured",
     "none": "None",
     "modelOverrideValuePlaceholder": "Numeric value",
+    "modelOverrideReasoningEffortsPlaceholder": "English comma-separated, e.g. low, medium, high",
     "addKeyValue": "Add key value",
     "noModelOverrides": "No overrides configured for this model.",
     "modelOverrideLoadFailed": "Failed to load model overrides",
@@ -7757,6 +7834,10 @@
         "label": "Ponytail (lazy senior dev)",
         "description": "Lazy senior-dev discipline: climb the YAGNI ladder, fix root cause, smallest working diff."
       },
+      "i-have-adhd": {
+        "label": "I have ADHD (action-first)",
+        "description": "Action-first output: next action leads, steps numbered, one concrete next step, no preamble."
+      },
       "terse-cjk": {
         "label": "간결한 CJK (文言)",
         "description": "한문 초간결 스타일 (중국어만 지원)."
@@ -8037,6 +8118,10 @@
     "disableSessionStickinessDesc": "라운드 로빈 및 랜덤 콤보는 첫 번째 메시지 해시를 통해 전체 대화를 하나의 연결에 고정하는 대신 요청마다 다른 연결로 순환합니다. 멀티턴 대화에서 프롬프트 캐시 히트를 유지하려면 꺼두세요. 콤보별 재정의가 우선 적용됩니다.",
     "promptCacheAffinity": "Prompt-cache locality routing",
     "promptCacheAffinityDesc": "Prefer the same provider account for matching prompt-cache keys while preserving health and quota failover.",
+    "reasoningTokenBuffer": "Reasoning token buffer",
+    "reasoningTokenBufferDesc": "Allow combo routing to add max_tokens headroom only for known reasoning models when the full buffer fits inside a known output cap.",
+    "zeroLatencyOptimizations": "Zero-latency optimizations",
+    "zeroLatencyOptimizationsDesc": "Opt in to hedging, predictive TTFT skips, and proactive fallback compression. Leave off to prevent these latency features from racing targets or compressing fallback requests.",
     "credentialRedaction": "자격 증명 마스킹",
     "credentialRedactionDesc": "공급자에게 전송되는 컨텍스트 및 응답에서 API 키, 토큰, 비밀 정보를 마스킹합니다.",
     "enableCredentialRedaction": "자격 증명 마스킹 활성화",
@@ -8192,7 +8277,19 @@
     "cliproxyapiHealth": "건강",
     "cliproxyapiPort": "포트",
     "qdrantHost": "호스트",
-    "qdrantCollection": "컬렉션"
+    "qdrantCollection": "컬렉션",
+    "presetAll": "All",
+    "presetAllDesc": "Show everything",
+    "presetEssentials": "Essentials",
+    "presetEssentialsDesc": "Beginner path - Advanced tools stay searchable",
+    "presetMinimal": "Minimal",
+    "presetMinimalDesc": "Core pages only",
+    "presetDeveloper": "Developer",
+    "presetDeveloperDesc": "Dev & proxy tools",
+    "presetAdmin": "Admin",
+    "presetAdminDesc": "Monitoring & audit",
+    "settingsSidebarTitle": "Sidebar Customization",
+    "settingsSidebarDesc": "Choose which sidebar items to show. Essentials keeps Advanced tools searchable."
   },
   "contextRtk": {
     "title": "RTK Engine",
@@ -8597,6 +8694,27 @@
     },
     "enableTitle": "엔진 활성화",
     "enableDescription": "스택의 마지막에 실행되며(RTK/Caveman이 텍스트를 정리한 후 OmniGlyph가 나머지를 이미지로 변환), <code>omniglyph</code> 모드를 통해 독립 실행형으로도 실행됩니다. 이것은 미리보기이며 엔드투엔드 검증이 완료될 때까지 기본적으로 비활성화되어 있습니다.",
+    "profileTitle": "Compression profile",
+    "profileDescription": "The profile is a ceiling, not a floor: a stricter profile cannot be reopened by a per-step override. Measured on this codebase: with coding-safe or balanced, a session that has not accumulated history yet compresses nothing, because both raise the minimum-characters threshold and keep the system prompt, tool schemas and tool results native.",
+    "profiles": {
+      "aggressive": {
+        "label": "Aggressive (default)",
+        "description": "The policy the published receipts measured. Images the system prompt, tool documentation and dense history."
+      },
+      "balanced": {
+        "label": "Balanced",
+        "description": "Keeps live state native and protects the last 8 turns; only collapses older closed history."
+      },
+      "codingSafe": {
+        "label": "Coding-safe",
+        "description": "Keeps authority, tool schemas and live tool output native, protecting the last 12 turns. Compresses nothing until the session accumulates history."
+      },
+      "passthrough": {
+        "label": "Passthrough",
+        "description": "Routes without transforming. The engine is skipped and the request is forwarded untouched."
+      }
+    },
+    "profileAria": "Select the OmniGlyph compression profile",
     "saved": "저장되었습니다.",
     "saveFailed": "저장할 수 없습니다.",
     "enableAria": "OmniGlyph 엔진 활성화",
@@ -9066,6 +9184,16 @@
     "grokAutoTopUpMax": "최대",
     "grokAutoTopUpMonth": "월",
     "grokAdditionalCredits": "추가 크레딧",
+    "kimiExtraUsageCredits": "Extra Usage Credits",
+    "kimiExtraUsage": "Extra Usage",
+    "kimiExtraUsageEnabled": "Enabled",
+    "kimiExtraUsageDisabled": "Disabled",
+    "kimiExtraUsageFrozen": "Frozen",
+    "kimiExtraUsageUnavailable": "Unavailable",
+    "kimiMonthlyUsed": "Used this month",
+    "kimiMonthlyLimit": "Monthly limit",
+    "kimiMonthlyLimitUnlimited": "Unlimited",
+    "kimiAdditionalCredits": "Additional Credits",
     "loggerTab": "로거",
     "proxyTab": "프록시",
     "budgetManagement": "예산 관리",
@@ -10564,11 +10692,23 @@
   },
   "cursorAuthModal": {
     "title": "Cursor IDE 연결",
+    "tabLogin": "Login with Cursor",
+    "tabImport": "Import token",
+    "loginDescription": "Opens Cursor's browser login. Works in Docker — approve in your host browser, then return here.",
+    "loginWithCursor": "Login with Cursor",
+    "startingLogin": "Starting…",
+    "waitingApproval": "Waiting for Cursor login approval…",
+    "openUrlHint": "If the browser did not open:",
+    "openLoginLink": "Open login page",
+    "cancelLogin": "Cancel login",
     "autoDetecting": "토큰 자동 감지 중...",
     "readingFromCursor": "Cursor IDE 또는 cursor-agent에서 읽는 중",
     "tokensAutoDetected": "Cursor IDE에서 토큰이 자동 감지되었습니다!",
     "cursorNotDetected": "Cursor IDE가 감지되지 않았습니다. 토큰을 수동으로 붙여넣으세요.",
+    "dockerImportHint": "Running in Docker? Prefer Login with Cursor. IDE auto-import and cursor-agent are usually unavailable inside the container. See docs/providers/CURSOR-DOCKER.md.",
     "accessToken": "액세스 토큰",
+    "refreshToken": "Refresh Token",
+    "refreshTokenPlaceholder": "Optional — enables automatic token refresh",
     "required": "*",
     "accessTokenPlaceholder": "액세스 토큰이 자동으로 채워집니다...",
     "machineId": "머신 ID",
@@ -10580,7 +10720,10 @@
     "errorAutoDetect": "토큰을 자동 감지할 수 없습니다.",
     "errorAutoDetectFailed": "토큰 자동 감지 실패",
     "errorEnterToken": "액세스 토큰을 입력하세요.",
-    "errorImportFailed": "가져오기 실패"
+    "errorImportFailed": "가져오기 실패",
+    "errorLoginStart": "Failed to start Cursor login",
+    "errorLoginPoll": "Cursor login failed",
+    "errorLoginTimeout": "Cursor login timed out — try again"
   },
   "pricingModal": {
     "title": "가격 구성",
@@ -11070,7 +11213,8 @@
       "compressed": "압축",
       "tps": "TPS",
       "duration": "Duration",
-      "time": "Time"
+      "time": "Time",
+      "conversation": "Conversation"
     },
     "loadingLogs": "Loading logs...",
     "noLogs": "No logs yet. Make some API calls to see them here.",
@@ -11932,7 +12076,8 @@
         "title": "ACP 에이전트",
         "phrase": "OmniRoute가 실행 백엔드로 생성하는 CLI (역방향 흐름)",
         "flow": "클라이언트 → OmniRoute → CLI 생성 (stdio/ACP) → 응답",
-        "seeOther": "보기 →"
+        "seeOther": "보기 →",
+        "warning": "Most users can ignore this — use only when an integration requires it."
       }
     },
     "comparison": {
@@ -12122,7 +12267,7 @@
       },
       "omni-webhooks": {
         "name": "웹훅",
-        "description": "웹훅 엔드포인트를 등록, 나열, 테스트 및 제거합니다. 이벤트 구독(request.completed, provider.error, budget.exceeded 등)을 구성하고 전달 재시도를 관리합니다."
+        "description": "__MISSING__:Register, list, test, and remove webhook endpoints. Configure event subscriptions (request.completed, request.failed, quota.exceeded, etc.) and manage delivery retries."
       },
       "omni-mcp": {
         "name": "MCP 서버",
@@ -12463,9 +12608,9 @@
     },
     "badges": {
       "radar-supporter": {
-        "name": "__MISSING__:Radar Supporter",
-        "description": "__MISSING__:Verified a live OmniRoute Radar supporter feed",
-        "criteria": "__MISSING__:Verify a signed live Radar supporter feed."
+        "name": "Radar Supporter",
+        "description": "Verified a live OmniRoute Radar supporter feed",
+        "criteria": "Verify a signed live Radar supporter feed."
       },
       "first-token": {
         "name": "첫 토큰",
@@ -12756,6 +12901,10 @@
       },
       "SKILLS_SANDBOX_NETWORK_ENABLED": {
         "description": "스킬 샌드박스에서 네트워크 액세스를 활성화합니다."
+      },
+      "DISABLE_CONTEXT_WINDOW_CHECKS": {
+        "label": "Disable Context Window Checks",
+        "description": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active."
       }
     }
   },
@@ -13188,7 +13337,7 @@
     "localStateSaveFailed": "Failed to save local Radar settings",
     "guidedCombos": "Guided combos",
     "offers": "Offers",
-    "intel": "__MISSING__:Intel"
+    "intel": "Intel"
   },
   "radarCombosPage": {
     "title": "Radar guided combos",
@@ -13328,6 +13477,13 @@
         "modelLockouts": "모델 잠금",
         "count": "연결 수"
       }
+    },
+    "reassuranceTitle": "Your connections recover automatically",
+    "reassuranceDetail": "Usually no action is needed. OmniRoute temporarily rests a connection after failures, then safely tries it again.",
+    "plainStates": {
+      "healthy": "Requests can be sent",
+      "coolingDown": "Trying again soon",
+      "lockedOut": "Needs your attention"
     }
   },
   "featureFlagCapabilityFilterEnabledDescription": "대상 모델에 필수 기능(비전, 도구, 구조화된 출력, 컨텍스트 창)이 부족할 경우 요청을 발송 전에 거부합니다. 콤보 레이어 호환성 필터를 우회하는 직접 단일 공급자 요청을 보호합니다.",
@@ -13728,36 +13884,36 @@
     "trialDays": "{days, plural, one {# day} other {# days}}"
   },
   "radarIntelPage": {
-    "title": "__MISSING__:Radar Intel",
-    "subtitle": "__MISSING__:Radar-owned ELO rankings and factual catalog movement.",
-    "backToRadar": "__MISSING__:Back to Radar",
-    "loading": "__MISSING__:Loading Intel...",
-    "refresh": "__MISSING__:Refresh Intel",
-    "syncing": "__MISSING__:Refreshing...",
-    "loadFailed": "__MISSING__:We could not refresh Intel. The last verified local cache is kept.",
-    "empty": "__MISSING__:No verified Intel snapshot is available yet.",
-    "supporterBadge": "__MISSING__:Radar Supporter",
-    "methodology": "__MISSING__:Methodology",
-    "eloMethod": "__MISSING__:ELO, initial {initial}, K={factor}",
-    "freshness": "__MISSING__:Catalog freshness",
-    "ageDays": "__MISSING__:{days, plural, one {# day old} other {# days old}}",
-    "trend": "__MISSING__:Catalog trend",
-    "modelDelta": "__MISSING__:{current} models, +{added} / -{removed}",
-    "ranking": "__MISSING__:Model ranking",
-    "noRankings": "__MISSING__:No confirmed comparisons are available yet.",
-    "model": "__MISSING__:Model",
-    "category": "__MISSING__:Category",
-    "rating": "__MISSING__:Rating",
-    "matches": "__MISSING__:Matches",
+    "title": "Radar Intel",
+    "subtitle": "Radar-owned ELO rankings and factual catalog movement.",
+    "backToRadar": "Back to Radar",
+    "loading": "Loading Intel...",
+    "refresh": "Refresh Intel",
+    "syncing": "Refreshing...",
+    "loadFailed": "We could not refresh Intel. The last verified local cache is kept.",
+    "empty": "No verified Intel snapshot is available yet.",
+    "supporterBadge": "Radar Supporter",
+    "methodology": "Methodology",
+    "eloMethod": "ELO, initial {initial}, K={factor}",
+    "freshness": "Catalog freshness",
+    "ageDays": "{days, plural, one {# day old} other {# days old}}",
+    "trend": "Catalog trend",
+    "modelDelta": "{current} models, +{added} / -{removed}",
+    "ranking": "Model ranking",
+    "noRankings": "No confirmed comparisons are available yet.",
+    "model": "Model",
+    "category": "Category",
+    "rating": "Rating",
+    "matches": "Matches",
     "freshnessValues": {
-      "fresh": "__MISSING__:Fresh",
-      "aging": "__MISSING__:Aging",
-      "stale": "__MISSING__:Stale"
+      "fresh": "Fresh",
+      "aging": "Aging",
+      "stale": "Stale"
     },
     "trendValues": {
-      "growing": "__MISSING__:Growing",
-      "stable": "__MISSING__:Stable",
-      "shrinking": "__MISSING__:Shrinking"
+      "growing": "Growing",
+      "stable": "Stable",
+      "shrinking": "Shrinking"
     }
   },
   "capabilityFilter": {
@@ -13765,5 +13921,13 @@
     "toolsMismatch": "공급자가 도구 호출을 지원하지 않습니다.",
     "structuredOutputMismatch": "제공자가 구조화된 출력을 지원하지 않습니다",
     "contextWindowMismatch": "요청이 공급자 컨텍스트 창을 초과했습니다"
+  },
+  "featureFlagDisableContextWindowChecksDescription": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active.",
+  "cheaperInferenceSponsorBanner": {
+    "title": "Cheaper Inference is an OmniRoute Open Source Friend",
+    "description": "A cost-ranked gateway reselling dozens of frontier models behind one OpenAI-compatible endpoint — routing each request to the cheapest eligible provider, never above list price.",
+    "cta": "Get an API Key",
+    "partnerLinkNote": "Partner link",
+    "dismissAriaLabel": "Dismiss"
   }
 }

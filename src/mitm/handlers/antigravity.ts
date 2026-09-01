@@ -175,7 +175,10 @@ export class AntigravityHandler extends MitmHandlerBase {
       await this.pipeSSE(upstream, res, (chunk) => {
         let chunkStr = chunk.toString();
         for (const [lower, capitalized] of Object.entries(TOOL_RENAME_MAP)) {
-          chunkStr = chunkStr.replace(new RegExp(`"name"\s*:\s*"${lower}"`, 'g'), `"name":"${capitalized}"`);
+          chunkStr = chunkStr.replace(
+            new RegExp(`"name"\\s*:\\s*"${lower}"`, "g"),
+            `"name":"${capitalized}"`
+          );
         }
         collected += chunkStr;
       });

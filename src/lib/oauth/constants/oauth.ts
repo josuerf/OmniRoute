@@ -16,6 +16,7 @@ import {
   GROK_BUILD_TOKEN_URL,
 } from "@omniroute/open-sse/config/grokBuild.ts";
 import { resolvePublicCred } from "@omniroute/open-sse/utils/publicCreds.ts";
+import { CURSOR_AGENT_CLI_VERSION } from "@omniroute/open-sse/utils/cursorAgentCliVersion.ts";
 import { buildGitLabOAuthEndpoints, GITLAB_DUO_DEFAULT_BASE_URL } from "../gitlab";
 
 /**
@@ -364,20 +365,26 @@ export const KIRO_CONFIG = {
   authMethods: ["builder-id", "idc", "google", "github", "import"],
 };
 
-// Cursor OAuth Configuration (Import Token from Cursor IDE)
+// Cursor OAuth Configuration (deep-control PKCE + optional IDE import)
 // Cursor stores credentials in SQLite database: state.vscdb
-// Keys: cursorAuth/accessToken, storage.serviceMachineId
+// Keys: cursorAuth/accessToken, cursorAuth/refreshToken, storage.serviceMachineId
+// Deep-control PKCE + refresh aligned with OpenCodex (lidge-jun/opencodex src/oauth/cursor.ts).
+// clientVersion pin lives in open-sse/utils/cursorAgentCliVersion.ts — single source of truth.
 export const CURSOR_CONFIG = {
   // API endpoints
   apiEndpoint: "https://api2.cursor.sh",
   chatEndpoint: "/aiserver.v1.ChatService/StreamUnifiedChatWithTools",
-  modelsEndpoint: "/aiserver.v1.AiService/GetDefaultModelNudgeData",
+  modelsEndpoint: "/aiserver.v1.AiService/AvailableModels",
+  // Standalone deep-control login (no IDE/CLI required)
+  loginUrl: "https://cursor.com/loginDeepControl",
+  pollUrl: "https://api2.cursor.sh/auth/poll",
+  refreshUrl: "https://api2.cursor.sh/auth/exchange_user_api_key",
   // Additional endpoints
   api3Endpoint: "https://api3.cursor.sh", // Telemetry
   agentEndpoint: "https://agent.api5.cursor.sh", // Privacy mode
   agentNonPrivacyEndpoint: "https://agentn.api5.cursor.sh", // Non-privacy mode
-  // Client metadata
-  clientVersion: "3.2.14",
+  // Client metadata — pin from cursorAgentCliVersion (not a second hardcoded string)
+  clientVersion: CURSOR_AGENT_CLI_VERSION,
   clientType: "ide",
   // Token storage locations (for user reference)
   tokenStoragePaths: {
@@ -388,6 +395,7 @@ export const CURSOR_CONFIG = {
   // Database keys
   dbKeys: {
     accessToken: "cursorAuth/accessToken",
+    refreshToken: "cursorAuth/refreshToken",
     machineId: "storage.serviceMachineId",
   },
 };

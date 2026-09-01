@@ -179,6 +179,36 @@ test("enrichCatalogModelEntry exposes supportsThinking + effort_tiers for a thin
   assert.equal(caps.reasoning, true);
 });
 
+test("enrichCatalogModelEntry preserves Kimi's provider-declared effort contract", () => {
+  for (const model of ["k3", "k3-256k"]) {
+    const entry = registry.enrichCatalogModelEntry({
+      id: `kmc/${model}`,
+      object: "model",
+      owned_by: "kimi-coding",
+      root: model,
+      capabilities: {
+        thinking: true,
+        supportsThinking: true,
+        effort_tiers: ["low", "high", "max"],
+      },
+    }) as Record<string, unknown>;
+    assert.deepEqual(
+      (entry.capabilities as Record<string, unknown>).effort_tiers,
+      ["low", "high", "max"],
+      model
+    );
+  }
+
+  const k27 = registry.enrichCatalogModelEntry({
+    id: "kmc/kimi-for-coding",
+    object: "model",
+    owned_by: "kimi-coding",
+    root: "kimi-for-coding",
+    capabilities: { thinking: true, supportsThinking: true },
+  }) as Record<string, unknown>;
+  assert.equal("effort_tiers" in (k27.capabilities as Record<string, unknown>), false);
+});
+
 test("enrichCatalogModelEntry exposes Max for Kiro GPT-5.6 Luna", () => {
   const enriched = registry.enrichCatalogModelEntry({
     id: "kr/gpt-5.6-luna",

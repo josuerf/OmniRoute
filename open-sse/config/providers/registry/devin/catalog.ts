@@ -84,14 +84,10 @@ export const DEVIN_MODEL_CATALOG: RegistryModel[] = [
   // Gemini
   { id: "gemini-3-1-pro-high", name: "Gemini 3.1 Pro High", contextLength: 1048576 },
   { id: "gemini-3-1-pro-low", name: "Gemini 3.1 Pro Low", contextLength: 1048576 },
-  { id: "gemini-3-6-flash-high", name: "Gemini 3.6 Flash High" },
-  { id: "gemini-3-6-flash-medium", name: "Gemini 3.6 Flash Medium" },
-  { id: "gemini-3-6-flash-low", name: "Gemini 3.6 Flash Low" },
-  { id: "gemini-3-6-flash-minimal", name: "Gemini 3.6 Flash Minimal" },
-  { id: "gemini-3-5-flash-high", name: "Gemini 3.5 Flash High", contextLength: 1048576 },
-  { id: "gemini-3-5-flash-medium", name: "Gemini 3.5 Flash Medium", contextLength: 1048576 },
-  { id: "gemini-3-5-flash-low", name: "Gemini 3.5 Flash Low", contextLength: 1048576 },
-  { id: "gemini-3-5-flash-minimal", name: "Gemini 3.5 Flash Minimal", contextLength: 1048576 },
+  { id: "gemini-3-7-flash-high", name: "Gemini 3.7 Flash High" },
+  { id: "gemini-3-7-flash-medium", name: "Gemini 3.7 Flash Medium" },
+  { id: "gemini-3-7-flash-low", name: "Gemini 3.7 Flash Low" },
+  { id: "gemini-3-7-flash-minimal", name: "Gemini 3.7 Flash Minimal" },
   // Grok
   { id: "grok-4-5-high", name: "Grok 4.5 High", contextLength: 500000 },
   { id: "grok-4-5-medium", name: "Grok 4.5 Medium", contextLength: 500000 },

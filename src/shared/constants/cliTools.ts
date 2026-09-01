@@ -100,7 +100,10 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
     baseUrlSupport: "none",
     defaultCommand: "zcode",
     notes: [
-      { type: "info", text: "Uses the local ZCode app-server and its existing builtin:zai-coding-plan login." },
+      {
+        type: "info",
+        text: "Uses the local ZCode app-server and its existing builtin:zai-coding-plan login.",
+      },
       { type: "warning", text: "The response is buffered until the ZCode turn completes." },
     ],
   },
@@ -239,29 +242,21 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
     acpSpawnable: false,
     baseUrlSupport: "none",
     modelAliases: [
-      "gemini-3.7-flash",
-      "gemini-3.6-flash-high",
-      "gemini-3.6-flash-medium",
-      "gemini-3.6-flash-low",
+      "gemini-3.7-flash-high",
+      "gemini-3.7-flash-medium",
+      "gemini-3.7-flash-low",
       "claude-opus-4-6-thinking",
       "claude-sonnet-4-6",
       "gemini-pro-agent",
       "gemini-3.1-pro-low",
-      "gemini-3-flash-agent",
-      "gemini-3.5-flash-low",
-      "gemini-3.5-flash-extra-low",
       "gpt-oss-120b-medium",
     ],
     defaultModels: [
-      createCliModel("gemini-3.7-flash", "Gemini 3.7 Flash"),
-      createCliModel("gemini-3.6-flash-high", "Gemini 3.6 Flash High"),
-      createCliModel("gemini-3.6-flash-medium", "Gemini 3.6 Flash Medium"),
-      createCliModel("gemini-3.6-flash-low", "Gemini 3.6 Flash Low"),
+      createCliModel("gemini-3.7-flash-high", "Gemini 3.7 Flash High"),
+      createCliModel("gemini-3.7-flash-medium", "Gemini 3.7 Flash Medium"),
+      createCliModel("gemini-3.7-flash-low", "Gemini 3.7 Flash Low"),
       createCliModel("gemini-pro-agent", "Gemini 3.1 Pro High"),
       createCliModel("gemini-3.1-pro-low", "Gemini 3.1 Pro Low"),
-      createCliModel("gemini-3-flash-agent", "Gemini 3.5 Flash High"),
-      createCliModel("gemini-3.5-flash-low", "Gemini 3.5 Flash Medium"),
-      createCliModel("gemini-3.5-flash-extra-low", "Gemini 3.5 Flash Low"),
       createCliModel("claude-sonnet-4-6", "Claude Sonnet 4.6"),
       createCliModel("claude-opus-4-6-thinking", "Claude Opus 4.6 Thinking"),
       createCliModel("gpt-oss-120b-medium", "GPT OSS 120B Medium"),
@@ -595,6 +590,31 @@ aider --openai-api-base "{{baseUrl}}" --model "{{model}}"`,
     acpSpawnable: false,
     baseUrlSupport: "full",
     defaultCommand: "jcode",
+  },
+
+  /**
+   * ★ Added 2026-08-22 — Prime Agent (PrimeIntellect-ai/prime-agent).
+   * A self-improving RLM coding harness (TypeScript) whose LLM toolkit
+   * (prime-agent-ai) supports "any OpenAI-compatible API" + a dedicated
+   * "OpenAI Codex (ChatGPT Plus/Pro OAuth)" provider, so it can point at
+   * OmniRoute's OpenAI-compatible base URL like codex/forge. Installed via
+   * `curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh | sh`;
+   * provider chosen at first run via `/login`.
+   */
+  "prime-agent": {
+    id: "prime-agent",
+    name: "Prime Agent",
+    icon: "terminal",
+    color: "#6366F1",
+    description:
+      "Prime Agent — self-improving RLM coding harness with OpenAI-compatible provider support",
+    docsUrl: "https://github.com/PrimeIntellect-ai/prime-agent",
+    configType: "custom",
+    category: "agent",
+    vendor: "Prime Intellect (OSS)",
+    acpSpawnable: false,
+    baseUrlSupport: "full",
+    defaultCommand: "prime-agent",
   },
 
   /**

@@ -23,6 +23,10 @@ import { getComboByName } from "@/lib/db/combos";
 import { getAllCustomModels } from "@/lib/db/models";
 import { resolveProxyForConnection } from "@/lib/db/settings";
 import { resolveImageRouteModel } from "@/lib/images/imageRouteModel";
+import {
+  resolveLocalSyncedEndpointRoute,
+  type LocalSyncedEndpointRoute,
+} from "@/lib/providerModels/syncedEndpointRouting";
 import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { attachOmniRouteMetaHeaders } from "@/domain/omnirouteResponseMeta";
 import { calculateModalCost } from "@/lib/usage/costCalculator";
@@ -31,6 +35,7 @@ import { getSpecialtyModelsResponse } from "@/app/api/v1/_shared/specialtyCatalo
 import { enforceClientApiRouteAuth } from "@/shared/utils/clientApiRouteAuth";
 import { runWithCallLogApiKeyContext } from "@/lib/usage/callLogApiKeyContext";
 import { executeImageWithCredentialFallback } from "@/sse/services/imageCredentialRetry";
+import { AUTHZ_HEADER_PEER_LOCALITY } from "@/server/authz/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -144,6 +149,16 @@ async function postHandler(request, context) {
   // Parse model to get provider
   let { provider, model: requestedModel } = parseImageModel(body.model);
   let isCustomModel = false;
+  let syncedEndpointRoute: LocalSyncedEndpointRoute | null = null;
+
+  if (!provider) {
+    syncedEndpointRoute = await resolveLocalSyncedEndpointRoute(body.model, "images");
+    if (syncedEndpointRoute) {
+      provider = syncedEndpointRoute.provider;
+      body.model = `${syncedEndpointRoute.provider}/${syncedEndpointRoute.model}`;
+      isCustomModel = true;
+    }
+  }
 
   // If not in built-in registry, check custom models tagged for images
   if (!provider) {
@@ -230,9 +245,8 @@ async function postHandler(request, context) {
     credentials = await getProviderCredentialsWithQuotaPreflight(
       provider,
       null,
-      null,
-      requestedModel
-    );
+      syncedEndpointRoute?.connectionIds ?? null,
+      requestedModel    );
     if (!credentials) {
       return errorResponse(
         HTTP_STATUS.BAD_REQUEST,
@@ -290,6 +304,12 @@ async function postHandler(request, context) {
               ...(isCustomModel && { resolvedProvider: provider }),
               signal: request.signal,
               clientHeaders: publicBaseUrlHeaders(request.headers),
+              // Trusted "loopback"|"lan"|"remote" verdict stamped by the authz
+              // pipeline from the real TCP peer (never the spoofable Host
+              // header). Only the spawn-capable cursor-agent-image provider
+              // consumes this (Hard Rules #15 + #17) — every other image
+              // provider ignores it.
+              peerLocality: request.headers.get(AUTHZ_HEADER_PEER_LOCALITY),
             })
         );
 

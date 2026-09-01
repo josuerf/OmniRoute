@@ -164,8 +164,8 @@ function installHandoffMock(
   };
 }
 
-test("ChatGPT Web Pro models resume Temporary Chat handoffs through native SSE", async (t) => {
-  for (const model of ["gpt-5.6-pro", "gpt-5.5-pro", "gpt-5.5-pro-extended"]) {
+test("ChatGPT Web GPT-5.6 Sol Pro resumes Temporary Chat handoffs through native SSE", async (t) => {
+  for (const model of ["gpt-5.6-sol-pro"]) {
     await t.test(model, async () => {
       __resetChatGptWebCachesForTesting();
       const expected = `RESUMED_${model}`;
@@ -204,7 +204,7 @@ test("ChatGPT Web handoff retries the next resume offset after a 404", async () 
   try {
     const executor = new ChatGptWebExecutor();
     const result = await executor.execute({
-      model: "gpt-5.6-pro",
+      model: "gpt-5.6-sol-pro",
       body: { messages: [{ role: "user", content: "hard problem" }] },
       stream: false,
       credentials: { apiKey: "cookie-offset" },
@@ -231,7 +231,7 @@ test("ChatGPT Web streaming appends the native resumed Pro answer", async () => 
   try {
     const executor = new ChatGptWebExecutor();
     const result = await executor.execute({
-      model: "gpt-5.5-pro-extended",
+      model: "gpt-5.6-sol-pro",
       body: { messages: [{ role: "user", content: "hard problem" }], stream: true },
       stream: true,
       credentials: { apiKey: "cookie-stream" },

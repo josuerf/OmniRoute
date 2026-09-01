@@ -326,13 +326,11 @@ Przed wypuszczeniem dowolnego wydania v3.8.x zweryfikuj te dodatkowe pozycje:
 - [ ] `npm install -g omniroute@<this-version>` uruchamia postinstall bez fatalnego wyjścia
 - [ ] Ścieżka update zachowuje optional deps: `omniroute update --apply` i auto-updater
       uruchamiają `npm install -g … --include=optional`, żeby `optionalDependencies` (better-sqlite3,
-      keytar, tls-client oraz stack SLM llmlingua: `@atjsh/llmlingua-2`,
-      `@huggingface/transformers@3.5.2`, `@tensorflow/tfjs`, `js-tiktoken`) przeżyły update.
-      `@huggingface/transformers` zostaje optional, żeby jego postinstall providera CUDA `onnxruntime-node`
-      nie mógł przerwać instalacji na hostach CUDA 11. Tier ultra `modelPath` SLM potrzebuje też
+      keytar, tls-client oraz stack SLM llmlingua: `@atjsh/llmlingua-2@2.0.5`,
+      `js-tiktoken`) przeżyły update. Tier ultra `modelPath` SLM potrzebuje też
       modelu tinybert, auto-pobieranego do `${DATA_DIR}/models/llmlingua` przy pierwszym użyciu. Postinstall
       (`scripts/build/colocateOptionals.mjs`) następnie ko-lokuje opcjonalne zamknięcie SLM do
-      `dist/node_modules`, żeby worker rozwiązywał JEDNĄ opcjonalną instancję `@huggingface/transformers` 3.5.2
+      `dist/node_modules`, żeby worker rozwiązywał JEDNĄ instancję `@huggingface/transformers` ^4.2.0
       — standalone trace bundluje tylko transformers, nie dynamicznie importowane
       optionals, więc bez tego worker załadowałby llmlingua-2 przeciw transformers z roota
       i tier SLM cicho fail-openowałby.

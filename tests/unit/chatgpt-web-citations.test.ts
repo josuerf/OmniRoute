@@ -10,12 +10,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { ChatGptWebExecutor, __resetChatGptWebCachesForTesting } = await import(
-  "../../open-sse/executors/chatgpt-web.ts"
-);
-const { __setTlsFetchOverrideForTesting } = await import(
-  "../../open-sse/services/chatgptTlsClient.ts"
-);
+const { ChatGptWebExecutor, __resetChatGptWebCachesForTesting } =
+  await import("../../open-sse/executors/chatgpt-web.ts");
+const { __setTlsFetchOverrideForTesting } =
+  await import("../../open-sse/services/chatgptTlsClient.ts");
 
 // ─── Minimal TLS-fetch mock ──────────────────────────────────────────────────
 // Tailored to the citation flow: root/DPL, session→accessToken, sentinel→token
@@ -81,7 +79,7 @@ function installMockFetch({
       if (u.includes("/sentinel/chat-requirements")) {
         return json({ token: "req-token", proofofwork: { required: false } });
       }
-      // /backend-api/conversation/<id> — detail poll used by GPT-5.5 Pro handoff.
+      // /backend-api/conversation/<id> — detail poll used by GPT-5.6 Sol Pro handoff.
       if (conversationDetail) {
         const m1 = u.match(/\/backend-api\/conversation\/([^/?#]+)$/);
         if (m1) {
@@ -171,7 +169,7 @@ test("Non-streaming: resolves ChatGPT web citation markers into markdown links",
   try {
     const executor = new ChatGptWebExecutor();
     const result = await executor.execute({
-      model: "gpt-5.5-pro-extended",
+      model: "gpt-5.6-sol-pro",
       body: { messages: [{ role: "user", content: "latest Tesla FSD in Australia" }] },
       stream: false,
       credentials: { apiKey: "test" },
@@ -260,7 +258,7 @@ test("Streaming: buffers split ChatGPT citation markers until metadata can link 
   try {
     const executor = new ChatGptWebExecutor();
     const result = await executor.execute({
-      model: "gpt-5.5-pro-extended",
+      model: "gpt-5.6-sol-pro",
       body: {
         messages: [{ role: "user", content: "latest Tesla FSD in Australia" }],
         stream: true,
@@ -297,7 +295,7 @@ test("Streaming: buffers split ChatGPT citation markers until metadata can link 
   }
 });
 
-test("GPT-5.5 Pro non-streaming: stream_handoff polls conversation detail for final answer", async () => {
+test("GPT-5.6 Sol Pro non-streaming: stream_handoff polls conversation detail for final answer", async () => {
   __resetChatGptWebCachesForTesting();
   const citationMarker = "citeturn0search0";
   const m = installMockFetch({
@@ -369,7 +367,7 @@ test("GPT-5.5 Pro non-streaming: stream_handoff polls conversation detail for fi
   try {
     const executor = new ChatGptWebExecutor();
     const result = await executor.execute({
-      model: "gpt-5.5-pro-extended",
+      model: "gpt-5.6-sol-pro",
       body: { messages: [{ role: "user", content: "hard problem" }] },
       stream: false,
       credentials: { apiKey: "cookie-pro-poll" },

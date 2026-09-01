@@ -15,6 +15,8 @@ import { getModelSpec } from "../../../src/shared/constants/modelSpecs.ts";
 import {
   buildChangedToolNameMap,
   buildHistoricalToolResultContext,
+  mergeConsecutiveSameRoleContents,
+  type GeminiContent,
 } from "./openai-to-gemini/helpers.ts";
 
 /**
@@ -45,7 +47,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
       : null;
   const result: {
     model: string;
-    contents: Array<Record<string, unknown>>;
+    contents: GeminiContent[];
     generationConfig: Record<string, unknown>;
     safetySettings: unknown;
     systemInstruction?: { role: string; parts: Array<{ text: string }> };
@@ -313,6 +315,11 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   if (changedToolNameMap) {
     result._toolNameMap = changedToolNameMap;
   }
+
+  // Gemini strictly rejects requests containing consecutive messages with the same role
+  // (400 INVALID_ARGUMENT: "Request contains consecutive messages with the same role").
+  // Normalize adjacent same-role messages by concatenating their parts.
+  result.contents = mergeConsecutiveSameRoleContents(result.contents);
 
   return result;
 }

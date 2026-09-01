@@ -202,7 +202,7 @@ test("Responses history preserves authentic reasoning for native Moonshot K3", (
           },
           {
             type: "reasoning",
-            summary: [{ type: "summary_text", text: "I should search first." }],
+            content: [{ type: "reasoning_text", text: "I should search first." }],
           },
           {
             type: "function_call",

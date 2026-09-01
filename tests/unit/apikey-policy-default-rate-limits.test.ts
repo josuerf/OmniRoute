@@ -42,6 +42,22 @@ test("buildDefaultRateLimits: unset / empty env disables implicit fallback limit
   assert.deepEqual(buildDefaultRateLimits("   "), []);
 });
 
+test("ENVIRONMENT.md documents unset DEFAULT_RATE_LIMIT_PER_DAY as unlimited (#11017)", () => {
+  const md = fs.readFileSync(new URL("../../docs/reference/ENVIRONMENT.md", import.meta.url), "utf8");
+  const row = md.split("\n").find((line) => line.includes("`DEFAULT_RATE_LIMIT_PER_DAY`"));
+  assert.ok(row, "ENVIRONMENT.md must document DEFAULT_RATE_LIMIT_PER_DAY");
+  assert.match(
+    row,
+    /unset|empty|unlimited|no implicit/i,
+    "live env table must match buildDefaultRateLimits() (#2289)"
+  );
+  assert.doesNotMatch(
+    row,
+    /unset\/empty\/malformed\) keeps the legacy 1000/,
+    "pre-#2289 1000/day default must not remain in the live table"
+  );
+});
+
 test("buildDefaultRateLimits: explicit '0' opts out — no fallback rules", async () => {
   const { buildDefaultRateLimits } = await import("../../src/shared/utils/apiKeyPolicy.ts");
 

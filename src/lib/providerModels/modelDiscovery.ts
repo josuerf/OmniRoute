@@ -6,7 +6,6 @@ import {
 } from "@/lib/db/models";
 import { CANONICAL_EFFORT_VALUES } from "@/shared/reasoning/effortStandardization";
 import { isObsoleteKiroModelAlias } from "@omniroute/open-sse/services/kiroModels.ts";
-import { filterChatSelectableModels } from "@omniroute/open-sse/services/modelEndpointPolicy.ts";
 import { filterSelectableModels } from "@omniroute/open-sse/services/modelLifecycle.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -68,6 +67,19 @@ export function detectVisionInput(record: JsonRecord): boolean {
 // import format already emits). Hard Rule #7 — validate the untrusted upstream
 // payload with Zod before it is trusted/stored; a malformed shape degrades to
 // `undefined` instead of throwing, so one bad record never fails the whole sync.
+// The same nesting also carries `default_effort` (e.g. OpenRouter
+// `reasoning:{mandatory, default_enabled, default_effort, supported_efforts}`) —
+// captured by `detectDefaultThinkingEffort` below and threaded through the
+// EXISTING `defaultThinkingEffort` plumbing (`SyncedAvailableModel`,
+// RuntimeModelMeta, #6879 `applyDefaultReasoningEffort`), so a model that only
+// produces usable output with an explicit effort (measured: OpenRouter stealth
+// reasoning models returning `upstream_empty_response` without one) gets the
+// vendor-declared default injected instead of failing.
+const reasoningDefaultEffortSchema = z
+  .object({ default_effort: z.string().optional() })
+  .partial()
+  .nullable()
+  .optional();
 const reasoningSupportedEffortsSchema = z
   .object({ supported_efforts: z.array(z.string()).optional() })
   .partial()
@@ -97,6 +109,11 @@ const EFFORT_SYNONYMS: Record<string, string> = { max: "xhigh" };
 // boolean is never interpreted for other discovery sources.
 // Live request testing confirms Crof accepts `max` as a distinct top tier.
 const CROF_REASONING_EFFORTS = ["none", "low", "medium", "high", "max"] as const;
+
+// Command Code's provider API accepts the documented low/medium/high/xhigh/max
+// reasoning_effort values for its reasoning-capable model catalog, but its
+// /models response does not declare them. Keep this fallback provider-scoped.
+const COMMAND_CODE_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 function normalizeSupportedEffort(effort: string): string {
   if ((CANONICAL_EFFORT_VALUES as readonly string[]).includes(effort)) return effort;
@@ -128,6 +145,28 @@ function parseEffortList(rawList: unknown): string[] | undefined {
     )
   );
   return efforts.length > 0 ? efforts : undefined;
+}
+
+/**
+ * Read the nested `record.reasoning.default_effort` shape (OpenRouter declares
+ * `reasoning:{mandatory, default_enabled, default_effort, supported_efforts}`)
+ * and normalize it onto the canonical vocabulary (`max` → `xhigh`, same mapping
+ * `detectSupportedThinkingEfforts` applies to the tier list). Returns `undefined`
+ * (never throws) when the field is absent or malformed.
+ *
+ * A flat top-level `defaultThinkingEffort` (OmniRoute's own import format, and
+ * kimi-style upstreams) stays authoritative — the nested shape is a fallback.
+ */
+export function detectDefaultThinkingEffort(record: JsonRecord): string | undefined {
+  if (typeof record.defaultThinkingEffort === "string" && record.defaultThinkingEffort.length > 0) {
+    return normalizeSupportedEffort(record.defaultThinkingEffort);
+  }
+  const parsed = reasoningDefaultEffortSchema.safeParse(record.reasoning);
+  if (parsed.success && parsed.data) {
+    const raw = parsed.data.default_effort;
+    if (typeof raw === "string" && raw.length > 0) return normalizeSupportedEffort(raw);
+  }
+  return undefined;
 }
 
 /**
@@ -232,6 +271,7 @@ export function normalizeDiscoveredModels(
     if (!id) continue;
 
     const isCrofReasoningModel = providerId === "crof" && record.reasoning_effort === true;
+    const isCommandCodeModel = providerId === "command-code";
     const supportedThinkingEfforts = (() => {
       // The flat import field and every recognized upstream tier array remain
       // authoritative over the provider fallback, including an explicit empty list.
@@ -242,8 +282,12 @@ export function normalizeDiscoveredModels(
       }
       const detected = detectSupportedThinkingEfforts(record);
       if (detected || hasDeclaredEffortList(record)) return detected;
-      return isCrofReasoningModel ? [...CROF_REASONING_EFFORTS] : undefined;
+      if (isCrofReasoningModel) return [...CROF_REASONING_EFFORTS];
+      return isCommandCodeModel ? [...COMMAND_CODE_REASONING_EFFORTS] : undefined;
     })();
+    // Vendor-declared default effort (OpenRouter `reasoning.default_effort`, or the
+    // flat import field). Normalized onto the canonical vocabulary (`max` → `xhigh`).
+    const defaultThinkingEffort = detectDefaultThinkingEffort(record);
 
     const name =
       toNonEmptyString(record.name) ||
@@ -300,15 +344,13 @@ export function normalizeDiscoveredModels(
         : {}),
       ...(supportedEndpoints && supportedEndpoints.length > 0 ? { supportedEndpoints } : {}),
       ...(supportedThinkingEfforts !== undefined ? { supportedThinkingEfforts } : {}),
-      ...(toNonEmptyString(record.defaultThinkingEffort)
-        ? { defaultThinkingEffort: toNonEmptyString(record.defaultThinkingEffort)! }
-        : {}),
+      ...(defaultThinkingEffort !== undefined ? { defaultThinkingEffort } : {}),
       ...(typeof inputTokenLimit === "number" ? { inputTokenLimit } : {}),
       ...(typeof outputTokenLimit === "number" ? { outputTokenLimit } : {}),
       ...(typeof record.description === "string" ? { description: record.description } : {}),
       ...(typeof record.supportsThinking === "boolean"
         ? { supportsThinking: record.supportsThinking }
-        : isCrofReasoningModel
+        : isCrofReasoningModel || isCommandCodeModel
           ? { supportsThinking: true }
           : {}),
       ...(record.alwaysThinking === true ? { alwaysThinking: true } : {}),
@@ -336,9 +378,13 @@ export async function persistDiscoveredModels(
   connectionId: string,
   models: unknown
 ): Promise<SyncedAvailableModel[]> {
-  const normalized = filterChatSelectableModels(
+  // #11088 (option 1): the synced store is endpoint-agnostic — images/embeddings
+  // models must persist so per-connection endpoint routing (#11088) and the
+  // /v1/models catalog can see them. Chat selectability is applied at read time
+  // (auto-pool expansion, chat projections), not at write time.
+  const normalized = filterSelectableModels(
     providerId,
-    filterSelectableModels(providerId, normalizeDiscoveredModels(models, providerId))
+    normalizeDiscoveredModels(models, providerId)
   );
   await replaceSyncedAvailableModelsForConnection(providerId, connectionId, normalized);
   return normalized;

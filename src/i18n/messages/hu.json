@@ -974,12 +974,20 @@
     "batchFileUsedByCount": "Használva {count, plural, one {# tétel} other {# tétel}}",
     "batchFilePreview": "Előnézet",
     "batchFilePreviewTruncated": "Az első {shown} sor megjelenítése ({total} összes sor)",
-    "batchFileDownloadFull": "Teljes fájl letöltése"
+    "batchFileDownloadFull": "Teljes fájl letöltése",
+    "batchHeaderSubtitle": "Run many requests as one job",
+    "batchStep1": "1 · Upload JSONL",
+    "batchStep1Desc": "Add requests",
+    "batchStep2": "2 · Create batch",
+    "batchStep2Desc": "Run job",
+    "batchStep3": "3 · Get results",
+    "batchStep3Desc": "Download output"
   },
   "disabled": "Letiltva",
   "featureFlagOmnirouteEmergencyFallbackDescription": "A keretet kimerítő kérések átirányítása a vészhelyzeti ingyenes tartalék szolgáltatóhoz/modellhez.",
   "featureFlagArenaEloSyncEnabledDescription": "Rendszeres Arena AI ranglista ELO szinkronizáció engedélyezése a modellintelligencia rangsorokhoz.",
   "featureFlagExposeCcDiscoveryAliasesDescription": "Hirdesse a claude/&lt;provider&gt;/&lt;model&gt; tükör azonosítókat a /v1/models-on, hogy a Claude Code átjáró modell felfedezése nem Claude modelleket is listázzon. Figyelmeztetés: globális engedélyezés esetén megduplázza a katalógus bejegyzéseket minden kliens számára.",
+  "featureFlagChatVirtualLanesEnabledDescription": "Tegye lehetővé a bérlőnkénti adaptív virtuális beléptetősávokat a szolgáltatók felé történő továbbításhoz (#9654): az egyik bérlő kiugró terhelése már nem okoz 503-as hibát egy másiknál. Az OMNIROUTE_CHAT_VIRTUAL_LANES környezeti változó felülírja ezt a vezérlőpult-beállítást; a változtatások a szerver újraindításakor lépnek életbe.",
   "sidebar": {
     "home": "Otthon",
     "dashboard": "Irányítópult",
@@ -1164,6 +1172,8 @@
     "consoleLogs": "Console Logs",
     "logsTimeline": "Timeline",
     "logsTimelineSubtitle": "Vizuális kérelem idővonal",
+    "conversations": "Conversations",
+    "conversationsSubtitle": "Multi-turn agentic conversations",
     "globalRouting": "Global Routing",
     "mitmProxy": "MITM Proxy",
     "oneProxy": "1Proxy",
@@ -1256,7 +1266,7 @@
     "agentBridge": "Agent Bridge",
     "agentBridgeSubtitle": "IDE-ügynök forgalmának elfogása",
     "trafficInspector": "Forgalomvizsgáló",
-    "trafficInspectorSubtitle": "LLM-hívások monitorozása + bármilyen HTTPS-forgalom hibakeresése",
+    "trafficInspectorSubtitle": "__MISSING__:Inspect request and response traffic from your apps",
     "cliCode": "CLI kód",
     "cliCodeSubtitle": "Az OmniRoute-ra mutató kódeszközök",
     "cliAgents": "CLI ügynökök",
@@ -1290,7 +1300,8 @@
       "open": "megnyitás",
       "close": "bezárás"
     },
-    "noResults": "Nincs találat"
+    "noResults": "Nincs találat",
+    "trafficInspectorPurpose": "See exactly what your application sends to and receives from AI providers. Works with any OpenAI-compatible client."
   },
   "webhooks": {
     "title": "Webhooks",
@@ -1736,8 +1747,8 @@
     "quotaShare": "Kvótamegosztás",
     "discovery": "Felfedezés",
     "freeProviderRankings": "Ingyenes szolgáltatók rangsora",
-    "radar": "__MISSING__:Radar",
-    "setup": "__MISSING__:Setup",
+    "radar": "Radar",
+    "setup": "Setup",
     "freeTiers": "Ingyenes szintek",
     "gamification": "Játékosítás",
     "leaderboard": "Ranglista",
@@ -1853,7 +1864,21 @@
     "directDownloadHint": "Vagy töltsd le közvetlenül a megfelelő telepítőformátumot:",
     "releaseNotes": "Kiadási Megjegyzések",
     "readMore": "Tovább olvasom",
-    "noAuthLabel": "Nincs hitelesítés"
+    "noAuthLabel": "Nincs hitelesítés",
+    "recentRequests": "Recent Requests",
+    "recentRequestsEmpty": "No requests yet.",
+    "recentRequestsModel": "Model",
+    "recentRequestsTokens": "In / Out",
+    "recentRequestsWhen": "When",
+    "readinessEyebrow": "Get ready to route",
+    "readinessTitle": "Send your first request",
+    "readinessSubtitle": "Four small steps. OmniRoute checks readiness as you go.",
+    "readinessStep1": "Connect a provider",
+    "readinessStep2": "Configure endpoint authentication",
+    "readinessStep3": "Copy your endpoint",
+    "readinessStep4": "Send a test request",
+    "readinessContinue": "Continue setup",
+    "readinessDismiss": "Dismiss for now"
   },
   "analytics": {
     "title": "Analytics",
@@ -2215,6 +2240,10 @@
     "fullAccess": "Teljes hozzáférés",
     "keyManagement": "API kulcskezelés",
     "keyManagementDesc": "API-kulcsok létrehozása és kezelése a végponthoz intézett kérések hitelesítéséhez",
+    "requestFlowAria": "Your app sends requests through an API key to OmniRoute",
+    "requestFlowYourApp": "Your app",
+    "requestFlowApiKey": "API key",
+    "requestFlowOmniRoute": "OmniRoute",
     "totalKeys": "Összes kulcs",
     "restricted": "Korlátozott",
     "totalRequests": "Összes kérés",
@@ -2894,7 +2923,8 @@
       "omp": "Oh My Pi terminál kódoló ágens",
       "letta": "Letta CLI ágens perzisztens memóriával és eszközhasználattal",
       "warp": "Warp AI terminál egyéni szolgáltató támogatásával",
-      "agent-deck": "Agent Deck többágenses orkesztrátor"
+      "agent-deck": "Agent Deck többágenses orkesztrátor",
+      "prime-agent": "Prime Agent — self-improving RLM coding harness with OpenAI-compatible provider support"
     },
     "guides": {
       "cursor": {
@@ -3603,6 +3633,10 @@
     "wizardStep3Desc": "Pick how requests are distributed across your models - 13 strategies available",
     "wizardStep4Title": "Review & Save",
     "wizardStep4Desc": "Review your configuration and activate the combo",
+    "usageGuideInvokeTitle": "How to call this combo",
+    "usageGuideInvokeDesc": "Send the combo's exact name as the model, e.g. model: \"my-combo\" (or combo/my-combo).",
+    "usageGuideInvokeAutoNote": "auto and auto/* are a separate zero-config router that does not use your combos (unless a combo is literally named auto).",
+    "usageGuideInvokeOpenrouterNote": "openrouter/auto is a real paid OpenRouter product (Auto Best Available), not an OmniRoute alias — exclude it via Settings → Routing → Hide paid models.",
     "emailVisibilityStateOn": "On",
     "emailVisibilityStateOff": "Off",
     "reorderHandle": "Drag to reorder",
@@ -3715,7 +3749,12 @@
     "errorDescription": "Jelenleg nem tudtuk betölteni a kombinált adatokat. Ellenőrizze a kapcsolatát, és próbálja újra.",
     "errorId": "Hibaazonosító: {id}",
     "errorRetry": "Próbáld újra",
-    "comboLabel": "Kombó"
+    "comboLabel": "Kombó",
+    "duplicateAutoComboConfirm": "Létrehoz egy statikus kombinációt a(z) \"{name}\"-ból?",
+    "duplicateAutoComboSnapshotMsg": "Ez rögzíti az éppen csatlakoztatott szolgáltatókat/modelleket, amelyek megfelelnek ennek a sablonnak, egy szerkeszthető kombinációba.",
+    "duplicateAutoComboFailedPrefix": "Az automatikus kombináció duplikálása sikertelen:",
+    "duplicateAutoComboUnknownError": "Ismeretlen hiba",
+    "duplicateAutoComboTitle": "Hozzon létre statikus kombinációt a(z) {name}-ból"
   },
   "costs": {
     "title": "Költségek",
@@ -4117,7 +4156,10 @@
     "notionIntegrationHelp": "Hozzon létre egy belső integrációt itt",
     "notionIntegrationToken": "Notion Belső Integrációs Token",
     "notionNotConnected": "Nincs csatlakoztatva",
-    "notionTokenConfigured": "A token konfigurálva van. A Notion eszközök elérhetők az MCP-n keresztül."
+    "notionTokenConfigured": "A token konfigurálva van. A Notion eszközök elérhetők az MCP-n keresztül.",
+    "subtitle": "Use the OpenAI-compatible endpoint with most SDKs and tools.",
+    "testEndpoint": "Test endpoint →",
+    "advancedProtocols": "Advanced protocols"
   },
   "endpoints": {
     "tabProxy": "Endpoint Proxy",
@@ -4700,7 +4742,14 @@
     "issueCount": "{count} probléma",
     "score": "Pontszám",
     "lastRequest": "Legutóbbi kérés",
-    "lastError": "Legutóbbi hiba"
+    "lastError": "Legutóbbi hiba",
+    "healthVerdictReady": "OmniRoute is ready",
+    "healthVerdictActionRequired": "Action required to restore full operation",
+    "healthVerdictCoolingDown": "Cooling down after recent changes",
+    "healthSubtitle": "System health check",
+    "advancedDiagnosticsTitle": "Advanced diagnostics",
+    "hide": "Hide",
+    "show": "Show"
   },
   "telemetry": {
     "title": "Rendszer telemetria",
@@ -4962,7 +5011,9 @@
         "skipped": "már konfigurálva van",
         "failed": "sikertelen"
       }
-    }
+    },
+    "securityDescSkipWarning": "⚠️ Without a password, you won't be able to add providers during setup. You can add them later from the dashboard after setting a password.",
+    "providerRequiresPassword": "You need to set a password first to add providers. Please go back to the security step and set a password, or add providers later from the dashboard."
   },
   "providers": {
     "title": "Szolgáltatók",
@@ -5094,7 +5145,7 @@
     "deprecatedProvider": "Ez a szolgáltató elavult",
     "riskNotice": {
       "title": "Mielőtt folytatná",
-      "detailsTitle": "__MISSING__:Usage caveats",
+      "detailsTitle": "Usage caveats",
       "tooltip": "Használati figyelmeztetésekkel rendelkező szolgáltató — kattintson a részletekért",
       "oauth": "Ez a szolgáltató a hivatalos termékmunkamenetet/OAuth-ot használja, amely nem engedélyezett proxy/router használatra. Nem javasoljuk az intenzív autonóm ágens használatot (OpenCloud-stílusú, hosszú, többlépéses folyamatok, nagy kötegek) — az upstream szolgáltató a fiók korlátozásával vagy kitiltásával reagálhat. Saját felelősségre használja.",
       "webCookie": "Ez a szolgáltató a webes munkamenet-sütik segítségével hitelesít. Az upstream szolgáltatás bármikor érvénytelenítheti a munkamenetet, ami újbóli bejelentkezést igényel. Hosszú, felügyelet nélküli műveletekhez nem ajánlott. Saját felelősségre használja.",
@@ -5104,9 +5155,9 @@
       "cancel": "Mégse"
     },
     "warningNotice": {
-      "tooltip": "__MISSING__:{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
-      "lastFailureSuffix": "__MISSING__: (last failure {time})",
-      "ariaLabel": "__MISSING__:View connection health details, {count} warning(s)"
+      "tooltip": "{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
+      "lastFailureSuffix": " (last failure {time})",
+      "ariaLabel": "View connection health details, {count} warning(s)"
     },
     "disabled": "Letiltva",
     "enableProvider": "Szolgáltató engedélyezése",
@@ -5230,6 +5281,17 @@
     "skippingExistingModels": "{count} meglévő modell kihagyása",
     "autoSync": "Automatikus szinkronizálás",
     "autoSyncShort": "Szinkronizálás",
+    "autoFetchModels": "Automatikus frissítés a felfelé irányuló modellekből",
+    "autoFetchModelsTooltip": "Töltse le és tárolja a feljebb lévő modelleket, amikor szükséges",
+    "autoFetchModelsEnabled": "Felfelé irányuló modell automatikus lekérése engedélyezve",
+    "autoFetchModelsDisabled": "Felfelé irányuló modell automatikus lekérése letiltva",
+    "autoFetchModelsToggleFailed": "Nem sikerült átkapcsolni a feljebb lévő modell automatikus lekérdezését",
+    "autoFetchModelsPartialFailure": "Néhány kapcsolat frissítve lett, de a felfelé irányuló modell automatikus lekérése nem változott meg mindenhol",
+    "overridesUpstreamModel": "Felülírja a felfelé irányuló változtatásokat",
+    "overridesUpstreamModelHint": "A beállításai felülírják ezt a fenti modellt",
+    "resetToUpstreamDefaults": "Állítsa vissza az alapértelmezett beállításokat",
+    "resetToUpstreamDefaultsSuccess": "Visszaállítottuk az upstream modell alapértelmezett beállításait",
+    "resetToUpstreamDefaultsFailed": "Nem sikerült visszaállítani a fenti modell alapértelmezett beállításait",
     "autoSyncTooltip": "A modelllista automatikus frissítése 24 óránként (konfigurálható: MODEL_SYNC_INTERVAL_HOURS)",
     "autoSyncEnabled": "Automatikus szinkronizálás engedélyezve – a modellek rendszeresen frissülnek",
     "autoSyncDisabled": "Az automatikus szinkronizálás letiltva",
@@ -5436,17 +5498,17 @@
     "interceptionLoadError": "Nem sikerült betölteni az elfogási beállításokat: {error}",
     "interceptionSaveError": "Nem sikerült menteni az elfogási beállításokat: {error}",
     "ccAliasSectionTitle": "Expose in Claude Code (claude/…)",
-    "ccAliasSectionHint": "Hirdesse meg ennek a szolgáltatónak a modelljeit a claude/&lt;provider&gt;/&lt;model&gt; tükörazonosítók alatt, hogy a Claude Code átjáró modell felfedezése listázhassa őket. Alapértelmezés szerint ki van kapcsolva — ennek engedélyezése megduplázza a katalógusbejegyzéseket minden ügyfél számára.",
-    "ccAliasProviderLevelLabel": "Szolgáltató alapértelmezett",
-    "ccAliasModelOverridesLabel": "Per-modell felülírások",
-    "ccAliasModelOverrideAriaLabel": "Felülírás a(z) {modelId} számára",
-    "ccAliasStateInherit": "Örököl",
-    "ccAliasStateOn": "Be- és kikapcsolás",
-    "ccAliasStateOff": "Ki",
-    "ccAliasAddModelPlaceholder": "Modell azonosító (pl. gpt-4o)",
-    "ccAliasAddModelButton": "Add Override",
-    "ccAliasLoadError": "Nem sikerült betölteni a discovery-alias beállításokat: {error}",
-    "ccAliasSaveError": "Nem sikerült elmenteni a discovery-alias beállítást: {error}",
+    "ccAliasSectionHint": "Advertise this provider's models under claude/&lt;provider&gt;/&lt;model&gt; mirror ids so Claude Code's gateway model discovery can list them. Off by default — enabling this doubles catalog entries for all clients.",
+    "ccAliasProviderLevelLabel": "Provider default",
+    "ccAliasModelOverridesLabel": "Per-model overrides",
+    "ccAliasModelOverrideAriaLabel": "Override for {modelId}",
+    "ccAliasStateInherit": "Inherit",
+    "ccAliasStateOn": "On",
+    "ccAliasStateOff": "Off",
+    "ccAliasAddModelPlaceholder": "Model id (e.g. gpt-4o)",
+    "ccAliasAddModelButton": "Add override",
+    "ccAliasLoadError": "Failed to load discovery-alias settings: {error}",
+    "ccAliasSaveError": "Failed to save discovery-alias setting: {error}",
     "compatUpstreamHeadersLabel": "Extra upstream headers",
     "compatUpstreamHeadersHint": "High-privilege setting — same trust level as editing provider API credentials; only trusted admins should use it. Merged after OmniRoute adds auth from the provider API key. If a custom header uses the same name as an existing one (e.g. Authorization), your value fully replaces the auto-generated header (including the Bearer token) — the upstream only sees what you typed, not the key from settings. Misconfiguration can cause 401 or broken upstream auth. One row per header (e.g. extra Authentication for some gateways). Hover or focus the value to preview. Saves on blur, outside click, or closing this panel.",
     "compatUpstreamHeaderName": "Header name",
@@ -5805,6 +5867,8 @@
     "rateLimitOverridesSection": "Sebességkorlátok felülbírálása",
     "rateLimitOverridesMaxConcurrentHint": "Maximális párhuzamos kérések felülbírálása ehhez a kapcsolathoz. Felülbírálja a fiókszintű korlátot.",
     "rateLimitOverridesMaxConcurrentLabel": "Max. párhuzamos (sebességkorlát)",
+    "rateLimitOverridesMaxWaitMsHint": "__MISSING__:Maximum time (ms) a request may wait for a rate-limit slot before failing. Overrides the global Resilience setting for this connection only.",
+    "rateLimitOverridesMaxWaitMsLabel": "__MISSING__:Max Queue Wait (ms)",
     "rateLimitOverridesMinTimeHint": "Kérések közötti minimális idő (ms). Felülbírálja az alapértelmezett sebességkorlátozó késleltetést.",
     "rateLimitOverridesMinTimeLabel": "Min. intervallum (ms)",
     "rateLimitOverridesRpmHint": "Maximális percenkénti kérésszám ehhez a kapcsolathoz. Felülbírálja a szolgáltató alapértelmezését.",
@@ -6082,7 +6146,6 @@
       "glmt": "Előre beállított GLM-profil magasabb tokenkerettel, engedélyezett gondolkodással és hosszabb időtúllépéssel.",
       "getgoapi": "Csatlakoztassa a GoAPI-t egy API-kulccsal.",
       "groq": "Ingyenes csomag: 30 RPM / 14,4K RPD — bankkártya nem szükséges",
-      "hackclub": "Jelentkezzen be Hack Club-fiókjával az ai.hackclub.com oldalon.",
       "haiper": "Szerezzen API-kulcsot a haiper.ai/haiper-api oldalon",
       "heroku": "Csatlakoztassa a Heroku AI-t egy API-kulccsal.",
       "hcnsec": "Szerezzen API-kulcsot itt: api.hcnsec.cn",
@@ -6191,7 +6254,7 @@
       "galadriel": "A Galadriel összekapcsolása egy API-kulccsal.",
       "predibase": "25 $ ingyenes próbaverziós kredit (30 napos érvényesség)",
       "chenzk": "OpenAI-kompatibilis átjáró élő modellkatalógussal a chenzk.top címen.",
-      "freepik": "Képek generálása a Freepik Mystic API-jával.",
+      "magnific": "Képek generálása a Freepik Mystic API-jával.",
       "freetheai": "Ingyenes OpenAI-kompatibilis átjáró átmenő (passthrough) modelltámogatással.",
       "g4f-gemini": "Ingyenes, kulcs nélküli g4f.space fordított proxy a Geminihez, percenként legfeljebb 5 kéréssel.",
       "g4f-groq": "Ingyenes, kulcs nélküli g4f.space fordított proxy a Groq-hoz, percenként legfeljebb 5 kéréssel.",
@@ -6206,6 +6269,7 @@
       "claude": "A Claude Code összekapcsolása a meglévő OAuth-folyamattal.",
       "cline": "A Cline összekapcsolása a meglévő OAuth-folyamattal.",
       "cursor": "A Cursor IDE összekapcsolása a meglévő OAuth-folyamattal.",
+      "cursor-api": "Connect Cursor with a user API key (crsr_...) from cursor.com/dashboard/api; no IDE session needed.",
       "github": "A GitHub Copilot összekapcsolása a meglévő OAuth-folyamattal.",
       "gitlab-duo": "OAuth alkalmazás ai_features + read_user hatókörökkel. Konfigurálja a GITLAB_DUO_OAUTH_CLIENT_ID és opcionálisan a GITLAB_DUO_OAUTH_CLIENT_SECRET változókat ezen az OmniRoute példányon.",
       "kilocode": "A Kilo Code összekapcsolása a meglévő OAuth-folyamattal.",
@@ -6268,6 +6332,15 @@
     "cheaperInferenceSupporterBadge": "Nyílt forráskódú barát",
     "cheaperInferenceSupporterTooltip": "A Cheaper Inference nyílt forráskódú barátként támogatja az OmniRoute-ot",
     "kimiPartnerLinkNote": "Partnerhivatkozás — az Ön számára további költség nélkül támogatja az OmniRoute-ot",
+    "codexQuotaPools": "Codex-kvótakészletek",
+    "codexPoolAvailable": "Elérhető",
+    "codexPoolPartiallyLimited": "Részben korlátozott",
+    "codexPoolFullyLimited": "Teljesen korlátozott",
+    "codexPoolLimited": "{count} korlátozott",
+    "codexPoolQuotaExhausted": "A kvóta kimerült",
+    "codexPoolCoolingDown": "Várakozási időszakban",
+    "codexPoolUsed": "felhasználva",
+    "codexPoolUntil": "Eddig: {value}",
     "anonymousFallbackTitle": "Névtelen visszaesés",
     "anonymousFallbackDesc": "Amikor az összes konfigurált kapcsolat kimerült (kvóta, kreditek vagy lejárat), ideiglenesen használja ezt a szolgáltató kulcs nélküli szintjét. Kapcsolja ki, hogy kihagyja ezt a szolgáltatót a névtelen kérések küldése helyett — ajánlott, ha a kulcs nélküli szint elutasítja őket (401).",
     "anonymousFallbackEnabled": "Névtelen visszaesés engedélyezve a(z) {provider} számára",
@@ -6344,17 +6417,20 @@
     "searchByModelAria": "Keresés modell szerint",
     "selectSupportedEndpoint": "Válasszon ki legalább egy támogatott végpontot",
     "antigravityClientProfileHarness": "Harness / CLI",
-    "autoFetchModelsDisabled": "Felfelé irányuló modell automatikus lekérése letiltva",
-    "autoFetchModelsEnabled": "Felfelé irányuló modell automatikus lekérése engedélyezve",
-    "autoFetchModelsTooltip": "Töltse le és tárolja a feljebb lévő modelleket, amikor szükséges",
-    "autoFetchModels": "Automatikus frissítés a felfelé irányuló modellekből",
-    "autoFetchModelsToggleFailed": "Nem sikerült átkapcsolni a feljebb lévő modell automatikus lekérdezését",
-    "autoFetchModelsPartialFailure": "Néhány kapcsolat frissítve lett, de a felfelé irányuló modell automatikus lekérése nem változott meg mindenhol",
-    "overridesUpstreamModel": "Felülírja a felfelé irányuló változtatásokat",
-    "overridesUpstreamModelHint": "A beállításai felülírják ezt a fenti modellt",
-    "resetToUpstreamDefaults": "Állítsa vissza az alapértelmezett beállításokat",
-    "resetToUpstreamDefaultsSuccess": "Visszaállítottuk az upstream modell alapértelmezett beállításait",
-    "resetToUpstreamDefaultsFailed": "Nem sikerült visszaállítani a fenti modell alapértelmezett beállításait"
+    "harImportButtonLabel": "Import .har file",
+    "harImportButtonBusy": "Importing…",
+    "harImportButtonHint": "Export from DevTools Network tab after sending at least one chat message.",
+    "harImportStatusValid": "Imported — valid for ~{minutes}m.",
+    "harImportStatusExpiringSoon": "Imported — valid for only ~{minutes}m more.",
+    "harImportStatusExpired": "Imported, but this token already expired ({minutes}m ago) — export a fresh HAR.",
+    "harImportStatusUnknownExpiry": "Imported. Couldn't read its expiry.",
+    "harImportErrorNotJson": "That file isn't valid JSON — is it really a .har export?",
+    "harImportErrorNoEntries": "This HAR has no network entries recorded.",
+    "harImportErrorNoChathubUrl": "No Copilot chat connection found in this HAR. Send at least one chat message in m365.cloud.microsoft before exporting.",
+    "harImportErrorUnparsableUrl": "Found the chat connection, but couldn't read its URL.",
+    "harImportErrorMissingFields": "Found the chat connection, but the token was missing from it.",
+    "harImportErrorReadFailed": "Couldn't read that file.",
+    "harImportErrorUnknown": "Couldn't extract a credential from that HAR file."
   },
   "settings": {
     "title": "Beállítások elemre",
@@ -6573,12 +6649,12 @@
     "autoDisableDescription": "Permanently mark provider connections as deactivated if they return specific terminal ban signals (e.g. HTTP 403 'verify your account'). This removes them from the combo rotation.",
     "autoDisableThreshold": "Ban Threshold",
     "autoDisableThresholdDesc": "Consecutive ban signals required before permanent deactivation.",
-    "autoDisableBannedScope": "__MISSING__:Apply auto-disable to",
-    "autoDisableBannedScopeDesc": "__MISSING__:Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
-    "autoDisableBannedScopeAll": "__MISSING__:All connections",
-    "autoDisableBannedScopeAllDesc": "__MISSING__:Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
-    "autoDisableBannedScopeSubscription": "__MISSING__:Login / subscription accounts only",
-    "autoDisableBannedScopeSubscriptionDesc": "__MISSING__:Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
+    "autoDisableBannedScope": "Apply auto-disable to",
+    "autoDisableBannedScopeDesc": "Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
+    "autoDisableBannedScopeAll": "All connections",
+    "autoDisableBannedScopeAllDesc": "Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
+    "autoDisableBannedScopeSubscription": "Login / subscription accounts only",
+    "autoDisableBannedScopeSubscriptionDesc": "Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
     "customBannedSignals": "Tiltott kulcsszavak",
     "customBannedSignalsDesc": "További kulcsszavak, amelyek végleges fióktiltás észlelését váltják ki. A beépített kulcsszavak mindig érvényesek.",
     "customBannedSignalsPlaceholder": "pl. api key revoked",
@@ -7186,6 +7262,7 @@
     "configured": "konfigurálva",
     "none": "Nincs",
     "modelOverrideValuePlaceholder": "Numerikus érték",
+    "modelOverrideReasoningEffortsPlaceholder": "English comma-separated, e.g. low, medium, high",
     "addKeyValue": "Kulcs-érték hozzáadása",
     "noModelOverrides": "Nincsenek felülírások konfigurálva ehhez a modellhez.",
     "modelOverrideLoadFailed": "Nem sikerült betölteni a modellfelülírásokat",
@@ -7757,6 +7834,10 @@
         "label": "Ponytail (lazy senior dev)",
         "description": "Lazy senior-dev discipline: climb the YAGNI ladder, fix root cause, smallest working diff."
       },
+      "i-have-adhd": {
+        "label": "I have ADHD (action-first)",
+        "description": "Action-first output: next action leads, steps numbered, one concrete next step, no preamble."
+      },
       "terse-cjk": {
         "label": "Tömör CJK (文言)",
         "description": "Klasszikus kínai ultratömör stílus (csak kínai nyelven érhető el)."
@@ -8037,6 +8118,10 @@
     "disableSessionStickinessDesc": "A round-robin és a véletlenszerű kombinációk minden kérésnél új kapcsolatra váltanak, ahelyett, hogy a teljes beszélgetést egyetlen kapcsolathoz rögzítenék az első üzenet hash-e alapján. Hagyja kikapcsolva, hogy megőrizze a prompt-cache találatokat a többfordulós csevegéseknél. A kombinációnkénti felülírások elsőbbséget élveznek.",
     "promptCacheAffinity": "Prompt-cache locality routing",
     "promptCacheAffinityDesc": "Prefer the same provider account for matching prompt-cache keys while preserving health and quota failover.",
+    "reasoningTokenBuffer": "Reasoning token buffer",
+    "reasoningTokenBufferDesc": "Allow combo routing to add max_tokens headroom only for known reasoning models when the full buffer fits inside a known output cap.",
+    "zeroLatencyOptimizations": "Zero-latency optimizations",
+    "zeroLatencyOptimizationsDesc": "Opt in to hedging, predictive TTFT skips, and proactive fallback compression. Leave off to prevent these latency features from racing targets or compressing fallback requests.",
     "credentialRedaction": "Hitelesítési adatok kitakarása",
     "credentialRedactionDesc": "API-kulcsok, tokenek és titkok kitakarása a szolgáltatóknak küldött kontextusból és a válaszokból.",
     "enableCredentialRedaction": "Hitelesítési adatok kitakarásának engedélyezése",
@@ -8192,7 +8277,19 @@
     "cliproxyapiHealth": "Egészség",
     "cliproxyapiPort": "Port",
     "qdrantHost": "Gazda",
-    "qdrantCollection": "Gyűjtemény"
+    "qdrantCollection": "Gyűjtemény",
+    "presetAll": "All",
+    "presetAllDesc": "Show everything",
+    "presetEssentials": "Essentials",
+    "presetEssentialsDesc": "Beginner path - Advanced tools stay searchable",
+    "presetMinimal": "Minimal",
+    "presetMinimalDesc": "Core pages only",
+    "presetDeveloper": "Developer",
+    "presetDeveloperDesc": "Dev & proxy tools",
+    "presetAdmin": "Admin",
+    "presetAdminDesc": "Monitoring & audit",
+    "settingsSidebarTitle": "Sidebar Customization",
+    "settingsSidebarDesc": "Choose which sidebar items to show. Essentials keeps Advanced tools searchable."
   },
   "contextRtk": {
     "title": "RTK Engine",
@@ -8597,6 +8694,27 @@
     },
     "enableTitle": "Motor engedélyezése",
     "enableDescription": "Utolsóként fut a veremben (miután az RTK/Caveman megtisztítja a szöveget, az OmniGlyph képekké alakítja a maradékot), valamint önállóan is fut a <code>omniglyph</code> módon keresztül. Ez egy előnézet, és alapértelmezés szerint kikapcsolva marad a végpontok közötti ellenőrzés befejezéséig.",
+    "profileTitle": "Compression profile",
+    "profileDescription": "The profile is a ceiling, not a floor: a stricter profile cannot be reopened by a per-step override. Measured on this codebase: with coding-safe or balanced, a session that has not accumulated history yet compresses nothing, because both raise the minimum-characters threshold and keep the system prompt, tool schemas and tool results native.",
+    "profiles": {
+      "aggressive": {
+        "label": "Aggressive (default)",
+        "description": "The policy the published receipts measured. Images the system prompt, tool documentation and dense history."
+      },
+      "balanced": {
+        "label": "Balanced",
+        "description": "Keeps live state native and protects the last 8 turns; only collapses older closed history."
+      },
+      "codingSafe": {
+        "label": "Coding-safe",
+        "description": "Keeps authority, tool schemas and live tool output native, protecting the last 12 turns. Compresses nothing until the session accumulates history."
+      },
+      "passthrough": {
+        "label": "Passthrough",
+        "description": "Routes without transforming. The engine is skipped and the request is forwarded untouched."
+      }
+    },
+    "profileAria": "Select the OmniGlyph compression profile",
     "saved": "Mentve.",
     "saveFailed": "Nem sikerült menteni.",
     "enableAria": "Az OmniGlyph motor engedélyezése",
@@ -9066,6 +9184,16 @@
     "grokAutoTopUpMax": "max",
     "grokAutoTopUpMonth": "hónap",
     "grokAdditionalCredits": "További Kiadások",
+    "kimiExtraUsageCredits": "Extra Usage Credits",
+    "kimiExtraUsage": "Extra Usage",
+    "kimiExtraUsageEnabled": "Enabled",
+    "kimiExtraUsageDisabled": "Disabled",
+    "kimiExtraUsageFrozen": "Frozen",
+    "kimiExtraUsageUnavailable": "Unavailable",
+    "kimiMonthlyUsed": "Used this month",
+    "kimiMonthlyLimit": "Monthly limit",
+    "kimiMonthlyLimitUnlimited": "Unlimited",
+    "kimiAdditionalCredits": "Additional Credits",
     "loggerTab": "Logger",
     "proxyTab": "Proxy",
     "budgetManagement": "Költségvetési menedzsment",
@@ -10564,11 +10692,23 @@
   },
   "cursorAuthModal": {
     "title": "Csatlakoztassa a kurzor IDE-t",
+    "tabLogin": "Login with Cursor",
+    "tabImport": "Import token",
+    "loginDescription": "Opens Cursor's browser login. Works in Docker — approve in your host browser, then return here.",
+    "loginWithCursor": "Login with Cursor",
+    "startingLogin": "Starting…",
+    "waitingApproval": "Waiting for Cursor login approval…",
+    "openUrlHint": "If the browser did not open:",
+    "openLoginLink": "Open login page",
+    "cancelLogin": "Cancel login",
     "autoDetecting": "Tokenek automatikus felismerése...",
     "readingFromCursor": "Olvasás Cursor IDE-ből vagy cursor-agentből",
     "tokensAutoDetected": "A tokenek automatikusan felismerve a Cursor IDE-ből!",
     "cursorNotDetected": "A kurzor IDE nem észlelhető. Kérjük, manuálisan illessze be a tokent.",
+    "dockerImportHint": "Running in Docker? Prefer Login with Cursor. IDE auto-import and cursor-agent are usually unavailable inside the container. See docs/providers/CURSOR-DOCKER.md.",
     "accessToken": "Hozzáférési token",
+    "refreshToken": "Refresh Token",
+    "refreshTokenPlaceholder": "Optional — enables automatic token refresh",
     "required": "*",
     "accessTokenPlaceholder": "A hozzáférési token automatikusan kitöltődik...",
     "machineId": "Gépazonosító",
@@ -10580,7 +10720,10 @@
     "errorAutoDetect": "A tokenek automatikus észlelése nem lehetséges",
     "errorAutoDetectFailed": "A tokenek automatikus észlelése sikertelen",
     "errorEnterToken": "Kérjük, adja meg a hozzáférési tokent",
-    "errorImportFailed": "Az importálás sikertelen"
+    "errorImportFailed": "Az importálás sikertelen",
+    "errorLoginStart": "Failed to start Cursor login",
+    "errorLoginPoll": "Cursor login failed",
+    "errorLoginTimeout": "Cursor login timed out — try again"
   },
   "pricingModal": {
     "title": "Árképzési konfiguráció",
@@ -11070,7 +11213,8 @@
       "compressed": "Tömörítés",
       "tps": "TPS",
       "duration": "Duration",
-      "time": "Time"
+      "time": "Time",
+      "conversation": "Conversation"
     },
     "loadingLogs": "Loading logs...",
     "noLogs": "No logs yet. Make some API calls to see them here.",
@@ -11932,7 +12076,8 @@
         "title": "ACP ágensek",
         "phrase": "CLI-k, amelyeket az OmniRoute indít végrehajtási háttérprogramként (fordított folyamat)",
         "flow": "Kliens → OmniRoute → CLI indítása (stdio/ACP) → válasz",
-        "seeOther": "Megtekintés →"
+        "seeOther": "Megtekintés →",
+        "warning": "Most users can ignore this — use only when an integration requires it."
       }
     },
     "comparison": {
@@ -12122,7 +12267,7 @@
       },
       "omni-webhooks": {
         "name": "Webhookok",
-        "description": "Webhook-végpontok regisztrálása, listázása, tesztelése és eltávolítása. Eseményfeliratkozások (request.completed, provider.error, budget.exceeded stb.) konfigurálása és a kézbesítési újrapróbálkozások kezelése."
+        "description": "__MISSING__:Register, list, test, and remove webhook endpoints. Configure event subscriptions (request.completed, request.failed, quota.exceeded, etc.) and manage delivery retries."
       },
       "omni-mcp": {
         "name": "MCP-szerver",
@@ -12463,9 +12608,9 @@
     },
     "badges": {
       "radar-supporter": {
-        "name": "__MISSING__:Radar Supporter",
-        "description": "__MISSING__:Verified a live OmniRoute Radar supporter feed",
-        "criteria": "__MISSING__:Verify a signed live Radar supporter feed."
+        "name": "Radar Supporter",
+        "description": "Verified a live OmniRoute Radar supporter feed",
+        "criteria": "Verify a signed live Radar supporter feed."
       },
       "first-token": {
         "name": "Első token",
@@ -12756,6 +12901,10 @@
       },
       "SKILLS_SANDBOX_NETWORK_ENABLED": {
         "description": "Hálózati hozzáférés engedélyezése a készségek homokozójában."
+      },
+      "DISABLE_CONTEXT_WINDOW_CHECKS": {
+        "label": "Disable Context Window Checks",
+        "description": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active."
       }
     }
   },
@@ -13188,7 +13337,7 @@
     "localStateSaveFailed": "Failed to save local Radar settings",
     "guidedCombos": "Guided combos",
     "offers": "Offers",
-    "intel": "__MISSING__:Intel"
+    "intel": "Intel"
   },
   "radarCombosPage": {
     "title": "Radar guided combos",
@@ -13328,6 +13477,13 @@
         "modelLockouts": "Modell Zárolások",
         "count": "Kapcsolatok Száma"
       }
+    },
+    "reassuranceTitle": "Your connections recover automatically",
+    "reassuranceDetail": "Usually no action is needed. OmniRoute temporarily rests a connection after failures, then safely tries it again.",
+    "plainStates": {
+      "healthy": "Requests can be sent",
+      "coolingDown": "Trying again soon",
+      "lockedOut": "Needs your attention"
     }
   },
   "featureFlagCapabilityFilterEnabledDescription": "Elutasítja a kéréseket a kiszállítás előtt, amikor a célmodell hiányzik a szükséges képességekből (látás, eszközök, strukturált kimenet, kontextusablak). Védi a közvetlen, egy szolgáltatótól érkező kéréseket, amelyek megkerülik a kombinált réteg kompatibilitási szűrőt.",
@@ -13728,36 +13884,36 @@
     "trialDays": "{days, plural, one {# day} other {# days}}"
   },
   "radarIntelPage": {
-    "title": "__MISSING__:Radar Intel",
-    "subtitle": "__MISSING__:Radar-owned ELO rankings and factual catalog movement.",
-    "backToRadar": "__MISSING__:Back to Radar",
-    "loading": "__MISSING__:Loading Intel...",
-    "refresh": "__MISSING__:Refresh Intel",
-    "syncing": "__MISSING__:Refreshing...",
-    "loadFailed": "__MISSING__:We could not refresh Intel. The last verified local cache is kept.",
-    "empty": "__MISSING__:No verified Intel snapshot is available yet.",
-    "supporterBadge": "__MISSING__:Radar Supporter",
-    "methodology": "__MISSING__:Methodology",
-    "eloMethod": "__MISSING__:ELO, initial {initial}, K={factor}",
-    "freshness": "__MISSING__:Catalog freshness",
-    "ageDays": "__MISSING__:{days, plural, one {# day old} other {# days old}}",
-    "trend": "__MISSING__:Catalog trend",
-    "modelDelta": "__MISSING__:{current} models, +{added} / -{removed}",
-    "ranking": "__MISSING__:Model ranking",
-    "noRankings": "__MISSING__:No confirmed comparisons are available yet.",
-    "model": "__MISSING__:Model",
-    "category": "__MISSING__:Category",
-    "rating": "__MISSING__:Rating",
-    "matches": "__MISSING__:Matches",
+    "title": "Radar Intel",
+    "subtitle": "Radar-owned ELO rankings and factual catalog movement.",
+    "backToRadar": "Back to Radar",
+    "loading": "Loading Intel...",
+    "refresh": "Refresh Intel",
+    "syncing": "Refreshing...",
+    "loadFailed": "We could not refresh Intel. The last verified local cache is kept.",
+    "empty": "No verified Intel snapshot is available yet.",
+    "supporterBadge": "Radar Supporter",
+    "methodology": "Methodology",
+    "eloMethod": "ELO, initial {initial}, K={factor}",
+    "freshness": "Catalog freshness",
+    "ageDays": "{days, plural, one {# day old} other {# days old}}",
+    "trend": "Catalog trend",
+    "modelDelta": "{current} models, +{added} / -{removed}",
+    "ranking": "Model ranking",
+    "noRankings": "No confirmed comparisons are available yet.",
+    "model": "Model",
+    "category": "Category",
+    "rating": "Rating",
+    "matches": "Matches",
     "freshnessValues": {
-      "fresh": "__MISSING__:Fresh",
-      "aging": "__MISSING__:Aging",
-      "stale": "__MISSING__:Stale"
+      "fresh": "Fresh",
+      "aging": "Aging",
+      "stale": "Stale"
     },
     "trendValues": {
-      "growing": "__MISSING__:Growing",
-      "stable": "__MISSING__:Stable",
-      "shrinking": "__MISSING__:Shrinking"
+      "growing": "Growing",
+      "stable": "Stable",
+      "shrinking": "Shrinking"
     }
   },
   "capabilityFilter": {
@@ -13765,5 +13921,13 @@
     "toolsMismatch": "A szolgáltató nem támogatja az eszközhívást",
     "structuredOutputMismatch": "A szolgáltató nem támogatja a strukturált kimenetet",
     "contextWindowMismatch": "A kérés meghaladja a szolgáltató kontextusablakát"
+  },
+  "featureFlagDisableContextWindowChecksDescription": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active.",
+  "cheaperInferenceSponsorBanner": {
+    "title": "Cheaper Inference is an OmniRoute Open Source Friend",
+    "description": "A cost-ranked gateway reselling dozens of frontier models behind one OpenAI-compatible endpoint — routing each request to the cheapest eligible provider, never above list price.",
+    "cta": "Get an API Key",
+    "partnerLinkNote": "Partner link",
+    "dismissAriaLabel": "Dismiss"
   }
 }

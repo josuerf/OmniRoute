@@ -8,6 +8,15 @@
  * event loop is busy (#10052) and can restart the only replica mid-session.
  * Used by Dockerfile and docker-compose files.
  *
+ * #10311 — the container HEALTHCHECK previously probed the heavy
+ * /api/monitoring/health path (synchronous SQLite reads + deep monitoring
+ * aggregation) on the same single-process event loop as catalog rebuild /
+ * long-context compression. Under load that probe could stall past the 5s
+ * timeout and flip the container `unhealthy`, restarting it mid-session and
+ * killing active SSE streams. /healthz is a pure in-memory lifecycle check
+ * with no DB access. Operators who want the deep monitoring probe can opt
+ * back in with OMNIROUTE_HEALTHCHECK_PATH.
+ *
  * #3151 — in some Docker network setups the server binds to a container IP and
  * a probe against `127.0.0.1` is not reachable, while `localhost`/`::1` (or vice
  * versa) is. The previous version probed ONLY `127.0.0.1` and swallowed every
@@ -35,10 +44,34 @@ function normalizeBasePath(value) {
   return `/${segments.join("/")}`;
 }
 
-/** Prefixes the health route with the configured Next.js basePath. */
-export function resolveHealthPath(basePathValue) {
+/**
+ * Normalize an explicit health-check path override (OMNIROUTE_HEALTHCHECK_PATH).
+ * Returns "" when absent/invalid so callers fall back to DEFAULT_HEALTH_PATH.
+ * Mirrors normalizeBasePath's safety rules (no query/hash/backslash, no "." /
+ * ".." segments, must start with "/").
+ */
+function normalizeHealthPath(value) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed) return "";
+  if (!trimmed.startsWith("/") || /[?#\\]/.test(trimmed)) return "";
+  const segments = trimmed.split("/").filter(Boolean);
+  if (segments.some((segment) => segment === "." || segment === "..")) return "";
+  return `/${segments.join("/")}`;
+}
+
+/**
+ * Resolve the health route to probe. By default the lightweight /healthz
+ * lifecycle endpoint (pure in-memory, no DB reads). An explicit
+ * OMNIROUTE_HEALTHCHECK_PATH override opts back into the deep monitoring
+ * probe. The configured Next.js basePath is always prefixed.
+ *
+ * @param {string} [basePathValue] value of OMNIROUTE_BASE_PATH
+ * @param {string} [healthPathValue] value of OMNIROUTE_HEALTHCHECK_PATH
+ */
+export function resolveHealthPath(basePathValue, healthPathValue) {
   const basePath = normalizeBasePath(basePathValue);
-  return basePath ? `${basePath}${DEFAULT_HEALTH_PATH}` : DEFAULT_HEALTH_PATH;
+  const healthPath = normalizeHealthPath(healthPathValue) || DEFAULT_HEALTH_PATH;
+  return basePath ? `${basePath}${healthPath}` : healthPath;
 }
 
 /**
@@ -118,7 +151,10 @@ async function main() {
   }
 
   try {
-    const healthPath = resolveHealthPath(process.env.OMNIROUTE_BASE_PATH);
+    const healthPath = resolveHealthPath(
+      process.env.OMNIROUTE_BASE_PATH,
+      process.env.OMNIROUTE_HEALTHCHECK_PATH
+    );
     await probeHealth({ port, hosts, healthPath });
     process.exit(0);
   } catch (err) {

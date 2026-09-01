@@ -1,6 +1,6 @@
-// Tool contract serialization for chatgpt-web thinking models (#7679).
+// Tool contract serialization for ChatGPT Web performance models (#7679).
 //
-// GPT-5.6 Thinking via chatgpt-web ignores the injected `<tool>` pseudo-contract
+// GPT-5.6 Sol via chatgpt-web ignores the injected `<tool>` pseudo-contract
 // and replies in prose claiming tools are unavailable. This test covers the
 // nonce-bound serialization that clearly describes client-side tools and places
 // the full contract at the tail of the effective message list.
@@ -161,7 +161,7 @@ test("parseToolCallsFromText returns null when hardened text has no tool blocks 
 });
 
 test("parseToolCallsFromText handles <tool> blocks line-boundary crossing in hardened text (#7679)", () => {
-  // Some thinking models may emit the tool block adjacent to explanatory text
+  // Some high-performance lanes may emit the tool block adjacent to explanatory text
   // with no preceding newline
   const text = [
     'I will use the weather tool. <tool>{"name":"get_weather","arguments":{"location":"Paris"}}</tool>',

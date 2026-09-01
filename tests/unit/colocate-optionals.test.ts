@@ -29,10 +29,9 @@ function mkPkg(
 
 /**
  * Build a root tree mirroring the real SLM optional shape:
- *   @atjsh/llmlingua-2 → dep es-toolkit, PEER @huggingface/transformers (+ tfjs, js-tiktoken)
- *   @tensorflow/tfjs   → dep @tensorflow/tfjs-core → dep long
+ *   @atjsh/llmlingua-2 → dep es-toolkit, PEER @huggingface/transformers (+ js-tiktoken)
  *   js-tiktoken        → dep base64-js
- *   @huggingface/transformers present at root as a (stale) 4.2.0
+ *   @huggingface/transformers present at root as a (hypothetical future) 5.0.0
  *
  * Each mock package gets a resolvable entrypoint so that isPackageIntact (which
  * checks entrypoint integrity via require.resolve) can validate the co-located
@@ -49,7 +48,6 @@ function buildRoot(rootDir: string): void {
       dependencies: { "es-toolkit": "^1.38.0" },
       peerDependencies: {
         "@huggingface/transformers": "*",
-        "@tensorflow/tfjs": "*",
         "js-tiktoken": "*",
       },
     },
@@ -58,26 +56,13 @@ function buildRoot(rootDir: string): void {
   mkPkg(rootNm, "es-toolkit", { main: "index.js" }, { "index.js": "export const esToolkit = true;\n" });
   mkPkg(
     rootNm,
-    "@tensorflow/tfjs",
-    { main: "index.js", dependencies: { "@tensorflow/tfjs-core": "4.22.0" } },
-    { "index.js": "export const tfjs = true;\n" }
-  );
-  mkPkg(
-    rootNm,
-    "@tensorflow/tfjs-core",
-    { main: "index.js", dependencies: { long: "^5.0.0" } },
-    { "index.js": "export const tfjsCore = true;\n" }
-  );
-  mkPkg(rootNm, "long", { main: "index.js" }, { "index.js": "export const long = true;\n" });
-  mkPkg(
-    rootNm,
     "js-tiktoken",
     { main: "index.js", dependencies: { "base64-js": "^1.5.1" } },
     { "index.js": "export const tiktoken = true;\n" }
   );
   mkPkg(rootNm, "base64-js", { main: "index.js" }, { "index.js": "export const base64 = true;\n" });
-  // Root transformers is the STALE 4.x line — the bug we must not propagate into dist.
-  mkPkg(rootNm, "@huggingface/transformers", { version: "4.2.0" });
+  // Root transformers is a hypothetical FUTURE line — the version we must not propagate into dist.
+  mkPkg(rootNm, "@huggingface/transformers", { version: "5.0.0" });
 }
 
 test("computeDependencyClosure walks deps transitively and skips peers (transformers)", () => {
@@ -88,11 +73,8 @@ test("computeDependencyClosure walks deps transitively and skips peers (transfor
 
     for (const expected of [
       "@atjsh/llmlingua-2",
-      "@tensorflow/tfjs",
       "js-tiktoken",
       "es-toolkit",
-      "@tensorflow/tfjs-core",
-      "long",
       "base64-js",
     ]) {
       assert.ok(closure.includes(expected), `closure should include ${expected}`);
@@ -111,23 +93,20 @@ test("colocateLlmlinguaOptionals copies the closure into dist and never clobbers
   const root = mkdtempSync(join(tmpdir(), "omniroute-colocate-copy-"));
   try {
     buildRoot(root);
-    // dist already ships the PINNED transformers (3.5.2) — must survive untouched.
+    // dist already ships the PINNED transformers (4.2.0) — must survive untouched.
     const distNm = join(root, "dist", "node_modules");
-    mkPkg(distNm, "@huggingface/transformers", { version: "3.5.2" });
+    mkPkg(distNm, "@huggingface/transformers", { version: "4.2.0" });
 
     const result = colocateLlmlinguaOptionals({ rootDir: root });
     assert.equal(result.skipped, false);
     if (result.skipped === false) {
-      assert.ok(result.copied >= 6, `expected >=6 packages copied, got ${result.copied}`);
+      assert.ok(result.copied >= 4, `expected >=4 packages copied, got ${result.copied}`);
     }
 
     // Full closure landed in dist/node_modules.
     for (const name of [
       "@atjsh/llmlingua-2",
       "es-toolkit",
-      "@tensorflow/tfjs",
-      "@tensorflow/tfjs-core",
-      "long",
       "js-tiktoken",
       "base64-js",
     ]) {
@@ -136,11 +115,11 @@ test("colocateLlmlinguaOptionals copies the closure into dist and never clobbers
     // The package payload came along (not just the manifest).
     assert.ok(existsSync(join(distNm, "@atjsh", "llmlingua-2", "dist", "index.js")));
 
-    // CRITICAL: dist's pinned transformers is preserved — root's 4.2.0 must NOT win.
+    // CRITICAL: dist's pinned transformers is preserved — root's 5.0.0 must NOT win.
     const distTransformers = JSON.parse(
       readFileSync(join(distNm, "@huggingface", "transformers", "package.json"), "utf8")
     );
-    assert.equal(distTransformers.version, "3.5.2", "dist transformers must remain 3.5.2");
+    assert.equal(distTransformers.version, "4.2.0", "dist transformers must remain 4.2.0");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -150,7 +129,7 @@ test("colocateLlmlinguaOptionals is idempotent (second run is a no-op)", () => {
   const root = mkdtempSync(join(tmpdir(), "omniroute-colocate-idem-"));
   try {
     buildRoot(root);
-    mkPkg(join(root, "dist", "node_modules"), "@huggingface/transformers", { version: "3.5.2" });
+    mkPkg(join(root, "dist", "node_modules"), "@huggingface/transformers", { version: "4.2.0" });
 
     const first = colocateLlmlinguaOptionals({ rootDir: root });
     assert.equal(first.skipped, false);
@@ -169,7 +148,7 @@ test("colocateLlmlinguaOptionals skips when SLM optionals are not installed", ()
   const root = mkdtempSync(join(tmpdir(), "omniroute-colocate-noopt-"));
   try {
     // dist bundle exists, but the optional seeds were never installed at root.
-    mkPkg(join(root, "dist", "node_modules"), "@huggingface/transformers", { version: "3.5.2" });
+    mkPkg(join(root, "dist", "node_modules"), "@huggingface/transformers", { version: "4.2.0" });
     mkdirSync(join(root, "node_modules"), { recursive: true });
 
     const result = colocateLlmlinguaOptionals({ rootDir: root });
@@ -208,7 +187,7 @@ test("colocateLlmlinguaOptionals fills a Next-traced stub (package.json only, no
   try {
     buildRoot(root);
     const distNm = join(root, "dist", "node_modules");
-    mkPkg(distNm, "@huggingface/transformers", { version: "3.5.2" });
+    mkPkg(distNm, "@huggingface/transformers", { version: "4.2.0" });
 
     // Simulate the Next-traced stub: directory exists, package.json only.
     const stubDir = join(distNm, "@atjsh", "llmlingua-2");
@@ -233,5 +212,5 @@ test("colocateLlmlinguaOptionals fills a Next-traced stub (package.json only, no
 
 test("SEED_PACKAGES excludes transformers (it is a dist-pinned peer, not a seed)", () => {
   assert.ok(!SEED_PACKAGES.includes("@huggingface/transformers"));
-  assert.deepEqual(SEED_PACKAGES, ["@atjsh/llmlingua-2", "@tensorflow/tfjs", "js-tiktoken"]);
+  assert.deepEqual(SEED_PACKAGES, ["@atjsh/llmlingua-2", "js-tiktoken"]);
 });

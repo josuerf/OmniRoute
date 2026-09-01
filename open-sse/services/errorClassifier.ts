@@ -28,13 +28,17 @@ export function isEmptyContentResponse(responseBody: unknown): boolean {
 
     const content = message?.content ?? delta?.content;
     const reasoningContent = message?.reasoning_content ?? delta?.reasoning_content;
+    // opencode-routed gateways (e.g. opencode/mimo-v2.5-free) name the reasoning
+    // field `reasoning` instead of `reasoning_content` (#6623).
+    const reasoningAlt = message?.reasoning ?? delta?.reasoning;
     const hasToolCalls =
       (Array.isArray(message?.tool_calls) && (message.tool_calls as unknown[]).length > 0) ||
       (Array.isArray(delta?.tool_calls) && (delta.tool_calls as unknown[]).length > 0);
 
     const hasContent = content !== null && content !== undefined && content !== "";
     const hasReasoning =
-      reasoningContent !== null && reasoningContent !== undefined && reasoningContent !== "";
+      (reasoningContent !== null && reasoningContent !== undefined && reasoningContent !== "") ||
+      (reasoningAlt !== null && reasoningAlt !== undefined && reasoningAlt !== "");
 
     // A response truncated at the token limit (finish_reason "length") is a valid,
     // successful completion even with empty text — do not flag it as a fake success.
@@ -80,6 +84,10 @@ export const PROVIDER_ERROR_TYPES = {
   MODEL_NOT_FOUND: "model_not_found",
   FINGERPRINT_REJECTION: "fingerprint_rejection",
   GEO_BLOCKED: "geo_blocked",
+  // Antigravity BYOP fast-fail (executor 422, code gcp_project_required): the
+  // Google account must Bring Its Own GCP Project. Account-specific and
+  // fixable by entering a Project ID — never a model lockout and never a ban.
+  GCP_PROJECT_REQUIRED: "gcp_project_required",
 };
 
 export const CONTEXT_OVERFLOW_SIGNALS = [
@@ -384,6 +392,15 @@ export function classifyProviderError(
     return PROVIDER_ERROR_TYPES.FORBIDDEN;
   }
   if (statusCode >= 500) return PROVIDER_ERROR_TYPES.SERVER_ERROR;
+
+  // Antigravity BYOP fast-fail (executor emits 422 with code
+  // gcp_project_required when the Google account must Bring Its Own GCP
+  // Project). Account-specific and fixable by entering a Project ID in the
+  // dashboard — classified separately so chatCore rotates to sibling accounts
+  // and excludes the connection instead of locking the model or banning it.
+  if (statusCode === 422 && bodyStr.includes("gcp_project_required")) {
+    return PROVIDER_ERROR_TYPES.GCP_PROJECT_REQUIRED;
+  }
 
   if (statusCode === 400) {
     if (isContextOverflow(bodyStr)) {

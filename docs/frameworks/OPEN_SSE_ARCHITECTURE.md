@@ -368,7 +368,7 @@ const result = await executor.execute({
 });
 ````
 
-The factory is generated from `config/providerRegistry.ts` which lists all 338 providers and their executor class.
+Resolution goes through the `ExecutorRegistry` (`executors/registry.ts`): every specialized executor is declared in the built-in table of `executors/index.ts` and registered via `registerExecutor(alias, instance)` at module load; `getExecutor()` consults the registry and falls back to a memoized `DefaultExecutor` for any provider without a specialized entry. The full alias → executor mapping is characterized by the golden test `tests/unit/executor-map-golden.test.ts`.
 
 ---
 

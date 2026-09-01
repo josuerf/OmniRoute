@@ -974,12 +974,20 @@
     "batchFileUsedByCount": "Použito {count, plural, one {# dávka} other {# dávky}}",
     "batchFilePreview": "Náhled",
     "batchFilePreviewTruncated": "Zobrazuji prvních {shown} řádků ({total} celkem řádků)",
-    "batchFileDownloadFull": "Stáhnout celý soubor"
+    "batchFileDownloadFull": "Stáhnout celý soubor",
+    "batchHeaderSubtitle": "Run many requests as one job",
+    "batchStep1": "1 · Upload JSONL",
+    "batchStep1Desc": "Add requests",
+    "batchStep2": "2 · Create batch",
+    "batchStep2Desc": "Run job",
+    "batchStep3": "3 · Get results",
+    "batchStep3Desc": "Download output"
   },
   "disabled": "Zakázáno",
   "featureFlagOmnirouteEmergencyFallbackDescription": "Směrovat požadavky s vyčerpaným rozpočtem na nouzového bezplatného záložního poskytovatele/model.",
   "featureFlagArenaEloSyncEnabledDescription": "Povolit periodickou synchronizaci ELO z žebříčku Arena AI pro hodnocení inteligence modelů.",
   "featureFlagExposeCcDiscoveryAliasesDescription": "Inzerujte claude/&lt;provider&gt;/&lt;model&gt; zrcadlové ID na /v1/models, aby seznam objevování modelů brány Claude Code zahrnoval modely, které nejsou Claude. Upozornění: při globálním povolení zdvojuje katalogové položky pro všechny klienty.",
+  "featureFlagChatVirtualLanesEnabledDescription": "Povolte adaptivní virtuální vstupní pruhy pro každého tenanta při odesílání poskytovatelům (#9654): špička jednoho tenanta už nezpůsobí 503 u jiného. Proměnná prostředí OMNIROUTE_CHAT_VIRTUAL_LANES má přednost před tímto nastavením na řídicím panelu; změny se projeví po restartu serveru.",
   "sidebar": {
     "home": "Domov",
     "dashboard": "Nástěnka",
@@ -1164,6 +1172,8 @@
     "consoleLogs": "Console Logs",
     "logsTimeline": "Timeline",
     "logsTimelineSubtitle": "Vizualizace časové osy požadavků",
+    "conversations": "Conversations",
+    "conversationsSubtitle": "Multi-turn agentic conversations",
     "globalRouting": "Global Routing",
     "mitmProxy": "MITM Proxy",
     "oneProxy": "1Proxy",
@@ -1256,7 +1266,7 @@
     "agentBridge": "Agent Bridge",
     "agentBridgeSubtitle": "Zachytávat provoz agenta IDE",
     "trafficInspector": "Inspektor provozu",
-    "trafficInspectorSubtitle": "Sledovat volání LLM + ladit veškerý provoz HTTPS",
+    "trafficInspectorSubtitle": "__MISSING__:Inspect request and response traffic from your apps",
     "cliCode": "CLI kód",
     "cliCodeSubtitle": "Nástroje pro kód odkazující na OmniRoute",
     "cliAgents": "Agenti CLI",
@@ -1290,7 +1300,8 @@
       "open": "otevřít",
       "close": "zavřít"
     },
-    "noResults": "Žádné výsledky"
+    "noResults": "Žádné výsledky",
+    "trafficInspectorPurpose": "See exactly what your application sends to and receives from AI providers. Works with any OpenAI-compatible client."
   },
   "webhooks": {
     "title": "Webhooky",
@@ -1736,8 +1747,8 @@
     "quotaShare": "Podíl kvóty",
     "discovery": "Průzkum",
     "freeProviderRankings": "Žebříčky bezplatných poskytovatelů",
-    "radar": "__MISSING__:Radar",
-    "setup": "__MISSING__:Setup",
+    "radar": "Radar",
+    "setup": "Setup",
     "freeTiers": "Bezplatné tarify",
     "gamification": "Gamifikace",
     "leaderboard": "Žebříček",
@@ -1853,7 +1864,21 @@
     "directDownloadHint": "Nebo stáhněte příslušný formát instalátoru přímo:",
     "releaseNotes": "Poznámky k vydání",
     "readMore": "Přečíst více",
-    "noAuthLabel": "Žádná autentizace"
+    "noAuthLabel": "Žádná autentizace",
+    "recentRequests": "Recent Requests",
+    "recentRequestsEmpty": "No requests yet.",
+    "recentRequestsModel": "Model",
+    "recentRequestsTokens": "In / Out",
+    "recentRequestsWhen": "When",
+    "readinessEyebrow": "Get ready to route",
+    "readinessTitle": "Send your first request",
+    "readinessSubtitle": "Four small steps. OmniRoute checks readiness as you go.",
+    "readinessStep1": "Connect a provider",
+    "readinessStep2": "Configure endpoint authentication",
+    "readinessStep3": "Copy your endpoint",
+    "readinessStep4": "Send a test request",
+    "readinessContinue": "Continue setup",
+    "readinessDismiss": "Dismiss for now"
   },
   "analytics": {
     "title": "Analytika",
@@ -2215,6 +2240,10 @@
     "fullAccess": "Plný přístup",
     "keyManagement": "Správa API Klíčů",
     "keyManagementDesc": "Vytvářejte a spravujte API klíče pro ověřování požadavků na váš koncový bod",
+    "requestFlowAria": "Your app sends requests through an API key to OmniRoute",
+    "requestFlowYourApp": "Your app",
+    "requestFlowApiKey": "API key",
+    "requestFlowOmniRoute": "OmniRoute",
     "totalKeys": "Celkem Klíčů",
     "restricted": "Omezený",
     "totalRequests": "Celkově žádostí",
@@ -2894,7 +2923,8 @@
       "omp": "Terminálový programovací agent Oh My Pi",
       "letta": "CLI agent Letta s trvalou pamětí a používáním nástrojů",
       "warp": "AI terminál Warp s podporou vlastních poskytovatelů",
-      "agent-deck": "Multiagentní orchestrátor Agent Deck"
+      "agent-deck": "Multiagentní orchestrátor Agent Deck",
+      "prime-agent": "Prime Agent — self-improving RLM coding harness with OpenAI-compatible provider support"
     },
     "guides": {
       "cursor": {
@@ -3603,6 +3633,10 @@
     "wizardStep3Desc": "Pick how requests are distributed across your models - 13 strategies available",
     "wizardStep4Title": "Review & Save",
     "wizardStep4Desc": "Review your configuration and activate the combo",
+    "usageGuideInvokeTitle": "How to call this combo",
+    "usageGuideInvokeDesc": "Send the combo's exact name as the model, e.g. model: \"my-combo\" (or combo/my-combo).",
+    "usageGuideInvokeAutoNote": "auto and auto/* are a separate zero-config router that does not use your combos (unless a combo is literally named auto).",
+    "usageGuideInvokeOpenrouterNote": "openrouter/auto is a real paid OpenRouter product (Auto Best Available), not an OmniRoute alias — exclude it via Settings → Routing → Hide paid models.",
     "emailVisibilityStateOn": "On",
     "emailVisibilityStateOff": "Off",
     "reorderHandle": "Drag to reorder",
@@ -3715,7 +3749,12 @@
     "errorDescription": "Nyní se nám nepodařilo načíst data pro kombinaci. Zkontrolujte své připojení a zkuste to znovu.",
     "errorId": "Chyba ID: {id}",
     "errorRetry": "Zkusit znovu",
-    "comboLabel": "Kombinace"
+    "comboLabel": "Kombinace",
+    "duplicateAutoComboConfirm": "Vytvořit statickou kombinaci z \"{name}\"?",
+    "duplicateAutoComboSnapshotMsg": "Tím se zachytí aktuálně připojení poskytovatelé/modely, které odpovídají této šabloně, do upravitelné kombinace.",
+    "duplicateAutoComboFailedPrefix": "Duplikace automatické kombinace selhala:",
+    "duplicateAutoComboUnknownError": "Neznámá chyba",
+    "duplicateAutoComboTitle": "Vytvořte statickou kombinaci z {name}"
   },
   "costs": {
     "title": "Náklady",
@@ -4117,7 +4156,10 @@
     "notionIntegrationHelp": "Vytvořte interní integraci na",
     "notionIntegrationToken": "Notion Interní Integrační Token",
     "notionNotConnected": "Nepřipojeno",
-    "notionTokenConfigured": "Token byl nakonfigurován. Nástroje Notion jsou k dispozici prostřednictvím MCP."
+    "notionTokenConfigured": "Token byl nakonfigurován. Nástroje Notion jsou k dispozici prostřednictvím MCP.",
+    "subtitle": "Use the OpenAI-compatible endpoint with most SDKs and tools.",
+    "testEndpoint": "Test endpoint →",
+    "advancedProtocols": "Advanced protocols"
   },
   "endpoints": {
     "tabProxy": "Koncová Proxy",
@@ -4700,7 +4742,14 @@
     "issueCount": "{count} problémů",
     "score": "Skóre",
     "lastRequest": "Poslední požadavek",
-    "lastError": "Poslední chyba"
+    "lastError": "Poslední chyba",
+    "healthVerdictReady": "OmniRoute is ready",
+    "healthVerdictActionRequired": "Action required to restore full operation",
+    "healthVerdictCoolingDown": "Cooling down after recent changes",
+    "healthSubtitle": "System health check",
+    "advancedDiagnosticsTitle": "Advanced diagnostics",
+    "hide": "Hide",
+    "show": "Show"
   },
   "telemetry": {
     "title": "Systémová telemetrie",
@@ -4962,7 +5011,9 @@
         "skipped": "již nakonfigurováno",
         "failed": "neúspěšné"
       }
-    }
+    },
+    "securityDescSkipWarning": "⚠️ Without a password, you won't be able to add providers during setup. You can add them later from the dashboard after setting a password.",
+    "providerRequiresPassword": "You need to set a password first to add providers. Please go back to the security step and set a password, or add providers later from the dashboard."
   },
   "providers": {
     "title": "Poskytovatelé",
@@ -5094,7 +5145,7 @@
     "deprecatedProvider": "Podpora tohoto poskytovatele byla ukončena",
     "riskNotice": {
       "title": "Než budete pokračovat",
-      "detailsTitle": "__MISSING__:Usage caveats",
+      "detailsTitle": "Usage caveats",
       "tooltip": "Poskytovatel s upozorněními k použití — klikněte pro podrobnosti",
       "oauth": "Tento poskytovatel používá vaši oficiální relaci/OAuth produktu, což není autorizováno pro použití jako proxy/router. Nedoporučujeme intenzivní používání autonomních agentů (styl OpenCloud, dlouhé vícekrokové toky, velké dávky) — upstream může reagovat omezením nebo zablokováním účtu. Používejte na vlastní riziko.",
       "webCookie": "Tento poskytovatel se autentizuje pomocí souborů cookie vaší webové relace. Služba upstream může relaci kdykoli zneplatnit, což bude vyžadovat opětovné přihlášení. Nedoporučuje se pro dlouhé bezobslužné operace. Používejte na vlastní riziko.",
@@ -5104,9 +5155,9 @@
       "cancel": "Zrušit"
     },
     "warningNotice": {
-      "tooltip": "__MISSING__:{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
-      "lastFailureSuffix": "__MISSING__: (last failure {time})",
-      "ariaLabel": "__MISSING__:View connection health details, {count} warning(s)"
+      "tooltip": "{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
+      "lastFailureSuffix": " (last failure {time})",
+      "ariaLabel": "View connection health details, {count} warning(s)"
     },
     "disabled": "Zakázáno",
     "enableProvider": "Povolit poskytovatele",
@@ -5230,6 +5281,17 @@
     "skippingExistingModels": "Přeskakování {count} existujících modelů",
     "autoSync": "Automatická synchronizace",
     "autoSyncShort": "Synchronizace",
+    "autoFetchModels": "Automaticky načíst modely z upstreamu",
+    "autoFetchModelsTooltip": "Načíst a uložit upstream modely, když je to potřeba",
+    "autoFetchModelsEnabled": "Automatické načítání modelu upstream je povoleno",
+    "autoFetchModelsDisabled": "Automatické načítání modelu upstream je zakázáno",
+    "autoFetchModelsToggleFailed": "Nepodařilo se přepnout automatické načítání modelu upstream",
+    "autoFetchModelsPartialFailure": "Některé připojení byly aktualizovány, ale automatické načítání modelu upstream nebylo změněno všude",
+    "overridesUpstreamModel": "Přepisuje upstream",
+    "overridesUpstreamModelHint": "Vaše nastavení přepisují tento upstream model",
+    "resetToUpstreamDefaults": "Obnovit výchozí hodnoty upstream",
+    "resetToUpstreamDefaultsSuccess": "Obnoveny výchozí modely upstream",
+    "resetToUpstreamDefaultsFailed": "Nepodařilo se obnovit výchozí hodnoty modelu upstream",
     "autoSyncTooltip": "Automaticky obnovuje seznam modelů každých 24 hodin (lze nastavit přes MODEL_SYNC_INTERVAL_HOURS)",
     "autoSyncEnabled": "Automatická synchronizace povolena – modely se budou pravidelně obnovovat",
     "autoSyncDisabled": "Automatická synchronizace zakázána",
@@ -5435,18 +5497,18 @@
     "interceptFetchHint": "Přepisovat nativní volání nástroje web_fetch na /v1/web/fetch v OmniRoute.",
     "interceptionLoadError": "Nepodařilo se načíst nastavení zachytávání: {error}",
     "interceptionSaveError": "Nepodařilo se uložit nastavení zachytávání: {error}",
-    "ccAliasSectionTitle": "Expose v Claude Code (claude/…)",
-    "ccAliasSectionHint": "Inzerujte modely tohoto poskytovatele pod claude/&lt;provider&gt;/&lt;model&gt; zrcadlovými ID, aby mohl objevovací model brány Claude Code je zobrazit. Ve výchozím nastavení vypnuto — povolení tohoto zdvojnásobí záznamy v katalogu pro všechny klienty.",
-    "ccAliasProviderLevelLabel": "Výchozí poskytovatel",
-    "ccAliasModelOverridesLabel": "Přepsání na úrovni modelu",
-    "ccAliasModelOverrideAriaLabel": "Přepsání pro {modelId}",
-    "ccAliasStateInherit": "Dědit",
-    "ccAliasStateOn": "Zapnuto",
-    "ccAliasStateOff": "Vypnuto",
-    "ccAliasAddModelPlaceholder": "ID modelu (např. gpt-4o)",
-    "ccAliasAddModelButton": "Přidat přepsání",
-    "ccAliasLoadError": "Nepodařilo se načíst nastavení discovery-alias: {error}",
-    "ccAliasSaveError": "Nepodařilo se uložit nastavení discovery-alias: {error}",
+    "ccAliasSectionTitle": "Expose in Claude Code (claude/…)",
+    "ccAliasSectionHint": "Advertise this provider's models under claude/&lt;provider&gt;/&lt;model&gt; mirror ids so Claude Code's gateway model discovery can list them. Off by default — enabling this doubles catalog entries for all clients.",
+    "ccAliasProviderLevelLabel": "Provider default",
+    "ccAliasModelOverridesLabel": "Per-model overrides",
+    "ccAliasModelOverrideAriaLabel": "Override for {modelId}",
+    "ccAliasStateInherit": "Inherit",
+    "ccAliasStateOn": "On",
+    "ccAliasStateOff": "Off",
+    "ccAliasAddModelPlaceholder": "Model id (e.g. gpt-4o)",
+    "ccAliasAddModelButton": "Add override",
+    "ccAliasLoadError": "Failed to load discovery-alias settings: {error}",
+    "ccAliasSaveError": "Failed to save discovery-alias setting: {error}",
     "compatUpstreamHeadersLabel": "Extra upstream hlavičky",
     "compatUpstreamHeadersHint": "Nastavení s vysokými oprávněními — stejná úroveň důvěryhodnosti jako při úpravách přihlašovacích údajů API poskytovatele; měli by jej používat pouze důvěryhodní administrátoři. Sloučeno poté, co OmniRoute přidá ověření z klíče API poskytovatele. Pokud vlastní záhlaví používá stejný název jako existující (např. Authorization), vaše hodnota zcela nahradí automaticky vygenerované záhlaví (včetně tokenu Bearer) — upstream vidí pouze to, co jste zadali, nikoli klíč z nastavení. Nesprávná nastavení může způsobit chybu 401 nebo nefunkční upstream ověření. Jeden řádek na jedno záhlaví (např. extra ověření pro některé brány). Pro náhled najděte na hodnotu nebo ji označte. Uloží se při odklonu, kliknutí mimo nebo zavření tohoto panelu.",
     "compatUpstreamHeaderName": "Název hlavičky",
@@ -5805,6 +5867,8 @@
     "rateLimitOverridesSection": "Přepsání limitů četnosti",
     "rateLimitOverridesMaxConcurrentHint": "Přepsání maximálního počtu souběžných požadavků pro toto připojení. Přepisuje limit na úrovni účtu.",
     "rateLimitOverridesMaxConcurrentLabel": "Max. souběžných (limit četnosti)",
+    "rateLimitOverridesMaxWaitMsHint": "__MISSING__:Maximum time (ms) a request may wait for a rate-limit slot before failing. Overrides the global Resilience setting for this connection only.",
+    "rateLimitOverridesMaxWaitMsLabel": "__MISSING__:Max Queue Wait (ms)",
     "rateLimitOverridesMinTimeHint": "Minimální doba (ms) mezi požadavky. Přepisuje výchozí prodlevu omezovače četnosti.",
     "rateLimitOverridesMinTimeLabel": "Min. interval (ms)",
     "rateLimitOverridesRpmHint": "Maximální počet požadavků za minutu pro toto připojení. Přepisuje výchozí hodnotu poskytovatele.",
@@ -6082,7 +6146,6 @@
       "glmt": "Přednastavený profil GLM s vyšším rozpočtem tokenů, povoleným přemýšlením a delším časovým limitem.",
       "getgoapi": "Připojte GoAPI pomocí API klíče.",
       "groq": "Bezplatná úroveň: 30 RPM / 14,4K RPD – bez platební karty",
-      "hackclub": "Přihlaste se pomocí svého účtu Hack Club na ai.hackclub.com.",
       "haiper": "Získejte API klíč na haiper.ai/haiper-api",
       "heroku": "Připojte Heroku AI pomocí API klíče.",
       "hcnsec": "Získejte API klíč na api.hcnsec.cn",
@@ -6191,7 +6254,7 @@
       "galadriel": "Připojte Galadriel pomocí API klíče.",
       "predibase": "Bezplatný zkušební kredit 25 $ (platnost 30 dní)",
       "chenzk": "Brána kompatibilní s OpenAI s živým katalogem modelů na chenzk.top.",
-      "freepik": "Generujte obrázky pomocí Mystic API od Freepik.",
+      "magnific": "Generujte obrázky pomocí Mystic API od Freepik.",
       "freetheai": "Bezplatná brána kompatibilní s OpenAI s podporou passthrough modelů.",
       "g4f-gemini": "Bezplatná reverzní proxy g4f.space bez klíče pro Gemini, omezená na 5 požadavků za minutu.",
       "g4f-groq": "Bezplatná reverzní proxy g4f.space bez klíče pro Groq, omezená na 5 požadavků za minutu.",
@@ -6206,6 +6269,7 @@
       "claude": "Připojte Claude Code pomocí stávajícího toku OAuth.",
       "cline": "Připojte Cline pomocí stávajícího toku OAuth.",
       "cursor": "Připojte Cursor IDE pomocí stávajícího toku OAuth.",
+      "cursor-api": "Connect Cursor with a user API key (crsr_...) from cursor.com/dashboard/api; no IDE session needed.",
       "github": "Připojte GitHub Copilot pomocí stávajícího toku OAuth.",
       "gitlab-duo": "Aplikace OAuth s rozsahy (scopes) ai_features + read_user. Nakonfigurujte GITLAB_DUO_OAUTH_CLIENT_ID a volitelně GITLAB_DUO_OAUTH_CLIENT_SECRET na této instanci OmniRoute.",
       "kilocode": "Připojte Kilo Code pomocí stávajícího toku OAuth.",
@@ -6268,6 +6332,15 @@
     "cheaperInferenceSupporterBadge": "Přítel open source",
     "cheaperInferenceSupporterTooltip": "Cheaper Inference podporuje OmniRoute jako přítel open source",
     "kimiPartnerLinkNote": "Partnerský odkaz — podporuje OmniRoute bez jakýchkoli dalších nákladů pro vás",
+    "codexQuotaPools": "Fondy kvót Codex",
+    "codexPoolAvailable": "Dostupný",
+    "codexPoolPartiallyLimited": "Částečně omezený",
+    "codexPoolFullyLimited": "Plně omezený",
+    "codexPoolLimited": "Omezeno: {count}",
+    "codexPoolQuotaExhausted": "Kvóta vyčerpána",
+    "codexPoolCoolingDown": "Probíhá čekací lhůta",
+    "codexPoolUsed": "využito",
+    "codexPoolUntil": "Do {value}",
     "anonymousFallbackTitle": "Anonymní záložní řešení",
     "anonymousFallbackDesc": "Když jsou všechny nakonfigurované připojení vyčerpány (kvóta, kredity nebo expirace), dočasně použijte bezklíčovou úroveň tohoto poskytovatele. Vypněte, abyste tohoto poskytovatele přeskočili místo odesílání anonymních požadavků — doporučeno, když bezklíčová úroveň je odmítá (401).",
     "anonymousFallbackEnabled": "Anonymní záložní možnost povolena pro {provider}",
@@ -6344,17 +6417,20 @@
     "searchByModelAria": "Hledat podle modelu",
     "selectSupportedEndpoint": "Vyberte alespoň jeden podporovaný koncový bod",
     "antigravityClientProfileHarness": "Harness / CLI",
-    "autoFetchModels": "Automaticky načíst modely z upstreamu",
-    "autoFetchModelsTooltip": "Načíst a uložit upstream modely, když je to potřeba",
-    "autoFetchModelsDisabled": "Automatické načítání modelu upstream je zakázáno",
-    "autoFetchModelsEnabled": "Automatické načítání modelu upstream je povoleno",
-    "overridesUpstreamModel": "Přepisuje upstream",
-    "autoFetchModelsToggleFailed": "Nepodařilo se přepnout automatické načítání modelu upstream",
-    "overridesUpstreamModelHint": "Vaše nastavení přepisují tento upstream model",
-    "autoFetchModelsPartialFailure": "Některé připojení byly aktualizovány, ale automatické načítání modelu upstream nebylo změněno všude",
-    "resetToUpstreamDefaultsSuccess": "Obnoveny výchozí modely upstream",
-    "resetToUpstreamDefaultsFailed": "Nepodařilo se obnovit výchozí hodnoty modelu upstream",
-    "resetToUpstreamDefaults": "Obnovit výchozí hodnoty upstream"
+    "harImportButtonLabel": "Import .har file",
+    "harImportButtonBusy": "Importing…",
+    "harImportButtonHint": "Export from DevTools Network tab after sending at least one chat message.",
+    "harImportStatusValid": "Imported — valid for ~{minutes}m.",
+    "harImportStatusExpiringSoon": "Imported — valid for only ~{minutes}m more.",
+    "harImportStatusExpired": "Imported, but this token already expired ({minutes}m ago) — export a fresh HAR.",
+    "harImportStatusUnknownExpiry": "Imported. Couldn't read its expiry.",
+    "harImportErrorNotJson": "That file isn't valid JSON — is it really a .har export?",
+    "harImportErrorNoEntries": "This HAR has no network entries recorded.",
+    "harImportErrorNoChathubUrl": "No Copilot chat connection found in this HAR. Send at least one chat message in m365.cloud.microsoft before exporting.",
+    "harImportErrorUnparsableUrl": "Found the chat connection, but couldn't read its URL.",
+    "harImportErrorMissingFields": "Found the chat connection, but the token was missing from it.",
+    "harImportErrorReadFailed": "Couldn't read that file.",
+    "harImportErrorUnknown": "Couldn't extract a credential from that HAR file."
   },
   "settings": {
     "title": "Nastavení",
@@ -6573,12 +6649,12 @@
     "autoDisableDescription": "Trvale označí připojení poskytovatele jako deaktivovaná, pokud vrátí specifické signály zablokování (např. HTTP 403 'verify your account'). Tím je odstraní z rotace komb.",
     "autoDisableThreshold": "Prahová hodnota zablokování",
     "autoDisableThresholdDesc": "Počet po sobě jdoucích signálů zablokování před trvalou deaktivací.",
-    "autoDisableBannedScope": "__MISSING__:Apply auto-disable to",
-    "autoDisableBannedScopeDesc": "__MISSING__:Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
-    "autoDisableBannedScopeAll": "__MISSING__:All connections",
-    "autoDisableBannedScopeAllDesc": "__MISSING__:Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
-    "autoDisableBannedScopeSubscription": "__MISSING__:Login / subscription accounts only",
-    "autoDisableBannedScopeSubscriptionDesc": "__MISSING__:Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
+    "autoDisableBannedScope": "Apply auto-disable to",
+    "autoDisableBannedScopeDesc": "Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
+    "autoDisableBannedScopeAll": "All connections",
+    "autoDisableBannedScopeAllDesc": "Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
+    "autoDisableBannedScopeSubscription": "Login / subscription accounts only",
+    "autoDisableBannedScopeSubscriptionDesc": "Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
     "customBannedSignals": "Zakázaná klíčová slova",
     "customBannedSignalsDesc": "Další klíčová slova, která spouštějí detekci trvalého zablokování účtu. Vestavěná klíčová slova platí vždy.",
     "customBannedSignalsPlaceholder": "např. api key revoked",
@@ -7186,6 +7262,7 @@
     "configured": "nakonfigurováno",
     "none": "Žádné",
     "modelOverrideValuePlaceholder": "Číselná hodnota",
+    "modelOverrideReasoningEffortsPlaceholder": "English comma-separated, e.g. low, medium, high",
     "addKeyValue": "Přidat klíč-hodnotu",
     "noModelOverrides": "Pro tento model nejsou nakonfigurována žádná přepsání.",
     "modelOverrideLoadFailed": "Nepodařilo se načíst přepsání modelů",
@@ -7757,6 +7834,10 @@
         "label": "Ponytail (lazy senior dev)",
         "description": "Lazy senior-dev discipline: climb the YAGNI ladder, fix root cause, smallest working diff."
       },
+      "i-have-adhd": {
+        "label": "I have ADHD (action-first)",
+        "description": "Action-first output: next action leads, steps numbered, one concrete next step, no preamble."
+      },
       "terse-cjk": {
         "label": "Stručné CJK (文言)",
         "description": "Klasický čínský ultra stručný styl (k dispozici pouze pro čínštinu)."
@@ -8037,6 +8118,10 @@
     "disableSessionStickinessDesc": "Kombinace round-robin a náhodného výběru rotují na jiné připojení při každém požadavku, místo aby připnuly celou konverzaci k jednomu připojení podle hashe první zprávy. Ponechte vypnuté, chcete-li zachovat zásahy v mezipaměti promptů pro vícekrokové chaty. Přepsání pro jednotlivé kombinace mají přednost.",
     "promptCacheAffinity": "Prompt-cache locality routing",
     "promptCacheAffinityDesc": "Prefer the same provider account for matching prompt-cache keys while preserving health and quota failover.",
+    "reasoningTokenBuffer": "Reasoning token buffer",
+    "reasoningTokenBufferDesc": "Allow combo routing to add max_tokens headroom only for known reasoning models when the full buffer fits inside a known output cap.",
+    "zeroLatencyOptimizations": "Zero-latency optimizations",
+    "zeroLatencyOptimizationsDesc": "Opt in to hedging, predictive TTFT skips, and proactive fallback compression. Leave off to prevent these latency features from racing targets or compressing fallback requests.",
     "credentialRedaction": "Redigování přihlašovacích údajů",
     "credentialRedactionDesc": "Redigovat klíče API, tokeny a tajné klíče z kontextu odesílaného poskytovatelům a z odpovědí.",
     "enableCredentialRedaction": "Povolit redigování přihlašovacích údajů",
@@ -8192,7 +8277,19 @@
     "cliproxyapiHealth": "Zdraví",
     "cliproxyapiPort": "Port",
     "qdrantHost": "Host",
-    "qdrantCollection": "Kolekce"
+    "qdrantCollection": "Kolekce",
+    "presetAll": "All",
+    "presetAllDesc": "Show everything",
+    "presetEssentials": "Essentials",
+    "presetEssentialsDesc": "Beginner path - Advanced tools stay searchable",
+    "presetMinimal": "Minimal",
+    "presetMinimalDesc": "Core pages only",
+    "presetDeveloper": "Developer",
+    "presetDeveloperDesc": "Dev & proxy tools",
+    "presetAdmin": "Admin",
+    "presetAdminDesc": "Monitoring & audit",
+    "settingsSidebarTitle": "Sidebar Customization",
+    "settingsSidebarDesc": "Choose which sidebar items to show. Essentials keeps Advanced tools searchable."
   },
   "contextRtk": {
     "title": "RTK Engine",
@@ -8597,6 +8694,27 @@
     },
     "enableTitle": "Povolit engine",
     "enableDescription": "Spouští se jako poslední v zásobníku (poté, co RTK/Caveman vyčistí text a OmniGlyph převede zbytek na obrázky) a běží také samostatně v režimu <code>omniglyph</code>. Toto je náhled a ve výchozím nastavení zůstává vypnutý, dokud nebude dokončeno end-to-end ověření.",
+    "profileTitle": "Compression profile",
+    "profileDescription": "The profile is a ceiling, not a floor: a stricter profile cannot be reopened by a per-step override. Measured on this codebase: with coding-safe or balanced, a session that has not accumulated history yet compresses nothing, because both raise the minimum-characters threshold and keep the system prompt, tool schemas and tool results native.",
+    "profiles": {
+      "aggressive": {
+        "label": "Aggressive (default)",
+        "description": "The policy the published receipts measured. Images the system prompt, tool documentation and dense history."
+      },
+      "balanced": {
+        "label": "Balanced",
+        "description": "Keeps live state native and protects the last 8 turns; only collapses older closed history."
+      },
+      "codingSafe": {
+        "label": "Coding-safe",
+        "description": "Keeps authority, tool schemas and live tool output native, protecting the last 12 turns. Compresses nothing until the session accumulates history."
+      },
+      "passthrough": {
+        "label": "Passthrough",
+        "description": "Routes without transforming. The engine is skipped and the request is forwarded untouched."
+      }
+    },
+    "profileAria": "Select the OmniGlyph compression profile",
     "saved": "Uloženo.",
     "saveFailed": "Nepodařilo se uložit.",
     "enableAria": "Povolit engine OmniGlyph",
@@ -9066,6 +9184,16 @@
     "grokAutoTopUpMax": "max",
     "grokAutoTopUpMonth": "měsíc",
     "grokAdditionalCredits": "Další kredity",
+    "kimiExtraUsageCredits": "Extra Usage Credits",
+    "kimiExtraUsage": "Extra Usage",
+    "kimiExtraUsageEnabled": "Enabled",
+    "kimiExtraUsageDisabled": "Disabled",
+    "kimiExtraUsageFrozen": "Frozen",
+    "kimiExtraUsageUnavailable": "Unavailable",
+    "kimiMonthlyUsed": "Used this month",
+    "kimiMonthlyLimit": "Monthly limit",
+    "kimiMonthlyLimitUnlimited": "Unlimited",
+    "kimiAdditionalCredits": "Additional Credits",
     "loggerTab": "Zapisovač",
     "proxyTab": "Proxy",
     "budgetManagement": "Správa rozpočtu",
@@ -10564,11 +10692,23 @@
   },
   "cursorAuthModal": {
     "title": "Připojte kurzorové IDE",
+    "tabLogin": "Login with Cursor",
+    "tabImport": "Import token",
+    "loginDescription": "Opens Cursor's browser login. Works in Docker — approve in your host browser, then return here.",
+    "loginWithCursor": "Login with Cursor",
+    "startingLogin": "Starting…",
+    "waitingApproval": "Waiting for Cursor login approval…",
+    "openUrlHint": "If the browser did not open:",
+    "openLoginLink": "Open login page",
+    "cancelLogin": "Cancel login",
     "autoDetecting": "Automatická detekce tokenů...",
     "readingFromCursor": "Čtení z Cursor IDE nebo kurzorového agenta",
     "tokensAutoDetected": "Tokeny byly úspěšně automaticky detekovány z Cursor IDE!",
     "cursorNotDetected": "IDE kurzoru nebylo zjištěno. Vložte prosím svůj token ručně.",
+    "dockerImportHint": "Running in Docker? Prefer Login with Cursor. IDE auto-import and cursor-agent are usually unavailable inside the container. See docs/providers/CURSOR-DOCKER.md.",
     "accessToken": "Přístupový token",
+    "refreshToken": "Refresh Token",
+    "refreshTokenPlaceholder": "Optional — enables automatic token refresh",
     "required": "*",
     "accessTokenPlaceholder": "Přístupový token se automaticky vyplní...",
     "machineId": "ID stroje",
@@ -10580,7 +10720,10 @@
     "errorAutoDetect": "Nelze automaticky detekovat tokeny",
     "errorAutoDetectFailed": "Automatická detekce tokenů se nezdařila",
     "errorEnterToken": "Zadejte přístupový token",
-    "errorImportFailed": "Import se nezdařil"
+    "errorImportFailed": "Import se nezdařil",
+    "errorLoginStart": "Failed to start Cursor login",
+    "errorLoginPoll": "Cursor login failed",
+    "errorLoginTimeout": "Cursor login timed out — try again"
   },
   "pricingModal": {
     "title": "Konfigurace cen",
@@ -11070,7 +11213,8 @@
       "compressed": "Komprese",
       "tps": "TPS",
       "duration": "Duration",
-      "time": "Time"
+      "time": "Time",
+      "conversation": "Conversation"
     },
     "loadingLogs": "Loading logs...",
     "noLogs": "No logs yet. Make some API calls to see them here.",
@@ -11932,7 +12076,8 @@
         "title": "ACP Agents",
         "phrase": "Rozhraní CLI, která OmniRoute spouští jako prováděcí backend (zpětný tok)",
         "flow": "Klient → OmniRoute → spustit CLI (stdio/ACP) → odpověď",
-        "seeOther": "Zobrazit →"
+        "seeOther": "Zobrazit →",
+        "warning": "Most users can ignore this — use only when an integration requires it."
       }
     },
     "comparison": {
@@ -12122,7 +12267,7 @@
       },
       "omni-webhooks": {
         "name": "Webhooky",
-        "description": "Registrujte, zobrazujte, testujte a odebírejte koncové body webhooků. Konfigurujte odběry událostí (request.completed, provider.error, budget.exceeded atd.) a spravujte opakování doručení."
+        "description": "__MISSING__:Register, list, test, and remove webhook endpoints. Configure event subscriptions (request.completed, request.failed, quota.exceeded, etc.) and manage delivery retries."
       },
       "omni-mcp": {
         "name": "MCP server",
@@ -12463,9 +12608,9 @@
     },
     "badges": {
       "radar-supporter": {
-        "name": "__MISSING__:Radar Supporter",
-        "description": "__MISSING__:Verified a live OmniRoute Radar supporter feed",
-        "criteria": "__MISSING__:Verify a signed live Radar supporter feed."
+        "name": "Radar Supporter",
+        "description": "Verified a live OmniRoute Radar supporter feed",
+        "criteria": "Verify a signed live Radar supporter feed."
       },
       "first-token": {
         "name": "První token",
@@ -12756,6 +12901,10 @@
       },
       "SKILLS_SANDBOX_NETWORK_ENABLED": {
         "description": "Povolit přístup k síti v sandboxu dovedností."
+      },
+      "DISABLE_CONTEXT_WINDOW_CHECKS": {
+        "label": "Disable Context Window Checks",
+        "description": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active."
       }
     }
   },
@@ -13188,7 +13337,7 @@
     "localStateSaveFailed": "Failed to save local Radar settings",
     "guidedCombos": "Guided combos",
     "offers": "Offers",
-    "intel": "__MISSING__:Intel"
+    "intel": "Intel"
   },
   "radarCombosPage": {
     "title": "Radar guided combos",
@@ -13328,6 +13477,13 @@
         "modelLockouts": "Uzamčení Modelu",
         "count": "Počet Připojení"
       }
+    },
+    "reassuranceTitle": "Your connections recover automatically",
+    "reassuranceDetail": "Usually no action is needed. OmniRoute temporarily rests a connection after failures, then safely tries it again.",
+    "plainStates": {
+      "healthy": "Requests can be sent",
+      "coolingDown": "Trying again soon",
+      "lockedOut": "Needs your attention"
     }
   },
   "featureFlagCapabilityFilterEnabledDescription": "Odmítnout požadavky před odesláním, když cílový model postrádá požadované schopnosti (vidění, nástroje, strukturovaný výstup, kontextové okno). Chrání přímé požadavky od jednotlivých poskytovatelů, které obcházejí filtr kompatibility kombinované vrstvy.",
@@ -13728,36 +13884,36 @@
     "trialDays": "{days, plural, one {# day} other {# days}}"
   },
   "radarIntelPage": {
-    "title": "__MISSING__:Radar Intel",
-    "subtitle": "__MISSING__:Radar-owned ELO rankings and factual catalog movement.",
-    "backToRadar": "__MISSING__:Back to Radar",
-    "loading": "__MISSING__:Loading Intel...",
-    "refresh": "__MISSING__:Refresh Intel",
-    "syncing": "__MISSING__:Refreshing...",
-    "loadFailed": "__MISSING__:We could not refresh Intel. The last verified local cache is kept.",
-    "empty": "__MISSING__:No verified Intel snapshot is available yet.",
-    "supporterBadge": "__MISSING__:Radar Supporter",
-    "methodology": "__MISSING__:Methodology",
-    "eloMethod": "__MISSING__:ELO, initial {initial}, K={factor}",
-    "freshness": "__MISSING__:Catalog freshness",
-    "ageDays": "__MISSING__:{days, plural, one {# day old} other {# days old}}",
-    "trend": "__MISSING__:Catalog trend",
-    "modelDelta": "__MISSING__:{current} models, +{added} / -{removed}",
-    "ranking": "__MISSING__:Model ranking",
-    "noRankings": "__MISSING__:No confirmed comparisons are available yet.",
-    "model": "__MISSING__:Model",
-    "category": "__MISSING__:Category",
-    "rating": "__MISSING__:Rating",
-    "matches": "__MISSING__:Matches",
+    "title": "Radar Intel",
+    "subtitle": "Radar-owned ELO rankings and factual catalog movement.",
+    "backToRadar": "Back to Radar",
+    "loading": "Loading Intel...",
+    "refresh": "Refresh Intel",
+    "syncing": "Refreshing...",
+    "loadFailed": "We could not refresh Intel. The last verified local cache is kept.",
+    "empty": "No verified Intel snapshot is available yet.",
+    "supporterBadge": "Radar Supporter",
+    "methodology": "Methodology",
+    "eloMethod": "ELO, initial {initial}, K={factor}",
+    "freshness": "Catalog freshness",
+    "ageDays": "{days, plural, one {# day old} other {# days old}}",
+    "trend": "Catalog trend",
+    "modelDelta": "{current} models, +{added} / -{removed}",
+    "ranking": "Model ranking",
+    "noRankings": "No confirmed comparisons are available yet.",
+    "model": "Model",
+    "category": "Category",
+    "rating": "Rating",
+    "matches": "Matches",
     "freshnessValues": {
-      "fresh": "__MISSING__:Fresh",
-      "aging": "__MISSING__:Aging",
-      "stale": "__MISSING__:Stale"
+      "fresh": "Fresh",
+      "aging": "Aging",
+      "stale": "Stale"
     },
     "trendValues": {
-      "growing": "__MISSING__:Growing",
-      "stable": "__MISSING__:Stable",
-      "shrinking": "__MISSING__:Shrinking"
+      "growing": "Growing",
+      "stable": "Stable",
+      "shrinking": "Shrinking"
     }
   },
   "capabilityFilter": {
@@ -13765,5 +13921,13 @@
     "toolsMismatch": "Poskytovatel nepodporuje volání nástroje",
     "structuredOutputMismatch": "Poskytovatel nepodporuje strukturovaný výstup",
     "contextWindowMismatch": "Žádost překračuje kontextové okno poskytovatele"
+  },
+  "featureFlagDisableContextWindowChecksDescription": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active.",
+  "cheaperInferenceSponsorBanner": {
+    "title": "Cheaper Inference is an OmniRoute Open Source Friend",
+    "description": "A cost-ranked gateway reselling dozens of frontier models behind one OpenAI-compatible endpoint — routing each request to the cheapest eligible provider, never above list price.",
+    "cta": "Get an API Key",
+    "partnerLinkNote": "Partner link",
+    "dismissAriaLabel": "Dismiss"
   }
 }

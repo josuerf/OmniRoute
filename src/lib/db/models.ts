@@ -190,7 +190,8 @@ export async function addCustomModel(
     | "rerank"
     | "audio-transcriptions"
     | "audio-speech"
-    | "images-generations" = "chat-completions",
+    | "images-generations"
+    | "video" = "chat-completions",
   supportedEndpoints: string[] = ["chat"],
   // #2905: optional per-model wire format override (e.g. "claude" for an
   // opencode-go custom model). When unset, routing falls back to the provider
@@ -485,12 +486,19 @@ export async function getSyncedAvailableModels(
   return Array.from(map.values());
 }
 
+export const SYNCED_AVAILABLE_MODELS_MALFORMED = Symbol("syncedAvailableModelsMalformed");
+export type SyncedAvailableModelsByConnection = Record<string, SyncedAvailableModel[]> & {
+  [SYNCED_AVAILABLE_MODELS_MALFORMED]?: true;
+};
+
 /**
  * Get synced available models for a provider grouped by connection id.
+ * A non-enumerable symbol marks malformed persisted rows so strict callers can
+ * fail closed without changing the existing Record-shaped API.
  */
 export async function getSyncedAvailableModelsByConnection(
   providerId: string
-): Promise<Record<string, SyncedAvailableModel[]>> {
+): Promise<SyncedAvailableModelsByConnection> {
   const db = getDbInstance();
   const prefix = `${providerId}:`;
   const rows = db
@@ -498,7 +506,7 @@ export async function getSyncedAvailableModelsByConnection(
       "SELECT key, value FROM key_value WHERE namespace = 'syncedAvailableModels' AND key LIKE ?"
     )
     .all(`${prefix}%`);
-  const result: Record<string, SyncedAvailableModel[]> = {};
+  const result: SyncedAvailableModelsByConnection = {};
   for (const row of rows) {
     const { key, value } = getKeyValue(row);
     if (!key || value === null || !key.startsWith(prefix)) continue;
@@ -506,7 +514,10 @@ export async function getSyncedAvailableModelsByConnection(
       const connectionId = key.slice(prefix.length);
       result[connectionId] = normalizeSyncedAvailableModels(JSON.parse(value), providerId);
     } catch {
-      // Ignore malformed legacy entries.
+      Object.defineProperty(result, SYNCED_AVAILABLE_MODELS_MALFORMED, {
+        value: true,
+        enumerable: false,
+      });
     }
   }
   return result;

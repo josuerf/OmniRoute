@@ -1,7 +1,7 @@
 ---
 title: "Codex CLI — Configuration with OmniRoute"
-version: 3.8.49
-lastUpdated: 2026-08-01
+version: 3.8.50
+lastUpdated: 2026-08-18
 ---
 
 # Codex CLI — Configuration with OmniRoute
@@ -317,6 +317,17 @@ omniroute launch-codex --remote http://100.x.x.x:20128/v1 --api-key sk-xxx
 
 # Pass extra args to codex
 omniroute launch-codex --profile glm52 -- --yolo "fix this bug"
+```
+
+Codex is also a target of the two generic manifest-driven entry points
+(`bin/cli/cli-manifest.mjs`):
+
+```bash
+# Interactive model picker → writes ~/.codex/<name>.config.toml (TOML, env_key)
+omniroute configure codex
+
+# Launch codex with the omniroute provider injected via -c flags (no config written)
+omniroute run codex
 ```
 
 ---

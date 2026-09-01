@@ -12,6 +12,7 @@
 // tests) keep a stable surface.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { PROVIDERS } from "../config/constants.ts";
+import { getCodexAuthIdentityHeaders } from "../config/codexClient.ts";
 import { runWithProxyContext } from "../utils/proxyFetch.ts";
 import { serializeRefresh } from "./refreshSerializer.ts";
 import {
@@ -47,6 +48,7 @@ import { refreshGoogleToken } from "./tokenRefresh/providers/google.ts";
 import { ensureAntigravityProjectAssigned } from "./antigravityProjectBootstrap.ts";
 import { persistDiscoveredAntigravityProjectId } from "./antigravityProjectPersist.ts";
 import { refreshCodexToken } from "./tokenRefresh/providers/codex.ts";
+import { refreshCursorToken } from "./tokenRefresh/providers/cursor.ts";
 import { refreshOpenferenceToken } from "./tokenRefresh/providers/openference.ts";
 import { refreshKiroToken } from "./tokenRefresh/providers/kiro.ts";
 import { refreshQoderToken } from "./tokenRefresh/providers/qoder.ts";
@@ -61,6 +63,7 @@ export {
   refreshClaudeOAuthToken,
   refreshGoogleToken,
   refreshCodexToken,
+  refreshCursorToken,
   refreshOpenferenceToken,
   refreshKiroToken,
   refreshQoderToken,
@@ -254,6 +257,12 @@ export async function refreshAccessToken(
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
+          // Credential face (auth.openai.com): the real Codex client sends only
+          // originator + User-Agent here — no version header (that gate exists
+          // only on the /backend-api/codex inference face). Refreshing with a
+          // bare/anonymous identity is a half-identity no real client emits.
+          // Mirrors sub2api v0.1.178 ApplyCodexCanonicalAuthIdentity.
+          ...(provider === "codex" ? getCodexAuthIdentityHeaders() : null),
         },
         body: params,
       })
@@ -375,6 +384,12 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
     case "codex":
       return await refreshCodexToken(credentials.refreshToken, log, proxyConfig);
 
+    case "cursor":
+      if (!credentials.refreshToken) {
+        return { error: "unrecoverable_refresh_error", code: "no_refresh_token" };
+      }
+      return await refreshCursorToken(credentials.refreshToken, log, proxyConfig);
+
     case "openference":
       return await refreshOpenferenceToken(credentials.refreshToken, log, proxyConfig);
 
@@ -446,6 +461,7 @@ export function supportsTokenRefresh(provider) {
     // testStatus="expired" / errorCode="no_refresh_token".
     "gitlab-duo",
     "codebuddy-cn",
+    "cursor",
   ]);
   if (explicitlySupported.has(provider)) return true;
   const config = PROVIDERS[provider];

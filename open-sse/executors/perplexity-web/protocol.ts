@@ -69,24 +69,26 @@ export const MODEL_MAP: Record<string, [string, string]> = {
   "pplx-sonar": ["copilot", "turbo"],
   "pplx-gpt-5.6-terra": ["copilot", "gpt56_terra"],
   "pplx-gpt-5.6-sol": ["copilot", "gpt56_sol"],
-  "pplx-gemini": ["copilot", "gemini31pro_high"],
+  "pplx-gemini": ["copilot", "gemini37flash"],
   "pplx-sonnet": ["copilot", "claude50sonnet"],
   // Perplexity's catalog moved Opus to 5.0; claude48opus is still accepted but
   // answers from the older model.
   "pplx-opus": ["copilot", "claude50opus"],
   "pplx-glm": ["copilot", "glm_5_2"],
-  "pplx-kimi": ["copilot", "kimik26instant"],
-  "pplx-grok-4.5": ["copilot", "grok45low"],
+  // The current Kimi K3 catalog entry only exposes its reasoning model.
+  "pplx-kimi": ["copilot", "kimik3thinking"],
+  "pplx-grok-4.6": ["copilot", "grok46low"],
   "pplx-nemotron": ["copilot", "nv_nemotron_3_ultra"],
 };
 
 export const THINKING_MAP: Record<string, string> = {
   "pplx-gpt-5.6-terra": "gpt56_terra_thinking",
   "pplx-gpt-5.6-sol": "gpt56_sol_thinking",
+  "pplx-gemini": "gemini37flashthinking",
   "pplx-sonnet": "claude50sonnetthinking",
   "pplx-opus": "claude50opusthinking",
-  "pplx-kimi": "kimik26thinking",
-  "pplx-grok-4.5": "grok45medium",
+  "pplx-kimi": "kimik3thinking",
+  "pplx-grok-4.6": "grok46medium",
 };
 
 export const CITATION_RE = /\[\d+\]/g;
@@ -368,15 +370,29 @@ export function buildPplxRequestBody(
   };
 }
 
+const SEARCH_HINT = "You have built-in web search. Answer questions directly using search results.";
+
+/**
+ * Whether to append {@link SEARCH_HINT} to the caller's system message.
+ *
+ * It used to be unconditional. Perplexity's answer engine is search-first anyway, and
+ * for coding clients the sentence leaks into replies as meta-commentary ("I need to
+ * search before responding per my instructions"), so it is now opt-in via
+ * `OMNIROUTE_PPLX_SEARCH_HINT`. Read per call rather than at module load so the flag
+ * can be flipped without restarting the server (and so tests can toggle it).
+ */
+function searchHintEnabled(): boolean {
+  return /^(1|true|yes|on)$/i.test(process.env.OMNIROUTE_PPLX_SEARCH_HINT ?? "");
+}
+
 export function buildQuery(parsed: ParsedMessages, followUpUuid: string | null): string {
   if (followUpUuid) return parsed.currentMsg;
 
   const obj: Record<string, unknown> = {};
   if (parsed.systemMsg.trim()) {
-    obj.instructions = [
-      parsed.systemMsg.trim(),
-      "You have built-in web search. Answer questions directly using search results.",
-    ];
+    obj.instructions = searchHintEnabled()
+      ? [parsed.systemMsg.trim(), SEARCH_HINT]
+      : [parsed.systemMsg.trim()];
   }
   if (parsed.history.length > 0) {
     obj.history = parsed.history;

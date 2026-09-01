@@ -974,12 +974,20 @@
     "batchFileUsedByCount": "Folosit de {count, plural, one {# lot} other {# loturi}}",
     "batchFilePreview": "Previzualizare",
     "batchFilePreviewTruncated": "Afișare primele {shown} linii ({total} linii totale)",
-    "batchFileDownloadFull": "Descarcă Fișierul Complet"
+    "batchFileDownloadFull": "Descarcă Fișierul Complet",
+    "batchHeaderSubtitle": "Run many requests as one job",
+    "batchStep1": "1 · Upload JSONL",
+    "batchStep1Desc": "Add requests",
+    "batchStep2": "2 · Create batch",
+    "batchStep2Desc": "Run job",
+    "batchStep3": "3 · Get results",
+    "batchStep3Desc": "Download output"
   },
   "disabled": "Dezactivat",
   "featureFlagOmnirouteEmergencyFallbackDescription": "Redirecționează cererile cu buget epuizat către furnizorul/modelul de rezervă gratuit de urgență.",
   "featureFlagArenaEloSyncEnabledDescription": "Activează sincronizarea periodică ELO a clasamentului Arena AI pentru clasamentele de inteligență ale modelelor.",
   "featureFlagExposeCcDiscoveryAliasesDescription": "Publica id-urile mirror claude/&lt;provider&gt;/&lt;model&gt; pe /v1/models astfel încât lista de descoperire a modelului Claude Code să includă modele non-Claude. Atenție: dublează intrările din catalog pentru toți clienții când este activat global.",
+  "featureFlagChatVirtualLanesEnabledDescription": "Activați benzile de admitere virtuale adaptive per-tenant pentru expedierea către furnizori (#9654): un vârf de trafic al unui tenant nu mai returnează 503 altui tenant. Variabila de mediu OMNIROUTE_CHAT_VIRTUAL_LANES are prioritate față de această setare din panou; modificările intră în vigoare la repornirea serverului.",
   "sidebar": {
     "home": "Acasă",
     "dashboard": "Tabloul de bord",
@@ -1164,6 +1172,8 @@
     "consoleLogs": "Console Logs",
     "logsTimeline": "Timeline",
     "logsTimelineSubtitle": "Cronologia cererilor vizuale",
+    "conversations": "Conversations",
+    "conversationsSubtitle": "Multi-turn agentic conversations",
     "globalRouting": "Global Routing",
     "mitmProxy": "MITM Proxy",
     "oneProxy": "1Proxy",
@@ -1256,7 +1266,7 @@
     "agentBridge": "Agent Bridge",
     "agentBridgeSubtitle": "Interceptează traficul agentului IDE",
     "trafficInspector": "Inspector de trafic",
-    "trafficInspectorSubtitle": "Monitorizează apelurile LLM + depanează orice trafic HTTPS",
+    "trafficInspectorSubtitle": "__MISSING__:Inspect request and response traffic from your apps",
     "cliCode": "Cod CLI",
     "cliCodeSubtitle": "Instrumente de cod care indică spre OmniRoute",
     "cliAgents": "Agenți CLI",
@@ -1290,7 +1300,8 @@
       "open": "deschide",
       "close": "închide"
     },
-    "noResults": "Niciun rezultat"
+    "noResults": "Niciun rezultat",
+    "trafficInspectorPurpose": "See exactly what your application sends to and receives from AI providers. Works with any OpenAI-compatible client."
   },
   "webhooks": {
     "title": "Webhook-uri",
@@ -1736,8 +1747,8 @@
     "quotaShare": "Partajare cotă",
     "discovery": "Descoperire",
     "freeProviderRankings": "Clasament furnizori gratuiți",
-    "radar": "__MISSING__:Radar",
-    "setup": "__MISSING__:Setup",
+    "radar": "Radar",
+    "setup": "Setup",
     "freeTiers": "Niveluri gratuite",
     "gamification": "Gamificare",
     "leaderboard": "Clasament",
@@ -1853,7 +1864,21 @@
     "directDownloadHint": "Sau descărcați direct formatul installer-ului respectiv:",
     "releaseNotes": "Note de Lansare",
     "readMore": "Citește mai mult",
-    "noAuthLabel": "Fără Autentificare"
+    "noAuthLabel": "Fără Autentificare",
+    "recentRequests": "Recent Requests",
+    "recentRequestsEmpty": "No requests yet.",
+    "recentRequestsModel": "Model",
+    "recentRequestsTokens": "In / Out",
+    "recentRequestsWhen": "When",
+    "readinessEyebrow": "Get ready to route",
+    "readinessTitle": "Send your first request",
+    "readinessSubtitle": "Four small steps. OmniRoute checks readiness as you go.",
+    "readinessStep1": "Connect a provider",
+    "readinessStep2": "Configure endpoint authentication",
+    "readinessStep3": "Copy your endpoint",
+    "readinessStep4": "Send a test request",
+    "readinessContinue": "Continue setup",
+    "readinessDismiss": "Dismiss for now"
   },
   "analytics": {
     "title": "Analytics",
@@ -2215,6 +2240,10 @@
     "fullAccess": "Acces complet",
     "keyManagement": "Managementul cheilor API",
     "keyManagementDesc": "Creați și gestionați cheile API pentru autentificarea solicitărilor către punctul dvs. final",
+    "requestFlowAria": "Your app sends requests through an API key to OmniRoute",
+    "requestFlowYourApp": "Your app",
+    "requestFlowApiKey": "API key",
+    "requestFlowOmniRoute": "OmniRoute",
     "totalKeys": "Total chei",
     "restricted": "Restricţionat",
     "totalRequests": "Total cereri",
@@ -2894,7 +2923,8 @@
       "omp": "Agent de programare pentru terminal Oh My Pi",
       "letta": "Agent CLI Letta cu memorie persistentă și utilizare de instrumente",
       "warp": "Terminal Warp AI cu suport pentru furnizori personalizați",
-      "agent-deck": "Orchestrator multi-agent Agent Deck"
+      "agent-deck": "Orchestrator multi-agent Agent Deck",
+      "prime-agent": "Prime Agent — self-improving RLM coding harness with OpenAI-compatible provider support"
     },
     "guides": {
       "cursor": {
@@ -3603,6 +3633,10 @@
     "wizardStep3Desc": "Pick how requests are distributed across your models - 13 strategies available",
     "wizardStep4Title": "Review & Save",
     "wizardStep4Desc": "Review your configuration and activate the combo",
+    "usageGuideInvokeTitle": "How to call this combo",
+    "usageGuideInvokeDesc": "Send the combo's exact name as the model, e.g. model: \"my-combo\" (or combo/my-combo).",
+    "usageGuideInvokeAutoNote": "auto and auto/* are a separate zero-config router that does not use your combos (unless a combo is literally named auto).",
+    "usageGuideInvokeOpenrouterNote": "openrouter/auto is a real paid OpenRouter product (Auto Best Available), not an OmniRoute alias — exclude it via Settings → Routing → Hide paid models.",
     "emailVisibilityStateOn": "On",
     "emailVisibilityStateOff": "Off",
     "reorderHandle": "Drag to reorder",
@@ -3715,7 +3749,12 @@
     "errorDescription": "Nu am putut încărca datele combo în acest moment. Verifică-ți conexiunea și încearcă din nou.",
     "errorId": "ID eroare: {id}",
     "errorRetry": "Încearcă din nou",
-    "comboLabel": "Combo"
+    "comboLabel": "Combo",
+    "duplicateAutoComboConfirm": "Creați o combinație statică din \"{name}\"?",
+    "duplicateAutoComboSnapshotMsg": "Acesta va captura furnizorii/modelurile conectate în prezent care se potrivesc cu acest șablon într-o combinație editabilă.",
+    "duplicateAutoComboFailedPrefix": "Duplicarea combinației automate a eșuat:",
+    "duplicateAutoComboUnknownError": "Eroare necunoscută",
+    "duplicateAutoComboTitle": "Creați o combinație statică din {name}"
   },
   "costs": {
     "title": "Costuri",
@@ -4117,7 +4156,10 @@
     "notionIntegrationHelp": "Creează o integrare internă la",
     "notionIntegrationToken": "Token Intern de Integrare Notion",
     "notionNotConnected": "Neconectat",
-    "notionTokenConfigured": "Token configurat. Instrumentele Notion sunt disponibile prin MCP."
+    "notionTokenConfigured": "Token configurat. Instrumentele Notion sunt disponibile prin MCP.",
+    "subtitle": "Use the OpenAI-compatible endpoint with most SDKs and tools.",
+    "testEndpoint": "Test endpoint →",
+    "advancedProtocols": "Advanced protocols"
   },
   "endpoints": {
     "tabProxy": "Endpoint Proxy",
@@ -4700,7 +4742,14 @@
     "issueCount": "{count} probleme",
     "score": "Scor",
     "lastRequest": "Ultima solicitare",
-    "lastError": "Ultima eroare"
+    "lastError": "Ultima eroare",
+    "healthVerdictReady": "OmniRoute is ready",
+    "healthVerdictActionRequired": "Action required to restore full operation",
+    "healthVerdictCoolingDown": "Cooling down after recent changes",
+    "healthSubtitle": "System health check",
+    "advancedDiagnosticsTitle": "Advanced diagnostics",
+    "hide": "Hide",
+    "show": "Show"
   },
   "telemetry": {
     "title": "Telemetria sistemului",
@@ -4962,7 +5011,9 @@
         "skipped": "deja configurat",
         "failed": "eșuat"
       }
-    }
+    },
+    "securityDescSkipWarning": "⚠️ Without a password, you won't be able to add providers during setup. You can add them later from the dashboard after setting a password.",
+    "providerRequiresPassword": "You need to set a password first to add providers. Please go back to the security step and set a password, or add providers later from the dashboard."
   },
   "providers": {
     "title": "Furnizorii",
@@ -5094,7 +5145,7 @@
     "deprecatedProvider": "Acest furnizor a fost retras",
     "riskNotice": {
       "title": "Înainte de a continua",
-      "detailsTitle": "__MISSING__:Usage caveats",
+      "detailsTitle": "Usage caveats",
       "tooltip": "Furnizor cu avertismente de utilizare — faceți clic pentru detalii",
       "oauth": "Acest furnizor utilizează sesiunea oficială a produsului/OAuth, care nu este autorizată pentru utilizarea ca proxy/router. Nu recomandăm utilizarea intensivă a agenților autonomi (stil OpenCloud, fluxuri lungi cu mai mulți pași, loturi mari) — upstream-ul poate reacționa prin restricționarea sau blocarea contului. Utilizați pe propriul risc.",
       "webCookie": "Acest furnizor se autentifică prin cookie-urile sesiunii web. Serviciul upstream poate invalida sesiunea în orice moment, solicitându-vă să vă autentificați din nou. Nu este recomandat pentru operațiuni lungi nesupravegheate. Utilizați pe propriul risc.",
@@ -5104,9 +5155,9 @@
       "cancel": "Anulează"
     },
     "warningNotice": {
-      "tooltip": "__MISSING__:{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
-      "lastFailureSuffix": "__MISSING__: (last failure {time})",
-      "ariaLabel": "__MISSING__:View connection health details, {count} warning(s)"
+      "tooltip": "{count} connection(s) flagged — up to {maxFailures} recent failures{lastFailureSuffix}. Click to view connection health.",
+      "lastFailureSuffix": " (last failure {time})",
+      "ariaLabel": "View connection health details, {count} warning(s)"
     },
     "disabled": "Dezactivat",
     "enableProvider": "Activați furnizorul",
@@ -5230,6 +5281,17 @@
     "skippingExistingModels": "Se omit {count} modele existente",
     "autoSync": "Sincronizare automată",
     "autoSyncShort": "Sincronizează",
+    "autoFetchModels": "Obține automat modelele upstream",
+    "autoFetchModelsTooltip": "Recuperează și stochează modelele upstream atunci când este necesar",
+    "autoFetchModelsEnabled": "Modelul upstream auto-fetch activat",
+    "autoFetchModelsDisabled": "Modelul upstream auto-fetch dezactivat",
+    "autoFetchModelsToggleFailed": "Nu s-a reușit comutarea automată a preluării modelului upstream",
+    "autoFetchModelsPartialFailure": "Unele conexiuni au fost actualizate, dar modelul upstream auto-fetch nu a fost schimbat peste tot",
+    "overridesUpstreamModel": "Suprascrie upstream",
+    "overridesUpstreamModelHint": "Setările tale suprascriu acest model de bază",
+    "resetToUpstreamDefaults": "Restabilește valorile implicite upstream",
+    "resetToUpstreamDefaultsSuccess": "Restabilite valorile implicite ale modelului upstream",
+    "resetToUpstreamDefaultsFailed": "Restaurarea valorilor implicite ale modelului upstream a eșuat",
     "autoSyncTooltip": "Actualizează automat lista de modele la fiecare 24 de ore (configurabil prin MODEL_SYNC_INTERVAL_HOURS)",
     "autoSyncEnabled": "Sincronizare automată activată — modelele se vor reîmprospăta periodic",
     "autoSyncDisabled": "Sincronizarea automată a fost dezactivată",
@@ -5435,18 +5497,18 @@
     "interceptFetchHint": "Rescrie apelurile native de instrument web_fetch către /v1/web/fetch al OmniRoute.",
     "interceptionLoadError": "Nu s-au putut încărca setările de interceptare: {error}",
     "interceptionSaveError": "Nu s-au putut salva setările de interceptare: {error}",
-    "ccAliasSectionTitle": "Expune în Claude Code (claude/…)",
-    "ccAliasSectionHint": "Publica modelele acestui furnizor sub claude/&lt;provider&gt;/&lt;model&gt; ID-uri mirror, astfel încât descoperirea modelului gateway al Claude Code să le poată lista. Dezactivat în mod implicit — activarea acestuia dublează intrările din catalog pentru toți clienții.",
-    "ccAliasProviderLevelLabel": "Provider implicit",
-    "ccAliasModelOverridesLabel": "Suprapuneri pe model per model",
-    "ccAliasModelOverrideAriaLabel": "Suprascriere pentru {modelId}",
-    "ccAliasStateInherit": "Moștenește",
-    "ccAliasStateOn": "Activat",
-    "ccAliasStateOff": "Oprit",
-    "ccAliasAddModelPlaceholder": "ID model (de exemplu, gpt-4o)",
-    "ccAliasAddModelButton": "Adaugă suprascriere",
-    "ccAliasLoadError": "Nu s-au putut încărca setările discovery-alias: {error}",
-    "ccAliasSaveError": "Nu s-a reușit salvarea setării discovery-alias: {error}",
+    "ccAliasSectionTitle": "Expose in Claude Code (claude/…)",
+    "ccAliasSectionHint": "Advertise this provider's models under claude/&lt;provider&gt;/&lt;model&gt; mirror ids so Claude Code's gateway model discovery can list them. Off by default — enabling this doubles catalog entries for all clients.",
+    "ccAliasProviderLevelLabel": "Provider default",
+    "ccAliasModelOverridesLabel": "Per-model overrides",
+    "ccAliasModelOverrideAriaLabel": "Override for {modelId}",
+    "ccAliasStateInherit": "Inherit",
+    "ccAliasStateOn": "On",
+    "ccAliasStateOff": "Off",
+    "ccAliasAddModelPlaceholder": "Model id (e.g. gpt-4o)",
+    "ccAliasAddModelButton": "Add override",
+    "ccAliasLoadError": "Failed to load discovery-alias settings: {error}",
+    "ccAliasSaveError": "Failed to save discovery-alias setting: {error}",
     "compatUpstreamHeadersLabel": "Extra upstream headers",
     "compatUpstreamHeadersHint": "High-privilege setting — same trust level as editing provider API credentials; only trusted admins should use it. Merged after OmniRoute adds auth from the provider API key. If a custom header uses the same name as an existing one (e.g. Authorization), your value fully replaces the auto-generated header (including the Bearer token) — the upstream only sees what you typed, not the key from settings. Misconfiguration can cause 401 or broken upstream auth. One row per header (e.g. extra Authentication for some gateways). Hover or focus the value to preview. Saves on blur, outside click, or closing this panel.",
     "compatUpstreamHeaderName": "Header name",
@@ -5805,6 +5867,8 @@
     "rateLimitOverridesSection": "Suprascrieri ale limitelor de rată",
     "rateLimitOverridesMaxConcurrentHint": "Suprascrierea numărului maxim de solicitări concurente pentru această conexiune. Suprascrie limita la nivel de cont.",
     "rateLimitOverridesMaxConcurrentLabel": "Maxim concurente (Limită de rată)",
+    "rateLimitOverridesMaxWaitMsHint": "__MISSING__:Maximum time (ms) a request may wait for a rate-limit slot before failing. Overrides the global Resilience setting for this connection only.",
+    "rateLimitOverridesMaxWaitMsLabel": "__MISSING__:Max Queue Wait (ms)",
     "rateLimitOverridesMinTimeHint": "Timpul minim (ms) între solicitări. Suprascrie întârzierea implicită a limitatorului de rată.",
     "rateLimitOverridesMinTimeLabel": "Min Interval (ms)",
     "rateLimitOverridesRpmHint": "Numărul maxim de solicitări pe minut pentru această conexiune. Suprascrie valoarea implicită a furnizorului.",
@@ -6082,7 +6146,6 @@
       "glmt": "Profil GLM prestabilit cu un buget de tokenuri mai mare, gândire activată și timeout mai lung.",
       "getgoapi": "Conectați GoAPI cu o cheie API.",
       "groq": "Nivel gratuit: 30 RPM / 14.4K RPD — fără card de credit",
-      "hackclub": "Conectați-vă cu contul Hack Club la ai.hackclub.com.",
       "haiper": "Obțineți cheia API la haiper.ai/haiper-api",
       "heroku": "Conectați Heroku AI cu o cheie API.",
       "hcnsec": "Obțineți cheia API la api.hcnsec.cn",
@@ -6191,7 +6254,7 @@
       "galadriel": "Conectați Galadriel cu o cheie API.",
       "predibase": "Credite de încercare gratuită de 25 $ (valabilitate 30 de zile)",
       "chenzk": "Gateway compatibil cu OpenAI cu un catalog live de modele la chenzk.top.",
-      "freepik": "Generați imagini cu API-ul Mystic de la Freepik.",
+      "magnific": "Generați imagini cu API-ul Mystic de la Freepik.",
       "freetheai": "Gateway gratuit compatibil cu OpenAI cu suport pentru modele passthrough.",
       "g4f-gemini": "Reverse proxy gratuit fără cheie g4f.space către Gemini, limitat la 5 cereri pe minut.",
       "g4f-groq": "Reverse proxy gratuit fără cheie g4f.space către Groq, limitat la 5 cereri pe minut.",
@@ -6206,6 +6269,7 @@
       "claude": "Conectați Claude Code cu fluxul OAuth existent.",
       "cline": "Conectați Cline cu fluxul OAuth existent.",
       "cursor": "Conectați Cursor IDE cu fluxul OAuth existent.",
+      "cursor-api": "Connect Cursor with a user API key (crsr_...) from cursor.com/dashboard/api; no IDE session needed.",
       "github": "Conectați GitHub Copilot cu fluxul OAuth existent.",
       "gitlab-duo": "Aplicație OAuth cu permisiunile ai_features + read_user. Configurați GITLAB_DUO_OAUTH_CLIENT_ID și opțional GITLAB_DUO_OAUTH_CLIENT_SECRET pe această instanță OmniRoute.",
       "kilocode": "Conectați Kilo Code cu fluxul OAuth existent.",
@@ -6268,6 +6332,15 @@
     "cheaperInferenceSupporterBadge": "Prieten open source",
     "cheaperInferenceSupporterTooltip": "Cheaper Inference susține OmniRoute ca prieten open source",
     "kimiPartnerLinkNote": "Link de partener — susține OmniRoute fără costuri suplimentare pentru dvs.",
+    "codexQuotaPools": "Grupuri de cote Codex",
+    "codexPoolAvailable": "Disponibil",
+    "codexPoolPartiallyLimited": "Limitat parțial",
+    "codexPoolFullyLimited": "Limitat complet",
+    "codexPoolLimited": "{count} limitate",
+    "codexPoolQuotaExhausted": "Cota a fost epuizată",
+    "codexPoolCoolingDown": "În perioada de așteptare",
+    "codexPoolUsed": "utilizat",
+    "codexPoolUntil": "Până la {value}",
     "anonymousFallbackTitle": "Fallback anonim",
     "anonymousFallbackDesc": "Când toate conexiunile configurate sunt epuizate (cota, credite sau expirare), folosiți temporar nivelul fără cheie al acestui furnizor. Dezactivați pentru a sări peste acest furnizor în loc de a trimite cereri anonime — recomandat atunci când nivelul fără cheie le respinge (401).",
     "anonymousFallbackEnabled": "Fallback anonim activat pentru {provider}",
@@ -6344,17 +6417,20 @@
     "searchByModelAria": "Caută după model",
     "selectSupportedEndpoint": "Selectați cel puțin un punct final acceptat",
     "antigravityClientProfileHarness": "Harness / CLI",
-    "autoFetchModels": "Obține automat modelele upstream",
-    "autoFetchModelsDisabled": "Modelul upstream auto-fetch dezactivat",
-    "autoFetchModelsTooltip": "Recuperează și stochează modelele upstream atunci când este necesar",
-    "autoFetchModelsEnabled": "Modelul upstream auto-fetch activat",
-    "overridesUpstreamModel": "Suprascrie upstream",
-    "autoFetchModelsToggleFailed": "Nu s-a reușit comutarea automată a preluării modelului upstream",
-    "overridesUpstreamModelHint": "Setările tale suprascriu acest model de bază",
-    "autoFetchModelsPartialFailure": "Unele conexiuni au fost actualizate, dar modelul upstream auto-fetch nu a fost schimbat peste tot",
-    "resetToUpstreamDefaults": "Restabilește valorile implicite upstream",
-    "resetToUpstreamDefaultsSuccess": "Restabilite valorile implicite ale modelului upstream",
-    "resetToUpstreamDefaultsFailed": "Restaurarea valorilor implicite ale modelului upstream a eșuat"
+    "harImportButtonLabel": "Import .har file",
+    "harImportButtonBusy": "Importing…",
+    "harImportButtonHint": "Export from DevTools Network tab after sending at least one chat message.",
+    "harImportStatusValid": "Imported — valid for ~{minutes}m.",
+    "harImportStatusExpiringSoon": "Imported — valid for only ~{minutes}m more.",
+    "harImportStatusExpired": "Imported, but this token already expired ({minutes}m ago) — export a fresh HAR.",
+    "harImportStatusUnknownExpiry": "Imported. Couldn't read its expiry.",
+    "harImportErrorNotJson": "That file isn't valid JSON — is it really a .har export?",
+    "harImportErrorNoEntries": "This HAR has no network entries recorded.",
+    "harImportErrorNoChathubUrl": "No Copilot chat connection found in this HAR. Send at least one chat message in m365.cloud.microsoft before exporting.",
+    "harImportErrorUnparsableUrl": "Found the chat connection, but couldn't read its URL.",
+    "harImportErrorMissingFields": "Found the chat connection, but the token was missing from it.",
+    "harImportErrorReadFailed": "Couldn't read that file.",
+    "harImportErrorUnknown": "Couldn't extract a credential from that HAR file."
   },
   "settings": {
     "title": "Setări",
@@ -6573,12 +6649,12 @@
     "autoDisableDescription": "Permanently mark provider connections as deactivated if they return specific terminal ban signals (e.g. HTTP 403 'verify your account'). This removes them from the combo rotation.",
     "autoDisableThreshold": "Ban Threshold",
     "autoDisableThresholdDesc": "Consecutive ban signals required before permanent deactivation.",
-    "autoDisableBannedScope": "__MISSING__:Apply auto-disable to",
-    "autoDisableBannedScopeDesc": "__MISSING__:Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
-    "autoDisableBannedScopeAll": "__MISSING__:All connections",
-    "autoDisableBannedScopeAllDesc": "__MISSING__:Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
-    "autoDisableBannedScopeSubscription": "__MISSING__:Login / subscription accounts only",
-    "autoDisableBannedScopeSubscriptionDesc": "__MISSING__:Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
+    "autoDisableBannedScope": "Apply auto-disable to",
+    "autoDisableBannedScopeDesc": "Login seats (paid subscriptions and free accounts) can be locked by the upstream if OmniRoute keeps retrying after a ban. Paid prepaid API keys do not have that risk — leave them in the pool so fill-first can use the next key.",
+    "autoDisableBannedScopeAll": "All connections",
+    "autoDisableBannedScopeAllDesc": "Deactivate every connection that returns a permanent ban signal, including prepaid API keys.",
+    "autoDisableBannedScopeSubscription": "Login / subscription accounts only",
+    "autoDisableBannedScopeSubscriptionDesc": "Deactivate OAuth, cookie, session, and web-login seats (paid or free). Prepaid API keys stay active so routing can fail over.",
     "customBannedSignals": "Cuvinte cheie interzise",
     "customBannedSignalsDesc": "Cuvinte cheie suplimentare care declanșează detectarea blocării permanente a contului. Cuvintele cheie integrate se aplică întotdeauna.",
     "customBannedSignalsPlaceholder": "de ex. api key revoked",
@@ -7186,6 +7262,7 @@
     "configured": "configurat",
     "none": "Niciunul",
     "modelOverrideValuePlaceholder": "Valoare numerică",
+    "modelOverrideReasoningEffortsPlaceholder": "English comma-separated, e.g. low, medium, high",
     "addKeyValue": "Adaugă cheie-valoare",
     "noModelOverrides": "Nu sunt configurate suprascrieri pentru acest model.",
     "modelOverrideLoadFailed": "Eroare la încărcarea suprascrierilor de model",
@@ -7757,6 +7834,10 @@
         "label": "Ponytail (lazy senior dev)",
         "description": "Lazy senior-dev discipline: climb the YAGNI ladder, fix root cause, smallest working diff."
       },
+      "i-have-adhd": {
+        "label": "I have ADHD (action-first)",
+        "description": "Action-first output: next action leads, steps numbered, one concrete next step, no preamble."
+      },
       "terse-cjk": {
         "label": "CJK concis (文言)",
         "description": "Stil ultra-concis în chineza clasică (disponibil doar pentru chineză)."
@@ -8037,6 +8118,10 @@
     "disableSessionStickinessDesc": "Combinațiile round-robin și aleatorii comută la o conexiune diferită la fiecare solicitare, în loc să fixeze o întreagă conversație la o singură conexiune pe baza hash-ului primului mesaj. Lăsați dezactivat pentru a păstra accesările din cache-ul de prompturi pentru conversațiile cu mai multe replici. Suprascrierile per combinație au prioritate.",
     "promptCacheAffinity": "Prompt-cache locality routing",
     "promptCacheAffinityDesc": "Prefer the same provider account for matching prompt-cache keys while preserving health and quota failover.",
+    "reasoningTokenBuffer": "Reasoning token buffer",
+    "reasoningTokenBufferDesc": "Allow combo routing to add max_tokens headroom only for known reasoning models when the full buffer fits inside a known output cap.",
+    "zeroLatencyOptimizations": "Zero-latency optimizations",
+    "zeroLatencyOptimizationsDesc": "Opt in to hedging, predictive TTFT skips, and proactive fallback compression. Leave off to prevent these latency features from racing targets or compressing fallback requests.",
     "credentialRedaction": "Mascare date de autentificare",
     "credentialRedactionDesc": "Mascați cheile API, tokenurile și secretele din contextul trimis către furnizori și din răspunsuri.",
     "enableCredentialRedaction": "Activează redactarea credențialelor",
@@ -8192,7 +8277,19 @@
     "cliproxyapiHealth": "Sănătate",
     "cliproxyapiPort": "Port",
     "qdrantHost": "Gazdă",
-    "qdrantCollection": "Colecție"
+    "qdrantCollection": "Colecție",
+    "presetAll": "All",
+    "presetAllDesc": "Show everything",
+    "presetEssentials": "Essentials",
+    "presetEssentialsDesc": "Beginner path - Advanced tools stay searchable",
+    "presetMinimal": "Minimal",
+    "presetMinimalDesc": "Core pages only",
+    "presetDeveloper": "Developer",
+    "presetDeveloperDesc": "Dev & proxy tools",
+    "presetAdmin": "Admin",
+    "presetAdminDesc": "Monitoring & audit",
+    "settingsSidebarTitle": "Sidebar Customization",
+    "settingsSidebarDesc": "Choose which sidebar items to show. Essentials keeps Advanced tools searchable."
   },
   "contextRtk": {
     "title": "RTK Engine",
@@ -8597,6 +8694,27 @@
     },
     "enableTitle": "Activează motorul",
     "enableDescription": "Rulează ultimul în stivă (după ce RTK/Caveman curăță textul, OmniGlyph convertește restul în imagini) și rulează, de asemenea, de sine stătător prin modul <code>omniglyph</code>. Aceasta este o previzualizare și rămâne dezactivată în mod implicit până când validarea end-to-end este finalizată.",
+    "profileTitle": "Compression profile",
+    "profileDescription": "The profile is a ceiling, not a floor: a stricter profile cannot be reopened by a per-step override. Measured on this codebase: with coding-safe or balanced, a session that has not accumulated history yet compresses nothing, because both raise the minimum-characters threshold and keep the system prompt, tool schemas and tool results native.",
+    "profiles": {
+      "aggressive": {
+        "label": "Aggressive (default)",
+        "description": "The policy the published receipts measured. Images the system prompt, tool documentation and dense history."
+      },
+      "balanced": {
+        "label": "Balanced",
+        "description": "Keeps live state native and protects the last 8 turns; only collapses older closed history."
+      },
+      "codingSafe": {
+        "label": "Coding-safe",
+        "description": "Keeps authority, tool schemas and live tool output native, protecting the last 12 turns. Compresses nothing until the session accumulates history."
+      },
+      "passthrough": {
+        "label": "Passthrough",
+        "description": "Routes without transforming. The engine is skipped and the request is forwarded untouched."
+      }
+    },
+    "profileAria": "Select the OmniGlyph compression profile",
     "saved": "Salvat.",
     "saveFailed": "Nu s-a putut salva.",
     "enableAria": "Activează motorul OmniGlyph",
@@ -9066,6 +9184,16 @@
     "grokAutoTopUpMax": "max",
     "grokAutoTopUpMonth": "luna",
     "grokAdditionalCredits": "Credite Suplimentare",
+    "kimiExtraUsageCredits": "Extra Usage Credits",
+    "kimiExtraUsage": "Extra Usage",
+    "kimiExtraUsageEnabled": "Enabled",
+    "kimiExtraUsageDisabled": "Disabled",
+    "kimiExtraUsageFrozen": "Frozen",
+    "kimiExtraUsageUnavailable": "Unavailable",
+    "kimiMonthlyUsed": "Used this month",
+    "kimiMonthlyLimit": "Monthly limit",
+    "kimiMonthlyLimitUnlimited": "Unlimited",
+    "kimiAdditionalCredits": "Additional Credits",
     "loggerTab": "Logger",
     "proxyTab": "Proxy",
     "budgetManagement": "Managementul bugetului",
@@ -10564,11 +10692,23 @@
   },
   "cursorAuthModal": {
     "title": "Conectați Cursor IDE",
+    "tabLogin": "Login with Cursor",
+    "tabImport": "Import token",
+    "loginDescription": "Opens Cursor's browser login. Works in Docker — approve in your host browser, then return here.",
+    "loginWithCursor": "Login with Cursor",
+    "startingLogin": "Starting…",
+    "waitingApproval": "Waiting for Cursor login approval…",
+    "openUrlHint": "If the browser did not open:",
+    "openLoginLink": "Open login page",
+    "cancelLogin": "Cancel login",
     "autoDetecting": "Se detectează automat jetoanele...",
     "readingFromCursor": "Citirea din Cursor IDE sau cursor-agent",
     "tokensAutoDetected": "Jetoanele au fost detectate automat cu succes din Cursor IDE!",
     "cursorNotDetected": "IDE-ul cursorului nu a fost detectat. Vă rugăm să lipiți manual indicativul.",
+    "dockerImportHint": "Running in Docker? Prefer Login with Cursor. IDE auto-import and cursor-agent are usually unavailable inside the container. See docs/providers/CURSOR-DOCKER.md.",
     "accessToken": "Token de acces",
+    "refreshToken": "Refresh Token",
+    "refreshTokenPlaceholder": "Optional — enables automatic token refresh",
     "required": "*",
     "accessTokenPlaceholder": "Indicatorul de acces se va completa automat...",
     "machineId": "ID mașină",
@@ -10580,7 +10720,10 @@
     "errorAutoDetect": "Nu se pot detecta automat jetoanele",
     "errorAutoDetectFailed": "Jetoanele de detectare automată nu au reușit",
     "errorEnterToken": "Vă rugăm să introduceți simbolul de acces",
-    "errorImportFailed": "Importul nu a reușit"
+    "errorImportFailed": "Importul nu a reușit",
+    "errorLoginStart": "Failed to start Cursor login",
+    "errorLoginPoll": "Cursor login failed",
+    "errorLoginTimeout": "Cursor login timed out — try again"
   },
   "pricingModal": {
     "title": "Configurarea prețurilor",
@@ -11070,7 +11213,8 @@
       "compressed": "Compresie",
       "tps": "TPS",
       "duration": "Duration",
-      "time": "Time"
+      "time": "Time",
+      "conversation": "Conversation"
     },
     "loadingLogs": "Loading logs...",
     "noLogs": "No logs yet. Make some API calls to see them here.",
@@ -11932,7 +12076,8 @@
         "title": "Agenți ACP",
         "phrase": "CLI-uri pe care OmniRoute le lansează ca backend de execuție (flux invers)",
         "flow": "Client → OmniRoute → lansare CLI (stdio/ACP) → răspuns",
-        "seeOther": "Vezi →"
+        "seeOther": "Vezi →",
+        "warning": "Most users can ignore this — use only when an integration requires it."
       }
     },
     "comparison": {
@@ -12122,7 +12267,7 @@
       },
       "omni-webhooks": {
         "name": "Webhook-uri",
-        "description": "Înregistrează, listează, testează și elimină endpoint-uri de webhook. Configurează abonamentele la evenimente (request.completed, provider.error, budget.exceeded etc.) și gestionează reîncercările de livrare."
+        "description": "__MISSING__:Register, list, test, and remove webhook endpoints. Configure event subscriptions (request.completed, request.failed, quota.exceeded, etc.) and manage delivery retries."
       },
       "omni-mcp": {
         "name": "Server MCP",
@@ -12463,9 +12608,9 @@
     },
     "badges": {
       "radar-supporter": {
-        "name": "__MISSING__:Radar Supporter",
-        "description": "__MISSING__:Verified a live OmniRoute Radar supporter feed",
-        "criteria": "__MISSING__:Verify a signed live Radar supporter feed."
+        "name": "Radar Supporter",
+        "description": "Verified a live OmniRoute Radar supporter feed",
+        "criteria": "Verify a signed live Radar supporter feed."
       },
       "first-token": {
         "name": "Primul token",
@@ -12756,6 +12901,10 @@
       },
       "SKILLS_SANDBOX_NETWORK_ENABLED": {
         "description": "Activează accesul la rețea în sandbox-ul de abilități."
+      },
+      "DISABLE_CONTEXT_WINDOW_CHECKS": {
+        "label": "Disable Context Window Checks",
+        "description": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active."
       }
     }
   },
@@ -13188,7 +13337,7 @@
     "localStateSaveFailed": "Failed to save local Radar settings",
     "guidedCombos": "Guided combos",
     "offers": "Offers",
-    "intel": "__MISSING__:Intel"
+    "intel": "Intel"
   },
   "radarCombosPage": {
     "title": "Radar guided combos",
@@ -13328,6 +13477,13 @@
         "modelLockouts": "Blocaje Model",
         "count": "Număr de Conexiuni"
       }
+    },
+    "reassuranceTitle": "Your connections recover automatically",
+    "reassuranceDetail": "Usually no action is needed. OmniRoute temporarily rests a connection after failures, then safely tries it again.",
+    "plainStates": {
+      "healthy": "Requests can be sent",
+      "coolingDown": "Trying again soon",
+      "lockedOut": "Needs your attention"
     }
   },
   "featureFlagCapabilityFilterEnabledDescription": "Respinge cererile înainte de expediere atunci când modelul țintă nu are capabilitățile necesare (viziune, instrumente, ieșire structurată, fereastră de context). Protejează cererile directe de un singur furnizor care ocolesc filtrul de compatibilitate al stratului combinat.",
@@ -13728,36 +13884,36 @@
     "trialDays": "{days, plural, one {# day} other {# days}}"
   },
   "radarIntelPage": {
-    "title": "__MISSING__:Radar Intel",
-    "subtitle": "__MISSING__:Radar-owned ELO rankings and factual catalog movement.",
-    "backToRadar": "__MISSING__:Back to Radar",
-    "loading": "__MISSING__:Loading Intel...",
-    "refresh": "__MISSING__:Refresh Intel",
-    "syncing": "__MISSING__:Refreshing...",
-    "loadFailed": "__MISSING__:We could not refresh Intel. The last verified local cache is kept.",
-    "empty": "__MISSING__:No verified Intel snapshot is available yet.",
-    "supporterBadge": "__MISSING__:Radar Supporter",
-    "methodology": "__MISSING__:Methodology",
-    "eloMethod": "__MISSING__:ELO, initial {initial}, K={factor}",
-    "freshness": "__MISSING__:Catalog freshness",
-    "ageDays": "__MISSING__:{days, plural, one {# day old} other {# days old}}",
-    "trend": "__MISSING__:Catalog trend",
-    "modelDelta": "__MISSING__:{current} models, +{added} / -{removed}",
-    "ranking": "__MISSING__:Model ranking",
-    "noRankings": "__MISSING__:No confirmed comparisons are available yet.",
-    "model": "__MISSING__:Model",
-    "category": "__MISSING__:Category",
-    "rating": "__MISSING__:Rating",
-    "matches": "__MISSING__:Matches",
+    "title": "Radar Intel",
+    "subtitle": "Radar-owned ELO rankings and factual catalog movement.",
+    "backToRadar": "Back to Radar",
+    "loading": "Loading Intel...",
+    "refresh": "Refresh Intel",
+    "syncing": "Refreshing...",
+    "loadFailed": "We could not refresh Intel. The last verified local cache is kept.",
+    "empty": "No verified Intel snapshot is available yet.",
+    "supporterBadge": "Radar Supporter",
+    "methodology": "Methodology",
+    "eloMethod": "ELO, initial {initial}, K={factor}",
+    "freshness": "Catalog freshness",
+    "ageDays": "{days, plural, one {# day old} other {# days old}}",
+    "trend": "Catalog trend",
+    "modelDelta": "{current} models, +{added} / -{removed}",
+    "ranking": "Model ranking",
+    "noRankings": "No confirmed comparisons are available yet.",
+    "model": "Model",
+    "category": "Category",
+    "rating": "Rating",
+    "matches": "Matches",
     "freshnessValues": {
-      "fresh": "__MISSING__:Fresh",
-      "aging": "__MISSING__:Aging",
-      "stale": "__MISSING__:Stale"
+      "fresh": "Fresh",
+      "aging": "Aging",
+      "stale": "Stale"
     },
     "trendValues": {
-      "growing": "__MISSING__:Growing",
-      "stable": "__MISSING__:Stable",
-      "shrinking": "__MISSING__:Shrinking"
+      "growing": "Growing",
+      "stable": "Stable",
+      "shrinking": "Shrinking"
     }
   },
   "capabilityFilter": {
@@ -13765,5 +13921,13 @@
     "toolsMismatch": "Furnizorul nu suportă apelarea instrumentului",
     "structuredOutputMismatch": "Furnizorul nu suportă ieșirea structurată",
     "contextWindowMismatch": "Cererea depășește fereastra de context a furnizorului"
+  },
+  "featureFlagDisableContextWindowChecksDescription": "Skip OmniRoute's local context-window and max-input-token check for direct single-model requests. Upstream providers still enforce their actual limits. Prompt compression and output-token caps remain active.",
+  "cheaperInferenceSponsorBanner": {
+    "title": "Cheaper Inference is an OmniRoute Open Source Friend",
+    "description": "A cost-ranked gateway reselling dozens of frontier models behind one OpenAI-compatible endpoint — routing each request to the cheapest eligible provider, never above list price.",
+    "cta": "Get an API Key",
+    "partnerLinkNote": "Partner link",
+    "dismissAriaLabel": "Dismiss"
   }
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertNativeDriverSelected,
   buildSmokeEnv,
   FATAL_LOG_PATTERNS,
   LINUX_EXECUTABLE_NAMES,
@@ -70,4 +71,29 @@ test("electron smoke force-terminates the Windows process tree before the parent
 
   assert.deepEqual(signals, ["SIGKILL"]);
   assert.deepEqual(waits, [2_000]);
+});
+
+// #7592: on a cold restart against an already-persisted DATA_DIR, a stale-ABI
+// better-sqlite3 binary used to fail to load and silently fall through to the
+// sql.js (WASM) driver. These are the regression guards for that assertion.
+test("electron smoke accepts every native SQLite driver on the startup log", () => {
+  for (const driver of ["bun:sqlite", "better-sqlite3", "node:sqlite"]) {
+    assert.doesNotThrow(() =>
+      assertNativeDriverSelected(`[electron] [DB] Driver: ${driver} | file: /data/storage.sqlite`)
+    );
+  }
+});
+
+test("electron smoke flags a cold-restart fallback to the sql.js WASM driver", () => {
+  assert.throws(
+    () => assertNativeDriverSelected("[electron] [DB] Driver: sql.js | file: /data/storage.sqlite"),
+    /fell back to the sql\.js \(WASM\) driver/
+  );
+});
+
+test("electron smoke flags startup logs missing any driver selection line", () => {
+  assert.throws(
+    () => assertNativeDriverSelected("[electron] [server] listening on 20128"),
+    /no '\[DB\] Driver: \.\.\.' line/
+  );
 });

@@ -9,6 +9,7 @@ import {
   mergeUpstreamExtraHeaders,
   setUserAgentHeader,
 } from "../../open-sse/executors/base.ts";
+import { shouldForceResponsesUpstream } from "../../open-sse/executors/forceResponsesUpstream.ts";
 import { DefaultExecutor } from "../../open-sse/executors/default.ts";
 import { PROVIDERS } from "../../open-sse/config/constants.ts";
 import {
@@ -1577,4 +1578,54 @@ test("DefaultExecutor.execute does not produce duplicate anthropic-version heade
     sentBody.system?.[0]?.text ?? "",
     /^x-anthropic-billing-header: cc_version=2\.1\.220\.1f2; cc_entrypoint=cli; cch=[0-9a-f]{5};$/
   );
+});
+
+test('shouldForceResponsesUpstream respects explicit apiType="chat" even when namespace tools are present', () => {
+  const body = {
+    input: "hi",
+    tools: [
+      {
+        type: "namespace",
+        name: "collaboration",
+        tools: [
+          {
+            name: "spawn_agent",
+            description: "Spawn an agent",
+            parameters: { type: "object", properties: { task: { type: "string" } } },
+          },
+        ],
+      },
+    ],
+  };
+  const credentials = {
+    providerSpecificData: {
+      baseUrl: "https://ark.cn-beijing.volces.com/api/coding/v3",
+      apiType: "chat",
+    },
+  };
+  assert.equal(
+    shouldForceResponsesUpstream("openai-compatible-responses-demo", body, credentials),
+    false
+  );
+});
+
+test("shouldForceResponsesUpstream still forces /responses for untyped OpenAI-compatible providers with namespace tools", () => {
+  const body = {
+    input: "hi",
+    tools: [
+      {
+        type: "namespace",
+        name: "collaboration",
+        tools: [
+          { name: "spawn_agent", description: "Spawn an agent", parameters: { type: "object" } },
+        ],
+      },
+    ],
+  };
+  const credentials = {
+    providerSpecificData: {
+      baseUrl: "https://proxy.example/v1",
+    },
+  };
+  assert.equal(shouldForceResponsesUpstream("openai-compatible-test", body, credentials), true);
 });

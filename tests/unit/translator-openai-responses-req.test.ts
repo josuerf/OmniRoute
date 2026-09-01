@@ -92,7 +92,7 @@ test("Responses -> Chat keeps assistant text, reasoning, and function calls in o
       input: [
         {
           type: "reasoning",
-          summary: [{ type: "summary_text", text: "Inspect first" }],
+          content: [{ type: "reasoning_text", text: "Inspect first" }],
         },
         {
           type: "message",
@@ -133,6 +133,67 @@ test("Responses -> Chat keeps assistant text, reasoning, and function calls in o
   });
 });
 
+test("Responses -> Chat replays plaintext reasoning_text instead of a display summary", () => {
+  const result = openaiResponsesToOpenAIRequest(
+    "deepseek-v4-pro",
+    {
+      input: [
+        {
+          type: "reasoning",
+          content: [{ type: "reasoning_text", text: "Use the indexed result" }],
+          summary: [{ type: "summary_text", text: "Display summary" }],
+        },
+        { type: "function_call", call_id: "call_1", name: "search", arguments: "{}" },
+      ],
+    },
+    false,
+    { _preserveReasoningContent: true }
+  ) as { messages: Array<Record<string, unknown>> };
+
+  assert.equal(result.messages[0].reasoning_content, "Use the indexed result");
+});
+
+test("Responses -> Chat keeps summary-only reasoning out of continuation state", () => {
+  const result = openaiResponsesToOpenAIRequest(
+    "deepseek-v4-pro",
+    {
+      input: [
+        {
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: "Display-only summary" }],
+        },
+        { type: "function_call", call_id: "call_1", name: "search", arguments: "{}" },
+      ],
+    },
+    false,
+    { _preserveReasoningContent: true }
+  ) as { messages: Array<Record<string, unknown>> };
+
+  assert.equal(result.messages[0].reasoning_content, undefined);
+});
+
+test("Responses -> Chat replays the plaintext companion of an opaque reasoning item (#10949)", () => {
+  const result = openaiResponsesToOpenAIRequest(
+    "deepseek-v4-pro",
+    {
+      input: [
+        {
+          id: "rs_opaque",
+          type: "reasoning",
+          encrypted_content: "opaque-provider-state",
+          content: [{ type: "reasoning_text", text: "Untrusted plaintext companion" }],
+          summary: [{ type: "summary_text", text: "Display summary" }],
+        },
+        { type: "function_call", call_id: "call_1", name: "search", arguments: "{}" },
+      ],
+    },
+    false,
+    { _preserveReasoningContent: true }
+  ) as { messages: Array<Record<string, unknown>> };
+
+  assert.equal(result.messages[0].reasoning_content, "Untrusted plaintext companion");
+});
+
 test("Responses -> Chat merges assistant text that follows a function call", () => {
   const result = openaiResponsesToOpenAIRequest(
     "gpt-4o",
@@ -146,7 +207,7 @@ test("Responses -> Chat merges assistant text that follows a function call", () 
         },
         {
           type: "reasoning",
-          summary: [{ type: "summary_text", text: "Inspection complete" }],
+          content: [{ type: "reasoning_text", text: "Inspection complete" }],
         },
         { type: "message", role: "user", content: [{ type: "input_text", text: "Continue" }] },
       ],
@@ -381,6 +442,105 @@ test("Chat -> Responses clamps call_id to 64 chars and keeps the pair matched (p
     fnOut.call_id,
     fnCall.call_id,
     "output call_id must match the clamped function_call id"
+  );
+});
+
+test("Chat -> Responses defaults unannotated targets to plaintext reasoning", () => {
+  const result = openaiToOpenAIResponsesRequest(
+    "deepseek-v4-flash",
+    {
+      messages: [
+        {
+          role: "assistant",
+          content: null,
+          reasoning_content: "Inspect the repository first",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "search", arguments: "{}" },
+            },
+          ],
+        },
+        { role: "tool", tool_call_id: "call_1", content: "found" },
+      ],
+    },
+    false,
+    { _provider: "opencode-go" }
+  ) as { input: Array<Record<string, unknown>> };
+
+  assert.deepEqual(result.input, [
+    {
+      type: "reasoning",
+      content: [{ type: "reasoning_text", text: "Inspect the repository first" }],
+      summary: [],
+    },
+    {
+      type: "function_call",
+      call_id: "call_1",
+      name: "search",
+      arguments: "{}",
+      status: "completed",
+    },
+    { type: "function_call_output", call_id: "call_1", output: "found", status: "completed" },
+  ]);
+});
+
+test("Chat -> DeepSeek Responses accepts the plaintext reasoning alias", () => {
+  const result = openaiToOpenAIResponsesRequest(
+    "deepseek-v4-pro",
+    {
+      messages: [
+        {
+          role: "assistant",
+          content: null,
+          reasoning: "Alias plaintext reasoning",
+          tool_calls: [
+            {
+              id: "call_alias",
+              type: "function",
+              function: { name: "search", arguments: "{}" },
+            },
+          ],
+        },
+      ],
+    },
+    false,
+    { _provider: "deepseek" }
+  ) as { input: Array<Record<string, unknown>> };
+
+  assert.deepEqual(result.input[0], {
+    type: "reasoning",
+    content: [{ type: "reasoning_text", text: "Alias plaintext reasoning" }],
+    summary: [],
+  });
+});
+
+test("Chat -> Responses never promotes OmniRoute's internal reasoning placeholder", () => {
+  const result = openaiToOpenAIResponsesRequest(
+    "deepseek-v4-pro",
+    {
+      messages: [
+        {
+          role: "assistant",
+          reasoning_content: "(prior reasoning summary unavailable)",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "search", arguments: "{}" },
+            },
+          ],
+        },
+      ],
+    },
+    false,
+    { _provider: "deepseek" }
+  ) as { input: Array<Record<string, unknown>> };
+
+  assert.equal(
+    result.input.some((item) => item.type === "reasoning"),
+    false
   );
 });
 

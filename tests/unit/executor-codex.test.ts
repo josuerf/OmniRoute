@@ -184,10 +184,10 @@ test("CodexExecutor.buildHeaders binds workspace ids and disables SSE accept for
   assert.equal(standardHeaders.Authorization, "Bearer codex-token");
   assert.equal(standardHeaders.Accept, "text/event-stream");
   assert.equal(standardHeaders["chatgpt-account-id"], "workspace-1");
-  assert.equal(standardHeaders.Version, "0.146.0");
+  assert.equal(standardHeaders.Version, "0.149.0");
   assert.equal(standardHeaders["Openai-Beta"], "responses=experimental");
   assert.equal(standardHeaders["X-Codex-Beta-Features"], "responses_websockets");
-  assert.equal(standardHeaders["User-Agent"], "codex-cli/0.146.0 (Windows 10.0.26200; x64)");
+  assert.equal(standardHeaders["User-Agent"], "codex-cli/0.149.0 (Windows 10.0.26200; x64)");
   assert.equal(compactHeaders.Accept, "application/json");
 });
 
@@ -213,7 +213,7 @@ test("CodexExecutor.buildHeaders honors safe env overrides for Version and User-
     },
     () => {
       const headers = executor.buildHeaders({ accessToken: "codex-token" }, true);
-      assert.equal(headers.Version, "0.146.0");
+      assert.equal(headers.Version, "0.149.0");
       assert.equal(headers["User-Agent"], "custom-codex/9.9.9");
     }
   );
@@ -450,7 +450,7 @@ test("CodexExecutor.transformRequest strips store from compact requests even whe
   assert.equal(result.instructions, "keep this");
 });
 
-test("CodexExecutor.transformRequest preserves native assistant commentary history", () => {
+test("CodexExecutor.transformRequest preserves commentary and strips orphan summaries", () => {
   const executor = new CodexExecutor();
   const body = {
     _nativeCodexPassthrough: true,
@@ -526,9 +526,8 @@ test("CodexExecutor.transformRequest preserves native assistant commentary histo
     ),
     true
   );
-  // Reasoning items are stripped from the Responses input — encrypted_content is
-  // unusable with store=false (previous_response_id deleted) and the summary blob
-  // only inflates context on every subsequent agentic turn (decolua/9router#1599).
+  // Summary-only reasoning is display state, not continuation state. Replaying it
+  // with store=false only inflates every subsequent agentic turn (decolua/9router#1599).
   assert.equal(
     result.input.some((item) => item.type === "reasoning"),
     false
@@ -541,6 +540,54 @@ test("CodexExecutor.transformRequest preserves native assistant commentary histo
     result.input.some((item) => item.type === "function_call_output"),
     true
   );
+});
+
+test("CodexExecutor.transformRequest preserves active opaque reasoning with a summary", () => {
+  const executor = new CodexExecutor();
+  const reasoning = {
+    type: "reasoning",
+    encrypted_content: "provider-state",
+    summary: [{ type: "summary_text", text: "Display summary" }],
+  };
+
+  const result = executor.transformRequest(
+    "gpt-5.5-low",
+    {
+      _nativeCodexPassthrough: true,
+      input: [reasoning],
+      stream: false,
+    },
+    false,
+    { requestEndpointPath: "/responses" }
+  );
+
+  assert.equal(result.store, false);
+  assert.deepEqual(result.input, [reasoning]);
+});
+
+test("CodexExecutor.transformRequest preserves orphan summaries when store is enabled", () => {
+  const executor = new CodexExecutor();
+  const reasoning = {
+    type: "reasoning",
+    summary: [{ type: "summary_text", text: "Display summary" }],
+  };
+
+  const result = executor.transformRequest(
+    "gpt-5.5-low",
+    {
+      _nativeCodexPassthrough: true,
+      input: [reasoning],
+      stream: false,
+    },
+    false,
+    {
+      requestEndpointPath: "/responses",
+      providerSpecificData: { openaiStoreEnabled: true },
+    }
+  );
+
+  assert.equal(result.store, true);
+  assert.deepEqual(result.input, [reasoning]);
 });
 
 test("CodexExecutor.transformRequest still strips assistant commentary outside native passthrough", () => {

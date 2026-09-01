@@ -7,6 +7,7 @@
     "CHATGPT_WEB",
     "AGENTROUTER",
     "ZED-DOCKER",
-    "CURSOR-DOCKER"
+    "CURSOR-DOCKER",
+    "CURSOR-API-KEY-AND-CLI"
   ]
 }

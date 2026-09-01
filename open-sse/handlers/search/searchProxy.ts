@@ -10,6 +10,7 @@
 
 import { saveCallLog } from "@/lib/usageDb";
 import { sanitizeErrorMessage } from "../../utils/error.ts";
+import { formatSearchProviderFailure } from "./providerFailure.ts";
 import type { SearchProviderConfig } from "../../config/searchRegistry.ts";
 import type { SearchResult } from "../search.ts";
 
@@ -231,15 +232,12 @@ export async function executeProviderFetch(p: ExecuteProviderFetchParams): Promi
     clearTimeout(timer);
     const error = err instanceof Error ? err : new Error(String(err));
     const isTimeout = error.name === "AbortError";
+    const safeMsg = sanitizeErrorMessage(error.message) || "fetch failed";
     if (log) {
-      log.error("SEARCH", `${config.id} ${isTimeout ? "timeout" : "fetch error"}: ${error.message}`);
+      log.error("SEARCH", `${config.id} ${isTimeout ? "timeout" : "fetch error"}: ${safeMsg}`);
     }
-    logCall({ status: isTimeout ? 504 : 502, duration: Date.now() - startTime, error: error.message });
+    logCall({ status: isTimeout ? 504 : 502, duration: Date.now() - startTime, error: safeMsg });
     await emitEvent(isTimeout ? "timeout" : "error");
-    return {
-      success: false,
-      status: isTimeout ? 504 : 502,
-      error: `Search provider ${isTimeout ? "timeout" : "error"}: ${sanitizeErrorMessage(error.message)}`,
-    };
+    return formatSearchProviderFailure(config.id, error, isTimeout);
   }
 }

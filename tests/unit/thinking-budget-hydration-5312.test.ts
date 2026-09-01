@@ -4,7 +4,7 @@
  * boot — `_config` resets to DEFAULT (passthrough) on every process start.
  *
  * Fix: `hydrateThinkingBudgetConfig(settings)` (open-sse/services/thinkingBudget.ts),
- * called once during server bootstrap (src/server-init.ts), restores the persisted
+ * called once during server bootstrap (src/instrumentation-node.ts), restores the
  * mode. This test seeds the setting through the real settings DB round-trip, runs
  * the hydrator, and asserts the in-memory config reflects the operator's choice.
  */

@@ -4,9 +4,13 @@ import {
   newStreamCtx,
   processFrame,
   buildCursorUsage,
+  emitCursorSseError,
   type StreamCtx,
 } from "../../open-sse/executors/cursor";
-
+import {
+  classifyCursorError,
+  CURSOR_EMPTY_TURN_MESSAGE,
+} from "../../open-sse/executors/cursor/cursorErrors.ts";
 // ─── Wire-format helpers (mirror the encoder's primitives) ─────────────────
 
 function v(n: number): Buffer {
@@ -354,4 +358,33 @@ test("buildCursorUsage never emits cache fields (cursor doesn't expose them)", (
   assert.equal(usage.cached_tokens, undefined);
   assert.equal(usage.cache_read_input_tokens, undefined);
   assert.equal(usage.cache_creation_input_tokens, undefined);
+});
+
+test("emitCursorSseError matches buildStreamErrorChunks OpenAI shape", () => {
+  const chunks: string[] = [];
+  const ctx = newStreamCtx("gpt-5.4-nano-xhigh", (s) => chunks.push(s));
+  const classified = classifyCursorError("not_found: AI Model Not Found");
+  emitCursorSseError(ctx, classified);
+
+  const joined = chunks.join("");
+  assert.match(joined, /"finish_reason":"error"/);
+  assert.match(joined, /AI Model Not Found/);
+  assert.match(joined, /rate_limit_error|rate limit/i);
+  assert.match(joined, /data: \[DONE\]/);
+  assert.doesNotMatch(joined, /"choices":\s*\[\]/);
+});
+
+test("emitCursorSseError surfaces empty-turn guidance message", () => {
+  const chunks: string[] = [];
+  const ctx = newStreamCtx("auto", (s) => chunks.push(s));
+  emitCursorSseError(ctx, {
+    kind: "upstream",
+    status: 502,
+    type: "api_error",
+    message: CURSOR_EMPTY_TURN_MESSAGE,
+  });
+  const joined = chunks.join("");
+  assert.match(joined, /"finish_reason":"error"/);
+  assert.match(joined, /empty turn/i);
+  assert.match(joined, /data: \[DONE\]/);
 });

@@ -74,15 +74,33 @@ test("tinycms-web is present in the provider REGISTRY with correct shape", () =>
 test("tinycms-web registry has all expected models", () => {
   const r = REGISTRY["tinycms-web"];
   assert.ok(r.models && r.models.length > 0, "must have at least one model");
-  const ids = r.models.map((m) => m.id);
-
-  assert.ok(ids.includes("gpt-5-free"), "gpt-5-free must be registered");
-  assert.ok(ids.includes("gpt-5.3-free"), "gpt-5.3-free must be registered");
-  assert.ok(ids.includes("gpt-5.3-thinking-free"), "gpt-5.3-thinking-free must be registered");
-  assert.ok(ids.includes("deepseek-v4-flash"), "deepseek-v4-flash must be registered");
-  assert.ok(ids.includes("claude-sonnet-5"), "claude-sonnet-5 must be registered");
-  assert.ok(ids.includes("gemini-3.5-flash"), "gemini-3.5-flash must be registered");
-  assert.equal(r.models.length, 16, "must have exactly 16 models");
+  assert.deepEqual(
+    r.models.map((m) => m.id),
+    [
+      "claude-fable-5",
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "gpt-5.6-sol",
+      "gpt-5.6-luna",
+      "gpt-5.5",
+      "gpt-5.4-mini",
+      "gpt-5.4-nano",
+      "gpt-5.3-thinking-free",
+      "gpt-5.3-free",
+      "gpt-oss-120b",
+      "gemini-3.6-flash",
+      "gemini-3.1-pro-preview",
+      "gemini-3.1-flash-lite-preview",
+      "grok-4.5",
+      "deepseek-v4-pro",
+      "deepseek-v4-flash",
+      "kimi-k3",
+      "glm-5.2",
+      "qwen3.6-plus",
+      "mimo-v2.5-pro",
+      "mimo-v2.5",
+    ]
+  );
 });
 
 test("tinycms-web model names are human-readable strings", () => {

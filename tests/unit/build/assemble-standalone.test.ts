@@ -216,3 +216,76 @@ test("every relative import of standalone-server-ws.mjs is shipped into the bund
   }
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+// Regression guard (deploy 2026-08-19): under heavy concurrent build I/O the bulk
+// "standalone -> outDir" tree copy can already have carried a prior pass's result into
+// an EXTRA_MODULE_ENTRIES/NATIVE_ASSET_ENTRIES `dest` BEFORE that entry's own copy runs
+// — either an absolute symlink resolving to the exact same real path as `src` (a pnpm
+// store layout), or a stale node of a different type (file/symlink vs directory). Node's
+// fs.cpSync/fs.cp refuse both cases even with force:true, throwing ERR_FS_CP_EINVAL
+// ("src and dest cannot be the same") or ERR_FS_CP_DIR_TO_NON_DIR/ERR_FS_CP_NON_DIR_TO_DIR
+// respectively, crashing every one of copyNativeAssetsAndExtraModules,
+// repairEmptyExternalPackageDirs, syncNativeAssetsToDir, and syncExtraModulesToDir.
+test("copy passes tolerate a dest that already resolves to src, or a stale-typed dest", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "assemble-race-"));
+  const projectRoot = path.join(tmp, "src-root");
+  seedSidecarSources(projectRoot);
+
+  // Case 1 (sync path): dest already an absolute symlink resolving to src's realpath —
+  // simulates the wreq-js entry after the .build/next/standalone bulk copy already
+  // carried an absolute symlink over from an earlier standalone build.
+  const distDir = path.join(projectRoot, ".build/next");
+  fs.mkdirSync(path.join(distDir, "standalone"), { recursive: true });
+  fs.writeFileSync(path.join(distDir, "standalone", "server.js"), "// server");
+  const outSync = path.join(tmp, "out-sync");
+  fs.mkdirSync(path.join(outSync, "node_modules"), { recursive: true });
+  fs.symlinkSync(
+    path.join(projectRoot, "node_modules/wreq-js"),
+    path.join(outSync, "node_modules/wreq-js")
+  );
+  // Case 2 (sync path): dest already a plain FILE where src is a directory —
+  // simulates @swc/helpers landing as a stray file from an unrelated earlier copy.
+  fs.mkdirSync(path.join(outSync, "node_modules/@swc"), { recursive: true });
+  fs.writeFileSync(path.join(outSync, "node_modules/@swc/helpers"), "stale file, not a dir");
+
+  assert.doesNotThrow(() => {
+    assembleStandalone({
+      distDir,
+      outDir: outSync,
+      projectRoot,
+      sanitizePaths: false,
+      copyNatives: true,
+    });
+  }, "assembleStandalone must not throw on a same-realpath symlink or a stale-typed dest");
+
+  assert.ok(
+    fs.existsSync(path.join(outSync, "node_modules/wreq-js/rust/lib.so")),
+    "wreq-js content reachable through the pre-existing symlink"
+  );
+  assert.ok(
+    fs.statSync(path.join(outSync, "node_modules/@swc/helpers")).isDirectory(),
+    "the stale file at @swc/helpers was replaced by the real directory"
+  );
+  assert.ok(
+    fs.existsSync(path.join(outSync, "node_modules/@swc/helpers/package.json")),
+    "@swc/helpers content copied after clearing the stale file"
+  );
+
+  // Case 3 (async path): same real-path-symlink collision hits syncStandaloneExtraModules.
+  const outAsync = path.join(tmp, "out-async");
+  fs.mkdirSync(path.join(outAsync, "node_modules"), { recursive: true });
+  fs.symlinkSync(
+    path.join(projectRoot, "node_modules/sql.js"),
+    path.join(outAsync, "node_modules/sql.js")
+  );
+  await assert.doesNotReject(
+    () => syncStandaloneExtraModules(projectRoot, fs.promises, { log() {} }, outAsync),
+    "syncStandaloneExtraModules must not throw on a same-realpath symlink"
+  );
+  assert.ok(
+    fs.existsSync(path.join(outAsync, "node_modules/sql.js/dist/sql-wasm.js")),
+    "sql.js content reachable through the pre-existing symlink"
+  );
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

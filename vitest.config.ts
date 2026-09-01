@@ -88,7 +88,6 @@ export default defineConfig({
       "src/app/(dashboard)/dashboard/endpoint/__tests__/ApiEndpointsTab.test.tsx", // #8618 — pre-existing failure; remove this exclusion when fixed
       "tests/unit/ui/compression-combos-routing-mode-6760.test.tsx", // #8618 — pre-existing failure; remove this exclusion when fixed
       "tests/unit/ui/use-local-storage-pool-migration.test.tsx", // #8618 — pre-existing failure; remove this exclusion when fixed
-      "tests/unit/ui/omniglyphContextPage.test.tsx", // #8618 — pre-existing failure; remove this exclusion when fixed
       "tests/unit/ui/waterfallInspector.test.tsx", // #8618 — pre-existing failure; remove this exclusion when fixed
       "tests/unit/ui/playground-compare-column.test.tsx", // #8618 — pre-existing failure; remove this exclusion when fixed
       "tests/unit/ui/playground-chat-tab.test.tsx", // #8618 — pre-existing failure; remove this exclusion when fixed

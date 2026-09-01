@@ -7,6 +7,8 @@
  * - /v1/audio/speech (TTS API)
  */
 
+import { getProviderAlias } from "@/shared/constants/providers";
+
 interface AudioModel {
   id: string;
   name: string;
@@ -285,6 +287,19 @@ export const AUDIO_TRANSLATION_PROVIDERS: Record<string, AudioProvider> = {
 };
 
 export const AUDIO_SPEECH_PROVIDERS: Record<string, AudioProvider> = {
+  google: {
+    id: "google",
+    credentialProviderId: "gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/models",
+    authType: "apikey",
+    authHeader: "x-goog-api-key",
+    format: "gemini-tts",
+    models: [
+      { id: "gemini-3.1-flash-tts-preview", name: "Gemini 3.1 Flash TTS" },
+      { id: "gemini-2.5-flash-preview-tts", name: "Gemini 2.5 Flash TTS" },
+      { id: "gemini-2.5-pro-preview-tts", name: "Gemini 2.5 Pro TTS" },
+    ],
+  },
   vertex: {
     id: "vertex",
     baseUrl: "https://us-central1-aiplatform.googleapis.com/v1",
@@ -674,6 +689,16 @@ function parseAudioModel(
   for (const [providerId] of Object.entries(registry)) {
     if (modelStr.startsWith(providerId + "/")) {
       return { provider: providerId, model: modelStr.slice(providerId.length + 1) };
+    }
+  }
+
+  // Phase 1.5: prefix match against the short provider alias the catalog itself
+  // advertises (e.g. "el/eleven_multilingual_v2" for elevenlabs) when it differs
+  // from the canonical registry key already tried in Phase 1.
+  for (const [providerId] of Object.entries(registry)) {
+    const alias = getProviderAlias(providerId);
+    if (alias && alias !== providerId && modelStr.startsWith(alias + "/")) {
+      return { provider: providerId, model: modelStr.slice(alias.length + 1) };
     }
   }
 

@@ -20,6 +20,7 @@ import { checkSemanticCache } from "./chatCore/semanticCache.ts";
 import { checkLifecycle, resolveLifecycle } from "./chatCore/modelLifecyclePolicy.ts";
 import {
   shouldDefaultAllowClassifier,
+  detectClassifierFormat,
   buildDefaultAllowClaudeMessage,
 } from "./chatCore/claudeClassifierCompat.ts";
 import { applyClientUsageBuffer } from "./chatCore/clientUsageBuffer.ts";
@@ -33,7 +34,42 @@ import { assembleStreamingResponseHeaders } from "./chatCore/streamingResponseHe
 import { storeStreamingSemanticCacheResponse } from "./chatCore/streamingSemanticCacheStore.ts";
 import { assembleStreamingPipeline } from "./chatCore/streamingPipeline.ts";
 import { sanitizeChatRequestBody } from "./chatCore/sanitization.ts";
-import { applyResponsesInputPolicy } from "../services/responsesInputPolicy.ts";
+import {
+  applyReasoningInputPolicy,
+  resolveIncompatibleReasoningAction,
+} from "../services/reasoningInputPolicy.ts";
+import {
+  createRoutingEvent,
+  emitRoutingEvent,
+  outcomeFromStatus,
+} from "../services/routing/index.ts";
+
+/**
+ * Best-effort finish_reason extraction from a (possibly translated) response
+ * body for routing-event telemetry. Returns null when the shape is unknown.
+ */
+function routingFinishReason(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const record = body as Record<string, unknown>;
+  const choices = record.choices;
+  if (Array.isArray(choices)) {
+    const first = choices[0];
+    if (first && typeof first === "object") {
+      const fr = (first as Record<string, unknown>).finish_reason;
+      if (typeof fr === "string") return fr;
+    }
+  }
+  const output = record.output;
+  if (Array.isArray(output)) {
+    for (const item of output) {
+      if (item && typeof item === "object") {
+        const fr = (item as Record<string, unknown>).finish_reason;
+        if (typeof fr === "string") return fr;
+      }
+    }
+  }
+  return null;
+}
 import {
   getHeaderValueCaseInsensitive,
   isNoMemoryRequested,
@@ -41,7 +77,11 @@ import {
   isStripReasoningRequested,
 } from "./chatCore/headers.ts";
 import { markCodexScopeRateLimited } from "./chatCore/codexFailover.ts";
-import { isCodexOriginatedHeaders } from "../config/codexIdentity.ts";
+import { getCodexClientSessionId, isCodexOriginatedHeaders } from "../config/codexIdentity.ts";
+import {
+  noteCodexTurnStateProvenance,
+  readCodexTurnStateHeader,
+} from "../config/codexTurnState.ts";
 import { trackDevice, extractIpFromHeaders } from "../services/deviceTracker.ts";
 import { getCombosCached } from "./chatCore/comboContextCache.ts";
 export { clearCombosCache, clearUpstreamProxyConfigCache } from "./chatCore/comboContextCache.ts";
@@ -89,6 +129,7 @@ import { checkResourcePressureGuard } from "../utils/resourcePressure.ts";
 import { normalizeHeaders } from "../utils/headers.ts";
 import { resolveChatCoreRequestFormat } from "./chatCore/requestFormat.ts";
 import { resolveChatCoreTargetFormat } from "./chatCore/targetFormat.ts";
+import { resolveOmniGlyphTransport } from "../services/compression/imageTransportPolicy.ts";
 import { stripStore, usesClaudeBridge } from "./chatCore/agentRouterProtocol.ts";
 import { defaultClaudeToolType } from "./chatCore/claudeToolDefaults.ts";
 import { injectSystemPrompt, injectCustomSystemPrompt } from "../services/systemPrompt.ts";
@@ -165,7 +206,10 @@ import {
   deriveRequestCapabilityRequirements,
   buildCapabilityMismatchMessage,
 } from "@/shared/constants/capabilities/capabilityFilter.ts";
-import { isFeatureFlagEnabled } from "@/shared/utils/featureFlags.ts";
+import {
+  areContextWindowChecksDisabled,
+  isFeatureFlagEnabled,
+} from "@/shared/utils/featureFlags.ts";
 import { resolveNoAuthEchoModel } from "./chatCore/noAuthEchoModel.ts";
 import {
   REASONING_BUFFER_MIN_TRIGGER,
@@ -307,6 +351,7 @@ import {
   computeBillableTokens,
   normalizeExecutorResult,
   executeWithUpstreamStartTimeout,
+  resolveConnectionTimeoutMs,
 } from "./chatCore/upstreamTimeouts.ts";
 import { getModelNormalizeToolCallId, getModelPreserveOpenAIDeveloperRole } from "@/lib/db/models";
 import { getProviderCredentials, extractSessionAffinityKey } from "@/sse/services/auth";
@@ -326,12 +371,16 @@ import {
   resolveReportedServiceTier as resolveReportedServiceTierFor,
   type EffectiveServiceTier,
 } from "./chatCore/serviceTier.ts";
-import { cacheReasoningFromAssistantMessage } from "../services/reasoningCache.ts";
+import {
+  cacheReasoningFromAssistantMessage,
+  requiresReasoningReplay,
+} from "../services/reasoningCache.ts";
 import { sanitizeOpenAITool } from "../services/toolSchemaSanitizer.ts";
 import { isCompactResponsesEndpoint } from "../executors/codex.ts";
-import { buildCodexQuotaPersistence } from "./chatCore/codexQuota.ts";
+import { persistCodexChildQuotaResponse } from "../services/codexAccount/index.ts";
 import { invalidateCodexQuotaCache } from "../services/codexQuotaFetcher.ts";
 import { translateNonStreamingResponse } from "./responseTranslator.ts";
+import { extractToolSchemaMap } from "../translator/response/openai-responses/toolSchemas.ts";
 import { unwrapClineNonStreamingEnvelope } from "./chatCore/clineResponseEnvelope.ts";
 import { extractUsageFromResponse } from "./usageExtractor.ts";
 import {
@@ -392,8 +441,11 @@ import {
 } from "../utils/aiSdkCompat.ts";
 import { generateRequestId } from "@/shared/utils/requestId";
 import { isLocalStreamLifecycleError } from "@/shared/utils/circuitBreaker";
+import { shouldIsolateProbeFailures } from "@/shared/utils/probeOrigin";
+import { writeTerminalStatus } from "@/shared/utils/terminalStatus";
 import { extractFacts } from "@/lib/memory/extraction";
 import { handleToolCallExecution } from "@/lib/skills/interception";
+import { MEMORY_BUILTIN_TOOL_NAMES } from "@/lib/skills/memoryBuiltins";
 import { OMNIROUTE_RESPONSE_HEADERS } from "@/shared/constants/headers";
 import { getClaudeCodeCompatibleRequestDefaults } from "@/lib/providers/requestDefaults";
 import {
@@ -466,8 +518,10 @@ export async function handleChatCore({
   skipUpstreamRetry = false,
   createPiiTransform = null,
   correlationId = null,
+  conversationId = null,
   modelPinned = false,
   skipResourcePressureGuard = false,
+  reasoningTransportFallback = "drop",
   managedLease = null,
 }) {
   let { provider, model, extendedContext } = modelInfo;
@@ -650,40 +704,6 @@ export async function handleChatCore({
     creds: Record<string, unknown> | null | undefined,
     transport?: string
   ): void => recordKeyHealthStatusFor(status, creds, log, transport);
-  const persistCodexQuotaState = async (headers: Record<string, string> | null, status = 0) => {
-    const currentConnectionId = getCurrentConnectionId();
-    if (provider !== "codex" || !currentConnectionId || !headers) return;
-    try {
-      const existingProviderData =
-        credentials?.providerSpecificData && typeof credentials.providerSpecificData === "object"
-          ? (credentials.providerSpecificData as Record<string, unknown>)
-          : {};
-      // Pure payload build extracted to chatCore/codexQuota.ts (#3501). Returns null when the
-      // response carries no quota headers (nothing to persist).
-      const built = buildCodexQuotaPersistence({
-        headers,
-        existingProviderData,
-        modelForScope: model || requestedModel || "",
-        status,
-      });
-      if (!built) return;
-      if (built.exhaustionLog) {
-        log?.debug?.("CODEX", built.exhaustionLog);
-      }
-      // Invalidate the preflight cache for this connection so the next
-      // isModelAvailable check fetches fresh quota data.
-      if (status === 429) {
-        invalidateCodexQuotaCache(currentConnectionId);
-      }
-      await updateProviderConnection(currentConnectionId, {
-        providerSpecificData: built.nextProviderData,
-      });
-      credentials.providerSpecificData = built.nextProviderData;
-    } catch (err) {
-      const errMessage = err instanceof Error ? err.message : String(err);
-      log?.debug?.("CODEX", `Failed to persist codex quota state: ${errMessage}`);
-    }
-  };
   // ── Phase 9.2: Idempotency check ──
   // Resolve the idempotency key once here and reuse it at the Phase 9.2 save site below,
   // rather than re-deriving it. (#3821-review LEDGER-6)
@@ -720,12 +740,13 @@ export async function handleChatCore({
     copilotCompatibleReasoning,
     clientResponseFormat,
   } = resolveChatCoreRequestFormat({ clientRawRequest, body, provider, userAgent });
-  const nativeOpenAICompatibleResponsesPassthrough = shouldUseNativeOpenAICompatibleResponsesPassthrough({
-    provider,
-    sourceFormat,
-    endpointPath,
-    providerSpecificData: credentials?.providerSpecificData,
-  });
+  const nativeOpenAICompatibleResponsesPassthrough =
+    shouldUseNativeOpenAICompatibleResponsesPassthrough({
+      provider,
+      sourceFormat,
+      endpointPath,
+      providerSpecificData: credentials?.providerSpecificData,
+    });
   const responsesInputItems = Array.isArray(body?.input) ? body.input : [];
   const customToolNames = collectCustomToolNamesForSourceFormat(
     sourceFormat,
@@ -759,11 +780,12 @@ export async function handleChatCore({
         classifierSettings.claudeClassifierCompat as string | undefined
       )
     ) {
+      const classifierFormat = detectClassifierFormat(body as Record<string, unknown>);
       log?.warn?.(
         "CHAT",
-        `classifier compat=${classifierSettings.claudeClassifierCompat} | short-circuit default-allow`
+        `classifier compat=${classifierSettings.claudeClassifierCompat} format=${classifierFormat} | short-circuit default-allow`
       );
-      return buildDefaultAllowClaudeMessage(requestedModel);
+      return buildDefaultAllowClaudeMessage(requestedModel, classifierFormat);
     }
   }
 
@@ -876,6 +898,7 @@ export async function handleChatCore({
       providerRequest: initialProviderRequest,
       stage: "registered",
       correlationId,
+      sessionTag: conversationId || null,
     }) || generateRequestId();
 
   // Initialize rate limit settings from persisted DB (once, lazy)
@@ -1008,7 +1031,11 @@ export async function handleChatCore({
       noLogEnabled,
       correlationId,
       modelPinned,
-      sessionTag: explicitSessionIdHeader,
+      // Resolved conversationId (open-sse/services/conversationTracker.ts) wins when
+      // present — it's populated for every request now, not just ones where the
+      // client explicitly sent x-omniroute-session-id. The raw header remains a
+      // fallback for any caller that somehow bypassed conversationId resolution.
+      sessionTag: conversationId || explicitSessionIdHeader,
     });
 
   // Primary path: merge client model id + alias target so config on either key applies; resolved
@@ -1178,11 +1205,39 @@ export async function handleChatCore({
     return cacheHit;
   }
 
-  if (targetFormat === FORMATS.OPENAI_RESPONSES && body && typeof body === "object") {
-    applyResponsesInputPolicy(
+  const reasoningInputFormat =
+    sourceFormat === FORMATS.OPENAI_RESPONSES
+      ? "responses"
+      : sourceFormat === FORMATS.OPENAI
+        ? "chat"
+        : null;
+  if (reasoningInputFormat && body && typeof body === "object") {
+    const policy = applyReasoningInputPolicy(
       body as Record<string, unknown>,
-      credentials?.providerSpecificData?.preserveEncryptedReasoning === true
+      reasoningInputFormat,
+      {
+        provider,
+        preserveEncryptedReasoning:
+          credentials?.providerSpecificData?.preserveEncryptedReasoning === true,
+        onIncompatibleReasoning: resolveIncompatibleReasoningAction({
+          reasoningTransportFallback,
+          // #11178 regressed combo steps whose combo record carries no explicit
+          // stepId/executionKey (plain model-list combos): their explicit
+          // `reasoningTransportFallback: "skip"` config was silently degraded to
+          // "drop". `isCombo` is the combo marker; step ids are optional
+          // finer-grained metadata that plain combos never set.
+          isComboStep: Boolean(isCombo) || Boolean(comboStepId || comboExecutionKey),
+          headers: clientRawRequest?.headers ?? null,
+        }),
+      }
     );
+    if (policy.incompatibleReasoning) {
+      trackPendingRequest(model, provider, connectionId, false);
+      return createErrorResult(
+        HTTP_STATUS.BAD_REQUEST,
+        "Reasoning continuation is not compatible with the selected target"
+      );
+    }
   }
 
   body = sanitizeChatRequestBody(body, sourceFormat, targetFormat);
@@ -1605,16 +1660,13 @@ export async function handleChatCore({
           // models, which is intentionally NOT `false` so the gate still preserves images.
           supportsVision: getResolvedModelCapabilities({ provider, model: effectiveModel })
             .supportsVision,
-          // Rotas diretas oficiais ('anthropic' API key e 'claude' OAuth) vs agregadores:
-          // o engine omniglyph exige 'direct' — agregadores redimensionam imagens
-          // (medido 2026-07-06). OAuth 'claude' é rota direta oficial (#7863).
-          providerTransport:
-            provider === "anthropic" ||
-            provider === "claude" ||
-            provider === "openai" ||
-            provider === "xai"
-              ? ("direct" as const)
-              : ("aggregator" as const),
+          // OmniGlyph uses a measured provider/image-fidelity allowlist. Direct HTTP
+          // alone is not proof that a route preserves PNG bytes and dimensions.
+          ...resolveOmniGlyphTransport(provider),
+          // Sem o provider, a contabilidade do OmniGlyph cai para `unknown` e
+          // recusa deduzir a semântica de cache (Anthropic usa buckets disjuntos,
+          // OpenAI reporta cached como subconjunto do input).
+          provider,
           sourceFormat,
           targetFormat,
           compressionStage: "pre-translation" as const,
@@ -2032,13 +2084,18 @@ export async function handleChatCore({
   const modelOutputCap = toPositiveInteger(
     getExplicitModelOutputCap({ provider, model: effectiveModel })
   );
+  const contextWindowChecksDisabled = areContextWindowChecksDisabled();
   const outputBudget = enforceOutputTokenBudget(
     body as Record<string, unknown>,
     finalEstimatedInputTokens,
-    finalContextLimit,
+    contextWindowChecksDisabled ? Number.MAX_SAFE_INTEGER : finalContextLimit,
     targetFormat === FORMATS.CLAUDE && sourceFormat !== FORMATS.CLAUDE ? DEFAULT_MAX_TOKENS : 0,
     modelOutputCap,
-    toPositiveInteger(resolveInputTokenCapForGate({ provider, model: effectiveModel }, { isCombo }))
+    contextWindowChecksDisabled
+      ? null
+      : toPositiveInteger(
+          resolveInputTokenCapForGate({ provider, model: effectiveModel }, { isCombo })
+        )
   );
   if (outputBudget.ok === false) {
     const exceededInputCap = outputBudget.maxInputTokens !== undefined;
@@ -2603,12 +2660,16 @@ export async function handleChatCore({
     // no-op. #7694: `modelInfo.resolvedThinkingEffort` — set when the request's model
     // id carried a `<prefix>/<model>-{effort}` synced-model alias suffix
     // (`src/sse/services/model.ts`) — takes priority over the static per-model default.
-    // See open-sse/services/defaultReasoningEffort.ts.
+    // The synced catalog's vendor-declared `defaultThinkingEffort` (OpenRouter
+    // `reasoning.default_effort`, captured by `detectDefaultThinkingEffort`) is the
+    // lowest-priority default: it only fires when neither the suffix alias nor a
+    // static operator default exists. See open-sse/services/defaultReasoningEffort.ts.
     if (targetFormat === FORMATS.OPENAI) {
       translatedBody = applyDefaultReasoningEffort(
         translatedBody,
         finalModelToUpstream,
-        (modelInfo as { resolvedThinkingEffort?: string })?.resolvedThinkingEffort
+        (modelInfo as { resolvedThinkingEffort?: string })?.resolvedThinkingEffort,
+        (modelInfo as { defaultThinkingEffort?: string })?.defaultThinkingEffort
       );
     }
   }
@@ -2964,7 +3025,18 @@ export async function handleChatCore({
               ? (extractSessionAffinityKey(body, clientRawRequest?.headers) ?? null)
               : null;
 
-          while (attempts < maxAttempts) {
+          // ── Antigravity BYOP 422 account-rotation state ─────────────────────
+          // A GCP_PROJECT_REQUIRED 422 is account-specific (that Google
+          // account lacks a GCP Project ID). Rotate to a sibling antigravity
+          // account instead of surfacing the error, so multi-account setups
+          // keep working without user action. Tracked separately from
+          // maxAttempts so non-BYOP antigravity failures never get a second
+          // shot (no double upstream calls).
+          const antigravityByopExcludedIds: string[] = [];
+          let antigravityByopRotationPending = false;
+
+          while (attempts < maxAttempts || antigravityByopRotationPending) {
+            antigravityByopRotationPending = false; // consumed per iteration
             trace("pre_executor", { attempt: attempts });
             updatePendingScope(pendingScope, {
               stage: "sending_to_provider",
@@ -3017,6 +3089,9 @@ export async function handleChatCore({
                     executor,
                     provider,
                     model: modelToCall,
+                    connectionTimeoutMs: resolveConnectionTimeoutMs(
+                      execCreds?.providerSpecificData
+                    ),
                     signal: streamController.signal,
                     log,
                     execute: (signal) =>
@@ -3047,6 +3122,33 @@ export async function handleChatCore({
               const res = normalizeExecutorResult(rawExecutorResult);
               trace("post_executor", { status: res?.response?.status });
 
+              if (
+                provider === "codex" &&
+                attemptConnectionId &&
+                !(await shouldIsolateProbeFailures())
+              ) {
+                try {
+                  const persistedQuota = await persistCodexChildQuotaResponse({
+                    connectionId: String(attemptConnectionId),
+                    model: modelToCall || model || requestedModel || "",
+                    headers: normalizeHeaders(res.response.headers),
+                    status: res.response.status,
+                  });
+                  if (persistedQuota) {
+                    execCreds.providerSpecificData = persistedQuota.providerSpecificData;
+                    if (persistedQuota.exhaustionLog) {
+                      log?.debug?.("CODEX", persistedQuota.exhaustionLog);
+                    }
+                  }
+                  if (res.response.status === 429) {
+                    invalidateCodexQuotaCache(String(attemptConnectionId));
+                  }
+                } catch (err) {
+                  const errMessage = err instanceof Error ? err.message : String(err);
+                  log?.debug?.("CODEX", `Failed to persist codex quota state: ${errMessage}`);
+                }
+              }
+
               // Track Gemini RPM + RPD request counts for 429 classification
               if (provider === "gemini") {
                 incrementRequestCount(modelToCall);
@@ -3056,7 +3158,11 @@ export async function handleChatCore({
                 stage: "provider_response_started",
               });
 
-              if (res.response.status === 401 && executionConnectionId) {
+              if (
+                res.response.status === 401 &&
+                executionConnectionId &&
+                !(await shouldIsolateProbeFailures())
+              ) {
                 recordKeyHealthStatus(401, execCreds);
               }
 
@@ -3086,7 +3192,10 @@ export async function handleChatCore({
                 !managedLease &&
                 comboStrategy !== "context-relay" &&
                 res.response.status === 429 &&
-                attempts < maxAttempts - 1
+                attempts < maxAttempts - 1 &&
+                // Probe-origin (test-all) 429 must not rotate accounts or persist
+                // cooldowns — routing state untouched (#9817).
+                !(await shouldIsolateProbeFailures())
               ) {
                 const failedConnectionId =
                   executionConnectionId || credentials?.connectionId || connectionId;
@@ -3101,29 +3210,15 @@ export async function handleChatCore({
                   `429 on connection ${String(failedConnectionId).slice(0, 8)} (attempt ${attempts + 1}/${maxAttempts}), rotating account`
                 );
 
-                // Mark only the current Codex model scope as rate-limited.
+                // Mark only the current Codex model scope as rate-limited. A connection-wide
+                // cooldown here would let a Spark limit suppress independent Sol/Terra traffic.
                 if (failedConnectionId) {
                   await markCodexScopeRateLimited({
                     failedConnectionId: String(failedConnectionId),
                     model: modelToCall || model || requestedModel || null,
                     rateLimitedUntil: new Date(Date.now() + (retryAfterMs || 60_000)).toISOString(),
-                    credentials,
+                    credentials: execCreds || credentials,
                   });
-                  // Fix B: also persist the cooldown to
-                  // `provider_connections.rate_limited_until`. Without this,
-                  // the Codex 429 cascade survives the current request (via
-                  // `markCodexScopeRateLimited`'s in-memory Map) but is lost
-                  // on process restart — the same exhausted Codex key is
-                  // re-picked on the very next request. Mirrors
-                  // `open-sse/executors/antigravity.ts:343`.
-                  // Best-effort: never crash the chat path on DB write failure.
-                  try {
-                    const { setConnectionRateLimitUntil } = await import("@/lib/db/providers");
-                    const untilMs = Date.now() + (retryAfterMs || 60_000);
-                    setConnectionRateLimitUntil(String(failedConnectionId), untilMs);
-                  } catch {
-                    // ignore — best effort
-                  }
                   if (!codexExcludedIds.includes(String(failedConnectionId))) {
                     codexExcludedIds.push(String(failedConnectionId));
                   }
@@ -3191,6 +3286,55 @@ export async function handleChatCore({
                 continue;
               }
 
+              // ── Antigravity BYOP 422 account rotation ───────────────────────
+              // GCP_PROJECT_REQUIRED (422, code gcp_project_required) means
+              // THIS Google account must Bring Its Own GCP Project. Mark the
+              // connection excluded (rateLimitedUntil, best-effort) and rotate
+              // to a sibling antigravity account so the request succeeds
+              // without user action. When no sibling exists (or all are BYOP),
+              // fall through: the error-state block excludes the connection
+              // and the actionable 422 is surfaced.
+              if (provider === "antigravity" && res.response.status === 422) {
+                const byopBody = await res.response
+                  .clone()
+                  .text()
+                  .catch(() => "");
+                if (byopBody.includes("gcp_project_required")) {
+                  const byopFailedId =
+                    executionConnectionId || credentials?.connectionId || connectionId;
+                  if (byopFailedId) {
+                    if (!antigravityByopExcludedIds.includes(String(byopFailedId))) {
+                      antigravityByopExcludedIds.push(String(byopFailedId));
+                    }
+                    try {
+                      const { setConnectionRateLimitUntil } = await import("@/lib/db/providers");
+                      setConnectionRateLimitUntil(
+                        String(byopFailedId),
+                        Date.now() + COOLDOWN_MS.gcpProjectRequired
+                      );
+                    } catch {
+                      // best-effort — never break the rotation path
+                    }
+                  }
+                  const byopNextCreds = await getProviderCredentials(
+                    "antigravity",
+                    null,
+                    null,
+                    modelToCall || model || requestedModel || null,
+                    { excludeConnectionIds: [...antigravityByopExcludedIds] }
+                  ).catch(() => null);
+                  if (byopNextCreds && !byopNextCreds.allRateLimited) {
+                    log?.warn?.(
+                      "ANTIGRAVITY_BYOP_ROTATION",
+                      `BYOP 422 on connection ${String(byopFailedId).slice(0, 8)} → rotating to ${String(byopNextCreds.connectionId).slice(0, 8)}`
+                    );
+                    Object.assign(credentials, byopNextCreds);
+                    antigravityByopRotationPending = true;
+                    continue;
+                  }
+                }
+              }
+
               // For streaming: release the semaphore when the client drains or cancels the stream.
               if (stream) {
                 const originalBody = res.response.body;
@@ -3251,6 +3395,9 @@ export async function handleChatCore({
                         executor,
                         provider,
                         model: modelToCall,
+                        connectionTimeoutMs: resolveConnectionTimeoutMs(
+                          execCreds?.providerSpecificData
+                        ),
                         signal: streamController.signal,
                         log,
                         execute: (signal) =>
@@ -3383,6 +3530,15 @@ export async function handleChatCore({
         const responseHeaders = new Headers(headersObj);
         stripStaleForwardingHeaders(responseHeaders);
         stripNextMiddlewareControlHeaders(responseHeaders);
+        // The upstream headers (turn-state included) are about to be committed
+        // to the client — record which connection minted the blob so a later
+        // cross-account echo can be stripped (Codex failover guard).
+        if (provider === "codex" && readCodexTurnStateHeader(responseHeaders)) {
+          noteCodexTurnStateProvenance(
+            getCodexClientSessionId(clientRawRequest?.headers),
+            rawResult._executionCredentials?.connectionId ?? credentials?.connectionId
+          );
+        }
         const contentType = (responseHeaders.get("content-type") || "").toLowerCase();
         const payload = await readNonStreamingResponseBody(
           rawResult.response,
@@ -3696,10 +3852,15 @@ export async function handleChatCore({
   }
 
   // Handle 401/403 - try token refresh using executor
+  // T-PROBE: probe-origin failures never attempt the refresh — a probe must
+  // not consume a rotating refresh token nor persist an "expired"
+  // deactivation on refresh failure (#9817). The 401/403 then flows into
+  // the normal providerFailure classification (record-only in probe mode).
   if (
     (providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
       providerResponse.status === HTTP_STATUS.FORBIDDEN) &&
-    !hadStreamOptions // Skip refresh if failure may be from stream_options removal, not auth
+    !hadStreamOptions && // Skip refresh if failure may be from stream_options removal, not auth
+    !(await shouldIsolateProbeFailures())
   ) {
     // Fix A: wrap refreshCredentials in runWithOnPersist so the persist callback
     // executes INSIDE the per-connection mutex held by getAccessToken. This makes
@@ -3851,8 +4012,6 @@ export async function handleChatCore({
     }
   }
 
-  await persistCodexQuotaState(normalizeHeaders(providerResponse.headers), providerResponse.status);
-
   // Check provider response - return error info for fallback handling
   providerFailure: if (!providerResponse.ok) {
     trackPendingRequest(model, provider, connectionId, false);
@@ -3981,17 +4140,33 @@ export async function handleChatCore({
     if (errorConnectionId && errorType) {
       try {
         if (errorType === PROVIDER_ERROR_TYPES.FORBIDDEN) {
-          await updateProviderConnection(errorConnectionId, {
-            isActive: false,
-            testStatus: "banned",
-            lastErrorType: errorType,
-            lastError: message,
-            errorCode: statusCode,
-          });
-          console.warn(
-            `[provider] Node ${errorConnectionId} banned (${statusCode}) — disabling permanently`
-          );
+          {
+            const probeIsolated = await shouldIsolateProbeFailures();
+            await writeTerminalStatus(
+              errorConnectionId,
+              {
+                testStatus: "banned",
+                isActive: false,
+                lastError: message,
+                lastErrorType: errorType,
+                errorCode: String(statusCode),
+              },
+              probeIsolated ? "probe" : "production"
+            );
+            if (probeIsolated) {
+              console.warn(
+                `[provider] Node ${errorConnectionId} probe ${errorType} (${statusCode}) — connection stays active`
+              );
+            } else {
+              console.warn(
+                `[provider] Node ${errorConnectionId} banned (${statusCode}) — disabling permanently`
+              );
+            }
+          }
         } else if (errorType === PROVIDER_ERROR_TYPES.ACCOUNT_DEACTIVATED) {
+          // T-PROBE: probe-origin failures (test-all) never deactivate —
+          // record but stay active; Plan A (extra keys) stays first so the
+          // real path keeps its existing priority (#9817).
           // Plan A: if connection has extra API keys, don't disable — only the failing key is affected.
           // Single-key connections still get disabled as before.
           if (
@@ -4010,85 +4185,120 @@ export async function handleChatCore({
               `[provider] Node ${errorConnectionId} account deactivated (${statusCode}) — has extra keys, keeping connection active`
             );
           } else {
-            await updateProviderConnection(errorConnectionId, {
-              isActive: false,
-              testStatus: "deactivated",
-              lastErrorType: errorType,
-              lastError: message,
-              errorCode: statusCode,
-            });
-            console.warn(
-              `[provider] Node ${errorConnectionId} account deactivated (${statusCode}) — disabling permanently`
+            const probeIsolated2 = await shouldIsolateProbeFailures();
+            await writeTerminalStatus(
+              errorConnectionId,
+              {
+                testStatus: "deactivated",
+                isActive: false,
+                lastError: message,
+                lastErrorType: errorType,
+                errorCode: String(statusCode),
+              },
+              probeIsolated2 ? "probe" : "production"
             );
-          }
-        } else if (errorType === PROVIDER_ERROR_TYPES.QUOTA_EXHAUSTED) {
-          // Kimi's 403 says "billing cycle" for both an exhausted subscription and a
-          // temporary request window. Read its official usage endpoint before making
-          // the connection terminal: a non-zero Weekly quota plus an empty Ratelimit
-          // window must recover automatically at the reported reset time.
-          let kimiRateLimitResetAt: string | null = null;
-          if (provider === "kimi-coding") {
-            try {
-              const { fetchAndPersistProviderLimits } = await import("@/lib/usage/providerLimits");
-              const { usage } = await fetchAndPersistProviderLimits(errorConnectionId, "manual");
-              kimiRateLimitResetAt = getKimiTemporaryRateLimitResetAt(usage);
-            } catch {
-              // Preserve the existing quota handling when Kimi's usage endpoint is unavailable.
+            if (probeIsolated2) {
+              console.warn(
+                `[provider] Node ${errorConnectionId} probe ${errorType} (${statusCode}) — connection stays active`
+              );
+            } else {
+              console.warn(
+                `[provider] Node ${errorConnectionId} account deactivated (${statusCode}) — disabling permanently`
+              );
             }
           }
+        } else if (errorType === PROVIDER_ERROR_TYPES.QUOTA_EXHAUSTED) {
+          {
+            const probeIsolated3 = await shouldIsolateProbeFailures();
+            if (probeIsolated3) {
+              await writeTerminalStatus(
+                errorConnectionId,
+                {
+                  testStatus: "credits_exhausted",
+                  lastError: message,
+                  lastErrorType: errorType,
+                  errorCode: String(statusCode),
+                },
+                "probe"
+              );
+              console.warn(
+                `[provider] Node ${errorConnectionId} probe ${errorType} (${statusCode}) — connection stays active`
+              );
+            } else {
+            // Kimi's 403 says "billing cycle" for both an exhausted subscription and a
+            // temporary request window. Read its official usage endpoint before making
+            // the connection terminal: a non-zero Weekly quota plus an empty Ratelimit
+            // window must recover automatically at the reported reset time.
+            let kimiRateLimitResetAt: string | null = null;
+            if (provider === "kimi-coding") {
+              try {
+                const { fetchAndPersistProviderLimits } =
+                  await import("@/lib/usage/providerLimits");
+                const { usage } = await fetchAndPersistProviderLimits(errorConnectionId, "manual");
+                kimiRateLimitResetAt = getKimiTemporaryRateLimitResetAt(usage);
+              } catch {
+                // Preserve the existing quota handling when Kimi's usage endpoint is unavailable.
+              }
+            }
 
-          // Providers with per-model quotas — lock the model only, not the connection
-          const quotaCooldownMs = kimiRateLimitResetAt
-            ? Math.max(new Date(kimiRateLimitResetAt).getTime() - Date.now(), 0)
-            : retryAfterMs || COOLDOWN_MS.rateLimit;
-          const accountSemaphoreKey = resolveAccountSemaphoreKey({
-            provider,
-            model: currentModel,
-            connectionId: errorConnectionId,
-            credentials,
-          });
-          if (accountSemaphoreKey) {
-            markAccountSemaphoreBlocked(accountSemaphoreKey, quotaCooldownMs);
-          }
-          if (kimiRateLimitResetAt) {
-            await updateProviderConnection(errorConnectionId, {
-              testStatus: "unavailable",
-              rateLimitedUntil: kimiRateLimitResetAt,
-              backoffLevel: 0,
-              lastErrorType: PROVIDER_ERROR_TYPES.RATE_LIMITED,
-              lastError: message,
-              errorCode: statusCode,
-            });
-            console.warn(
-              `[provider] Node ${errorConnectionId} Kimi request window exhausted (${statusCode}) — retrying after ${kimiRateLimitResetAt}`
-            );
-          } else if (isModelScope() && errorConnectionId) {
-            const lockFn = provider === "antigravity" ? lockExactModel : lockModel;
-            lockFn(provider, errorConnectionId, model, "quota_exhausted", quotaCooldownMs);
-            console.warn(
-              `[provider] Node ${errorConnectionId} ModelScope model quota exhausted (${statusCode}) for ${model} - ${Math.ceil(quotaCooldownMs / 1000)}s (connection stays active)`
-            );
-          } else if (
-            lockModelIfPerModelQuota(
+            // Providers with per-model quotas — lock the model only, not the connection
+            const quotaCooldownMs = kimiRateLimitResetAt
+              ? Math.max(new Date(kimiRateLimitResetAt).getTime() - Date.now(), 0)
+              : retryAfterMs || COOLDOWN_MS.rateLimit;
+            const accountSemaphoreKey = resolveAccountSemaphoreKey({
               provider,
-              errorConnectionId,
-              model,
-              "quota_exhausted",
-              quotaCooldownMs
-            )
-          ) {
-            const quotaScope = getQuotaScopeLabelForProvider(provider, model);
-            console.warn(
-              `[provider] Node ${errorConnectionId} ${quotaScope}-only quota exhausted (${statusCode}) for ${model} - ${Math.ceil(quotaCooldownMs / 1000)}s (cooldown_scope=${quotaScope}, ttl_source=${retryAfterMs ? "upstream" : "inferred"}, connection stays active)`
-            );
-          } else {
-            await updateProviderConnection(errorConnectionId, {
-              testStatus: "credits_exhausted",
-              lastErrorType: errorType,
-              lastError: message,
-              errorCode: statusCode,
+              model: currentModel,
+              connectionId: errorConnectionId,
+              credentials,
             });
-            console.warn(`[provider] Node ${errorConnectionId} exhausted quota (${statusCode})`);
+            if (accountSemaphoreKey) {
+              markAccountSemaphoreBlocked(accountSemaphoreKey, quotaCooldownMs);
+            }
+            if (kimiRateLimitResetAt) {
+              await updateProviderConnection(errorConnectionId, {
+                testStatus: "unavailable",
+                rateLimitedUntil: kimiRateLimitResetAt,
+                backoffLevel: 0,
+                lastErrorType: PROVIDER_ERROR_TYPES.RATE_LIMITED,
+                lastError: message,
+                errorCode: statusCode,
+              });
+              console.warn(
+                `[provider] Node ${errorConnectionId} Kimi request window exhausted (${statusCode}) — retrying after ${kimiRateLimitResetAt}`
+              );
+            } else if (isModelScope() && errorConnectionId) {
+              const lockFn = provider === "antigravity" ? lockExactModel : lockModel;
+              lockFn(provider, errorConnectionId, model, "quota_exhausted", quotaCooldownMs);
+              console.warn(
+                `[provider] Node ${errorConnectionId} ModelScope model quota exhausted (${statusCode}) for ${model} - ${Math.ceil(quotaCooldownMs / 1000)}s (connection stays active)`
+              );
+            } else if (
+              lockModelIfPerModelQuota(
+                provider,
+                errorConnectionId,
+                model,
+                "quota_exhausted",
+                quotaCooldownMs
+              )
+            ) {
+              const quotaScope = getQuotaScopeLabelForProvider(provider, model);
+              console.warn(
+                `[provider] Node ${errorConnectionId} ${quotaScope}-only quota exhausted (${statusCode}) for ${model} - ${Math.ceil(quotaCooldownMs / 1000)}s (cooldown_scope=${quotaScope}, ttl_source=${retryAfterMs ? "upstream" : "inferred"}, connection stays active)`
+              );
+            } else {
+              await writeTerminalStatus(
+                errorConnectionId,
+                {
+                  testStatus: "credits_exhausted",
+                  lastError: message,
+                  lastErrorType: errorType,
+                  errorCode: String(statusCode),
+                },
+                "production"
+              );
+              console.warn(`[provider] Node ${errorConnectionId} exhausted quota (${statusCode})`);
+            }
+            } // close probeIsolated3 else
           }
         } else if (errorType === PROVIDER_ERROR_TYPES.UNAUTHORIZED) {
           // Normal 401 (token/session auth issue): keep account active for refresh/re-auth.
@@ -4130,14 +4340,39 @@ export async function handleChatCore({
             lastError: message,
             errorCode: statusCode,
           });
-          try {
-            const { setConnectionRateLimitUntil } = await import("@/lib/db/providers");
-            setConnectionRateLimitUntil(errorConnectionId, Date.now() + geoCooldownMs);
-          } catch {
-            // DB write failure must never break the fallback loop
+          // T-PROBE: the 24h exclusion is a routing mutation — a probe must
+          // not push a connection into a day-long cooldown (#9817).
+          if (!(await shouldIsolateProbeFailures())) {
+            try {
+              const { setConnectionRateLimitUntil } = await import("@/lib/db/providers");
+              setConnectionRateLimitUntil(errorConnectionId, Date.now() + geoCooldownMs);
+            } catch {
+              // DB write failure must never break the fallback loop
+            }
           }
           console.warn(
             `[provider] Node ${errorConnectionId} geo-blocked (${statusCode}) — excluded for ${Math.ceil(geoCooldownMs / 1000)}s, trying other accounts`
+          );
+        } else if (errorType === PROVIDER_ERROR_TYPES.GCP_PROJECT_REQUIRED) {
+          // Antigravity BYOP: the account must Bring Its Own GCP Project.
+          // Account-specific and fixable by entering a Project ID — never a
+          // model lockout, never a ban. Exclude the connection for the
+          // cooldown window so selection prefers sibling accounts; the 422
+          // body carries the actionable message when no sibling is available.
+          const byopCooldownMs = COOLDOWN_MS.gcpProjectRequired ?? 24 * 60 * 60 * 1000;
+          await updateProviderConnection(errorConnectionId, {
+            lastErrorType: errorType,
+            lastError: message,
+            errorCode: statusCode,
+          });
+          try {
+            const { setConnectionRateLimitUntil } = await import("@/lib/db/providers");
+            setConnectionRateLimitUntil(errorConnectionId, Date.now() + byopCooldownMs);
+          } catch {
+            // best-effort — never break the error path
+          }
+          console.warn(
+            `[provider] Node ${errorConnectionId} GCP project required (${statusCode}) — excluded for ${Math.ceil(byopCooldownMs / 1000)}s, routing to other accounts (enter a Project ID to restore)`
           );
         } else if (errorType === PROVIDER_ERROR_TYPES.MODEL_NOT_FOUND) {
           // 404 — model/endpoint does not exist upstream. Lock the model so the
@@ -4145,16 +4380,20 @@ export async function handleChatCore({
           // otherwise degenerate into a 429 rate-limit storm). Connection stays
           // active since only the specific model is unavailable. (#6827)
           const notFoundCooldownMs = COOLDOWN_MS.notFound;
-          lockModel(
-            provider,
-            errorConnectionId,
-            currentModel,
-            "model_not_found",
-            notFoundCooldownMs
-          );
-          console.warn(
-            `[provider] Node ${errorConnectionId} model not found (${statusCode}) for ${currentModel} - locking model for ${Math.ceil(notFoundCooldownMs / 1000)}s (connection stays active)`
-          );
+          // T-PROBE: the model lockout is a routing mutation — a probe must
+          // not lock a model for the cooldown window (#9817).
+          if (!(await shouldIsolateProbeFailures())) {
+            lockModel(
+              provider,
+              errorConnectionId,
+              currentModel,
+              "model_not_found",
+              notFoundCooldownMs
+            );
+            console.warn(
+              `[provider] Node ${errorConnectionId} model not found (${statusCode}) for ${currentModel} - locking model for ${Math.ceil(notFoundCooldownMs / 1000)}s (connection stays active)`
+            );
+          }
         }
       } catch {
         // Best-effort state update; request flow should continue with fallback handling.
@@ -4674,12 +4913,14 @@ export async function handleChatCore({
 
     // Translate response to client's expected format (usually OpenAI)
     // Pass toolNameMap so Claude OAuth proxy_ prefix is stripped in tool_use blocks (#605)
+    const responseToolSchemas = extractToolSchemaMap(finalBody || translatedBody || body);
     let translatedResponse = needsTranslation(responsePayloadFormat, clientResponseFormat)
       ? translateNonStreamingResponse(
           responseBody,
           responsePayloadFormat,
           clientResponseFormat,
-          responseToolNameMap
+          responseToolNameMap,
+          responseToolSchemas
         )
       : responseBody;
     const memoryExtractionResponse = translatedResponse;
@@ -4706,17 +4947,20 @@ export async function handleChatCore({
               responseBody,
               responsePayloadFormat,
               FORMATS.OPENAI,
-              responseToolNameMap
+              responseToolNameMap,
+              responseToolSchemas
             )
           : responseBody;
       const firstChoice = cacheResponse?.choices?.[0];
       const msg = firstChoice?.message;
       const historyMessages = (translatedBody as { messages?: unknown[] } | null | undefined)
         ?.messages;
-      cacheReasoningFromAssistantMessage(msg, provider, model, {
-        scope: reasoningCacheScope,
-        historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
-      });
+      if (requiresReasoningReplay({ provider, model })) {
+        cacheReasoningFromAssistantMessage(msg, provider, model, {
+          scope: reasoningCacheScope,
+          historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
+        });
+      }
     } catch {
       // Cache capture is non-critical — never block the response
     }
@@ -4779,9 +5023,11 @@ export async function handleChatCore({
 
     const customSkillExecutionEnabled =
       Boolean(memoryOwnerId) && memorySettings?.skillsEnabled === true;
-    const builtinToolNames = [webSearchFallbackPlan.toolName, webFetchFallbackPlan.toolName].filter(
-      (name): name is string => Boolean(name)
-    );
+    const builtinToolNames = [
+      webSearchFallbackPlan.toolName,
+      webFetchFallbackPlan.toolName,
+      ...(memoryOwnerId && memorySettings?.enabled ? MEMORY_BUILTIN_TOOL_NAMES : []),
+    ].filter((name): name is string => Boolean(name));
     if (customSkillExecutionEnabled || builtinToolNames.length > 0) {
       const skillSessionId = pipelineSessionId;
 
@@ -4913,6 +5159,27 @@ export async function handleChatCore({
       });
       persistFailureUsage(HTTP_STATUS.BAD_GATEWAY, "malformed_translated_response");
       trackPendingRequest(model, provider, pendingConnId, false);
+      // Routing event (feedback foundation) — record the malformed outcome so
+      // the quality tracker de-prioritizes this model over time.
+      void emitRoutingEvent(
+        createRoutingEvent({
+          requestId: traceId || pendingRequestId || "unknown",
+          provider: provider || "unknown",
+          model: model || "unknown",
+          strategy: isCombo ? (comboStrategy ?? "combo") : "direct",
+          latencyMs: Date.now() - startTime,
+          ttftMs: null,
+          inputTokens: null,
+          outputTokens: null,
+          cost: null,
+          retries: 0,
+          fallbackUsed: false, // combo-level fallback tracked by decisionTrace
+          outcome: "malformed",
+          status: HTTP_STATUS.BAD_GATEWAY,
+          finishReason: routingFinishReason(translatedResponse),
+          connectionId: credentials?.connectionId ?? null,
+        })
+      );
       return createErrorResult(
         HTTP_STATUS.BAD_GATEWAY,
         malformedMessage,
@@ -5013,6 +5280,43 @@ export async function handleChatCore({
       response: { status: 200, data: translatedResponse },
     });
 
+    // Routing event (feedback foundation) — fire-and-forget, cheap.
+    void emitRoutingEvent(
+      createRoutingEvent({
+        requestId: traceId || pendingRequestId || "unknown",
+        provider: provider || "unknown",
+        model: model || "unknown",
+        strategy: isCombo ? (comboStrategy ?? "combo") : "direct",
+        latencyMs: Date.now() - startTime,
+        ttftMs: null,
+        inputTokens:
+          usage && typeof usage === "object"
+            ? (() => {
+                const promptTokens = (usage as Record<string, unknown>).prompt_tokens;
+                return typeof promptTokens === "number" && Number.isFinite(promptTokens)
+                  ? promptTokens
+                  : null;
+              })()
+            : null,
+        outputTokens:
+          usage && typeof usage === "object"
+            ? (() => {
+                const completionTokens = (usage as Record<string, unknown>).completion_tokens;
+                return typeof completionTokens === "number" && Number.isFinite(completionTokens)
+                  ? completionTokens
+                  : null;
+              })()
+            : null,
+        cost: Number.isFinite(estimatedCost) ? estimatedCost : null,
+        retries: 0,
+        fallbackUsed: false, // combo-level fallback tracked by decisionTrace
+        outcome: "success",
+        status: 200,
+        finishReason: routingFinishReason(translatedResponse),
+        connectionId: credentials?.connectionId ?? null,
+      })
+    );
+
     return {
       success: true,
       response: buildNonStreamingJsonResponse(translatedResponse, responseHeaders),
@@ -5102,6 +5406,17 @@ export async function handleChatCore({
     comboStrategy,
   });
 
+  // The streaming headers (turn-state included, when present) are committed to
+  // the client from here on — record which connection minted the blob so a
+  // later cross-account echo can be stripped (Codex failover guard). The
+  // in-place failover update means `credentials` is the winning account.
+  if (provider === "codex" && readCodexTurnStateHeader(providerResponse.headers)) {
+    noteCodexTurnStateProvenance(
+      getCodexClientSessionId(clientRawRequest?.headers),
+      credentials?.connectionId
+    );
+  }
+
   // Create transform stream with logger for streaming response
   let transformStream;
   const responseToolNameMap = mergeResponseToolNameMap(
@@ -5122,6 +5437,8 @@ export async function handleChatCore({
     error: streamError,
     errorCode: streamErrorCode,
     ttft,
+    itlMs: streamItlMs,
+    interrupted: streamInterrupted,
   }) => {
     const normalizedStreamStatus = streamStatus || 200;
     if (streamCompletionRecorded) return;
@@ -5154,7 +5471,8 @@ export async function handleChatCore({
                 streamBody,
                 clientResponseFormat,
                 FORMATS.OPENAI,
-                responseToolNameMap
+                responseToolNameMap,
+                extractToolSchemaMap(finalBody || translatedBody || body)
               ) as Record<string, unknown>)
             : streamBody;
         const choices = cacheStreamBody.choices as
@@ -5162,10 +5480,12 @@ export async function handleChatCore({
         const msg = choices?.[0]?.message;
         const historyMessages = (translatedBody as { messages?: unknown[] } | null | undefined)
           ?.messages;
-        cacheReasoningFromAssistantMessage(msg, provider, model, {
-          scope: reasoningCacheScope,
-          historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
-        });
+        if (requiresReasoningReplay({ provider, model })) {
+          cacheReasoningFromAssistantMessage(msg, provider, model, {
+            scope: reasoningCacheScope,
+            historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
+          });
+        }
       } catch {
         // Cache capture is non-critical — never block the stream
       }
@@ -5224,6 +5544,53 @@ export async function handleChatCore({
       comboStrategy,
       endpoint: endpointPath,
     });
+
+    // Routing event (feedback foundation) — fire-and-forget, cheap, never blocks
+    // the stream. Feeds the quality tracker + optional OTel exporter.
+    void emitRoutingEvent(
+      createRoutingEvent({
+        requestId: traceId || pendingRequestId || "unknown",
+        provider: provider || "unknown",
+        model: model || "unknown",
+        strategy: isCombo ? (comboStrategy ?? "combo") : "direct",
+        latencyMs: Date.now() - startTime,
+        ttftMs: typeof ttft === "number" && Number.isFinite(ttft) && ttft >= 0 ? ttft : null,
+        itlMs:
+          typeof streamItlMs === "number" && Number.isFinite(streamItlMs) && streamItlMs >= 0
+            ? streamItlMs
+            : null,
+        inputTokens:
+          streamUsage && typeof streamUsage === "object"
+            ? (() => {
+                const promptTokens = (streamUsage as Record<string, unknown>).prompt_tokens;
+                return typeof promptTokens === "number" && Number.isFinite(promptTokens)
+                  ? promptTokens
+                  : null;
+              })()
+            : null,
+        outputTokens:
+          streamUsage && typeof streamUsage === "object"
+            ? (() => {
+                const completionTokens = (streamUsage as Record<string, unknown>).completion_tokens;
+                return typeof completionTokens === "number" && Number.isFinite(completionTokens)
+                  ? completionTokens
+                  : null;
+              })()
+            : null,
+        cost: null,
+        retries: 0,
+        fallbackUsed: false, // combo-level fallback tracked by decisionTrace
+        outcome:
+          normalizedStreamStatus === 200
+            ? "success"
+            : streamErrorCode === "stream_interrupted" || streamErrorCode === "aborted"
+              ? "stream_interrupted"
+              : outcomeFromStatus(normalizedStreamStatus),
+        status: normalizedStreamStatus,
+        finishReason: routingFinishReason(streamResponseBody),
+        connectionId: streamConnectionId ?? credentials?.connectionId ?? null,
+      })
+    );
 
     persistAttemptLogs({
       status: normalizedStreamStatus,

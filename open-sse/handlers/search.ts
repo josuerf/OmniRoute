@@ -7,30 +7,38 @@ import { randomUUID } from "crypto";
  *   serper-search, brave-search, perplexity-search, exa-search, tavily-search,
  *   firecrawl, google-pse-search, linkup-search, searchapi-search,
  *   youcom-search, searxng-search, ollama-search, zai-search, jina-search,
- *   duckduckgo-free
+ *   duckduckgo-free, x-search (Grok / SuperGrok X Search — explicit or search_type "x")
  *
  * Request format:
  * {
  *   "query": "search query",
  *   "provider": "serper-search" | "brave-search" | ... // optional, auto-selects cheapest
  *   "max_results": 5,
- *   "search_type": "web" | "news"
+ *   "search_type": "web" | "news" | "x"
  * }
  */
 
-import { getSearchProvider, type SearchProviderConfig } from "../config/searchRegistry.ts";
+import {
+  getSearchProvider,
+  isUnconfiguredLoopbackSearchProvider,
+  type SearchProviderConfig,
+} from "../config/searchRegistry.ts";
 import { buildPerplexityRequest, parsePerplexitySearchOptions } from "./search/perplexitySearch.ts";
 import * as fcSearch from "./search/firecrawlSearch.ts";
 import { type FirecrawlSearchEnvelope } from "./search/firecrawlSearch.ts";
 import { buildJinaSearchRequest, extractJinaSearchItems } from "./search/jinaSearch.ts";
+import * as xSearch from "./search/xSearch.ts";
 import { freeWebSearch } from "../services/freeWebSearch.ts";
 import { saveCallLog } from "@/lib/usageDb";
 import { safeOutboundFetch } from "@/shared/network/safeOutboundFetch";
+import { parseAndValidateNonMetadataUrl } from "@/shared/network/outboundUrlGuard";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
 import { sanitizeErrorMessage } from "../utils/error.ts";
+import { isValidContext7LibraryId } from "../executors/context7-fetch.ts";
 import { resolveSearchProxy, executeProviderFetch } from "./search/searchProxy.ts";
+import { formatSearchProviderFailure } from "./search/providerFailure.ts";
 
 export interface SearchResult {
   title: string;
@@ -204,6 +212,49 @@ function normalizeSerperResponse(
   };
 }
 
+// Context7 library-docs search results: { results: [{ id: "/owner/repo", title,
+// description, lastUpdateDate, stars, trustScore, ... }] }. The API has no URL
+// field — the library page URL is derived from the id. The relevance score is an
+// unbounded float (observed ~276), not a 0..1 score, so it is not mapped onto the
+// normalized 0..1 score field.
+interface Context7SearchItem {
+  id?: string;
+  title?: string;
+  description?: string;
+  lastUpdateDate?: string;
+}
+
+function normalizeContext7Response(
+  data: unknown,
+  _query: string,
+  _searchType: string
+): { results: SearchResult[]; totalResults: number | null } {
+  const now = new Date().toISOString();
+  const items = (data as { results?: Context7SearchItem[] } | null)?.results;
+  if (!Array.isArray(items)) return { results: [], totalResults: null };
+  // Only canonical library ids are usable: they are interpolated into a
+  // context7.com URL, so anything else (missing, "//evil.com", ".." traversal,
+  // query junk) is dropped instead of producing a misleading or off-site link.
+  // Shared guard with the fetch executor (isValidContext7LibraryId) — no drift.
+  const usable = items.filter((item): item is Context7SearchItem & { id: string } =>
+    isValidContext7LibraryId(item?.id ?? "")
+  );
+  const results = usable.map((item, idx: number) =>
+    makeResult(
+      "context7",
+      {
+        title: item?.title,
+        url: `https://context7.com${item.id}`,
+        snippet: item?.description,
+        published_at: item?.lastUpdateDate,
+      },
+      idx,
+      now
+    )
+  );
+  return { results, totalResults: null };
+}
+
 function normalizeBraveResponse(
   data: any,
   _query: string,
@@ -263,9 +314,23 @@ function getProviderSettingString(
   return undefined;
 }
 
-function resolveSearchBaseUrl(config: SearchProviderConfig, params: SearchRequestParams): string {
+export function resolveSearchBaseUrl(
+  config: SearchProviderConfig,
+  params: SearchRequestParams
+): string {
   const override = getProviderSettingString(params, "baseUrl");
-  return (override || config.baseUrl).replace(/\/+$/, "");
+  if (override) {
+    // GHSA-j7j4-g9qc-q69c: the override is client-controlled (provider_options /
+    // providerSpecificData) and flows into a plain fetch() sink — validate it
+    // before any builder uses it as the server-side fetch target. Mode is
+    // block-metadata (NOT public-only): the primary searxng use case is a
+    // self-hosted instance on loopback/LAN, so private hosts keep working,
+    // while cloud-metadata endpoints (IMDS credential theft) are rejected.
+    // The catalog's own config.baseUrl is operator config and stays untouched.
+    parseAndValidateNonMetadataUrl(override);
+    return override.replace(/\/+$/, "");
+  }
+  return config.baseUrl.replace(/\/+$/, "");
 }
 
 function toSearchPageNumber(offset: number | undefined, maxResults: number): number | undefined {
@@ -312,6 +377,25 @@ function buildSerperRequest(
         ...(params.token ? { "X-API-Key": params.token } : {}),
       },
       body: JSON.stringify(body),
+    },
+  };
+}
+
+// Context7 library-docs search: GET {baseUrl}/search?query=<q>. Key optional —
+// anonymous tier works without one; a configured ctx7sk-* key rides as Bearer.
+function buildContext7Request(
+  config: SearchProviderConfig,
+  params: SearchRequestParams
+): { url: string; init: RequestInit } {
+  const qp = new URLSearchParams({ query: params.query });
+  return {
+    url: `${config.baseUrl}/search?${qp}`,
+    init: {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        ...(params.token ? { Authorization: `Bearer ${params.token}` } : {}),
+      },
     },
   };
 }
@@ -617,6 +701,7 @@ type SearchRequestBuilder = (
 const requestBuilders: Record<string, SearchRequestBuilder> = {
   "serper-search": buildSerperRequest,
   "brave-search": buildBraveRequest,
+  context7: buildContext7Request,
   "perplexity-search": buildPerplexityRequest,
   "exa-search": buildExaRequest,
   "tavily-search": buildTavilyRequest,
@@ -628,6 +713,7 @@ const requestBuilders: Record<string, SearchRequestBuilder> = {
   "searxng-search": buildSearxngRequest,
   "ollama-search": buildOllamaRequest,
   "jina-search": buildJinaSearchRequest,
+  "x-search": xSearch.buildXSearchRequest,
 };
 
 function buildRequest(
@@ -1177,11 +1263,7 @@ async function tryZaiMCPProvider(
       /* non-critical — logging must not block search response */
     });
 
-    return {
-      success: false,
-      status: isTimeout ? 504 : 502,
-      error: `Search provider ${isTimeout ? "timeout" : "error"}: ${sanitizeErrorMessage(err.message)}`,
-    };
+    return formatSearchProviderFailure(config.id, err, isTimeout);
   }
 }
 
@@ -1194,6 +1276,7 @@ type SearchResponseNormalizer = (
 const responseNormalizers: Record<string, SearchResponseNormalizer> = {
   "serper-search": normalizeSerperResponse,
   "brave-search": normalizeBraveResponse,
+  context7: normalizeContext7Response,
   "perplexity-search": normalizePerplexityResponse,
   "exa-search": normalizeExaResponse,
   "tavily-search": normalizeTavilyResponse,
@@ -1206,6 +1289,7 @@ const responseNormalizers: Record<string, SearchResponseNormalizer> = {
   "searxng-search": normalizeSearxngResponse,
   "ollama-search": normalizeOllamaResponse,
   "jina-search": normalizeJinaSearchResponse,
+  "x-search": normalizeXSearchResponse,
 };
 
 function normalizeResponse(
@@ -1216,8 +1300,31 @@ function normalizeResponse(
 ): { results: SearchResult[]; totalResults: number | null } {
   const normalizer = responseNormalizers[providerId];
   if (normalizer) return normalizer(data, query, searchType);
-
   return { results: [], totalResults: null };
+}
+
+function normalizeXSearchResponse(
+  data: unknown,
+  query: string,
+  _searchType: string
+): { results: SearchResult[]; totalResults: number | null } {
+  const now = new Date().toISOString();
+  const hits = xSearch.extractXSearchHits(data, query, 20);
+  const results = hits.map((hit, idx) =>
+    makeResult(
+      "x-search",
+      {
+        title: hit.title,
+        url: hit.url,
+        snippet: hit.snippet,
+        author: hit.author,
+        source_type: "x",
+      },
+      idx,
+      now
+    )
+  );
+  return { results, totalResults: results.length };
 }
 
 function normalizeJinaSearchResponse(
@@ -1312,7 +1419,60 @@ export async function handleSearch(options: SearchHandlerOptions): Promise<Searc
     }
   }
 
-  // 4. Try primary provider
+  // 4. Try primary provider (skip catalog-default SearXNG localhost:8888,
+  // unless a request/connection override resolves it to a real URL).
+  const primaryEffectiveBaseUrl = resolveSearchBaseUrl(primaryConfig, {
+    ...requestParams,
+    providerSpecificData:
+      credentials?.providerSpecificData && typeof credentials.providerSpecificData === "object"
+        ? credentials.providerSpecificData
+        : undefined,
+  });
+  if (
+    isUnconfiguredLoopbackSearchProvider({ ...primaryConfig, baseUrl: primaryEffectiveBaseUrl })
+  ) {
+    if (log) {
+      log.warn(
+        "SEARCH",
+        "skipping catalog-default searxng-search at http://localhost:8888/search; set a real SearXNG URL"
+      );
+    }
+    const alternateEffectiveBaseUrl = alternateConfig
+      ? resolveSearchBaseUrl(alternateConfig, {
+          ...requestParams,
+          providerSpecificData:
+            alternateCredentials?.providerSpecificData &&
+            typeof alternateCredentials.providerSpecificData === "object"
+              ? alternateCredentials.providerSpecificData
+              : undefined,
+        })
+      : "";
+    if (
+      alternateConfig &&
+      alternateCredentials &&
+      !isUnconfiguredLoopbackSearchProvider({
+        ...alternateConfig,
+        baseUrl: alternateEffectiveBaseUrl,
+      })
+    ) {
+      return tryProvider(
+        alternateConfig,
+        requestParams,
+        alternateCredentials,
+        startTime,
+        log,
+        alternateCredentials?.connectionId,
+        apiKeyId
+      );
+    }
+    return {
+      success: false,
+      status: 503,
+      error:
+        "SearXNG is still on the catalog default http://localhost:8888/search. Configure a real SearXNG URL or disable the provider.",
+    };
+  }
+
   const result = await tryProvider(
     primaryConfig,
     requestParams,

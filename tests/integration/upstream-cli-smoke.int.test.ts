@@ -134,45 +134,57 @@ function runSmoke(target: string): Promise<SmokeResult> {
     child.stdout.on("data", (c) => (stdout += String(c)));
     child.stderr.on("data", (c) => (stderr += String(c)));
     const timer = setTimeout(() => child.kill("SIGKILL"), TIMEOUT_MS);
-    child.on("close", (code) => {
+    // Resolve on "exit", not "close": some CLIs leave grandchildren holding the
+    // stdio pipes after the parent dies, and "close" would wait on them forever.
+    child.on("exit", (code) => {
       clearTimeout(timer);
-      const combined = redact(stdout + "\n" + stderr);
-      resolve({
-        exitCode: code,
-        stdout: redact(stdout),
-        stderr: redact(stderr),
-        classification: classify(code, combined),
-      });
+      setTimeout(() => {
+        const combined = redact(stdout + "\n" + stderr);
+        resolve({
+          exitCode: code,
+          stdout: redact(stdout),
+          stderr: redact(stderr),
+          classification: classify(code, combined),
+        });
+      }, 250); // small grace period to flush buffered output
     });
   });
 }
 
-test("upstream CLI smoke sweep (opt-in via RUN_CLI_SMOKE=1)", { timeout: 0 }, async (t) => {
-  if (!ENABLED) {
-    t.skip("RUN_CLI_SMOKE!=1 — real smoke is operator opt-in, never automatic");
-    return;
-  }
-  assert.ok(MODEL, "OMNIROUTE_SMOKE_MODEL must name the provider/model to exercise");
-  assert.ok(
-    process.env[API_KEY_ENV] !== undefined,
-    `credential env var '${API_KEY_ENV}' must exist (value is never printed)`
-  );
-  assert.ok(await serverReachable(), `OmniRoute is not reachable at ${BASE_URL}`);
+// NOTE: node:test treats `timeout: 0` as "time out immediately", not "no
+// timeout" — size the budget from the per-target cap instead.
+const SWEEP_TIMEOUT_MS = (Object.keys(SMOKE_TARGETS).length + 1) * (TIMEOUT_MS + 30_000);
 
-  for (const target of selectedTargets()) {
-    await t.test(`smoke: ${target}`, async (st) => {
-      if (!binaryAvailable(target)) {
-        st.skip(`binary '${target}' not installed on this machine`);
-        return;
-      }
-      const result = await runSmoke(target);
-      st.diagnostic(`${target}: exit=${result.exitCode} class=${result.classification}`);
-      assert.equal(
-        result.classification,
-        "pass",
-        `${target} smoke failed (exit=${result.exitCode}, class=${result.classification}).\n` +
-          `stderr (redacted): ${result.stderr.slice(0, 500)}`
-      );
-    });
+test(
+  "upstream CLI smoke sweep (opt-in via RUN_CLI_SMOKE=1)",
+  { timeout: SWEEP_TIMEOUT_MS },
+  async (t) => {
+    if (!ENABLED) {
+      t.skip("RUN_CLI_SMOKE!=1 — real smoke is operator opt-in, never automatic");
+      return;
+    }
+    assert.ok(MODEL, "OMNIROUTE_SMOKE_MODEL must name the provider/model to exercise");
+    assert.ok(
+      process.env[API_KEY_ENV] !== undefined,
+      `credential env var '${API_KEY_ENV}' must exist (value is never printed)`
+    );
+    assert.ok(await serverReachable(), `OmniRoute is not reachable at ${BASE_URL}`);
+
+    for (const target of selectedTargets()) {
+      await t.test(`smoke: ${target}`, async (st) => {
+        if (!binaryAvailable(target)) {
+          st.skip(`binary '${target}' not installed on this machine`);
+          return;
+        }
+        const result = await runSmoke(target);
+        st.diagnostic(`${target}: exit=${result.exitCode} class=${result.classification}`);
+        assert.equal(
+          result.classification,
+          "pass",
+          `${target} smoke failed (exit=${result.exitCode}, class=${result.classification}).\n` +
+            `stderr (redacted): ${result.stderr.slice(0, 500)}`
+        );
+      });
+    }
   }
-});
+);

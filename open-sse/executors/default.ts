@@ -191,6 +191,9 @@ export class DefaultExecutor extends BaseExecutor {
         // Operator's manual override (#6147) keeps its own semantics and falls
         // through to the provider-specific handling below.
         const normalized = alternate.baseUrl.replace(/\/$/, "");
+        // A model-scoped alternate (the Gemini protocol: `{base}/{model}:generateContent`)
+        // builds its own URL — chatPath/urlSuffix are constants and cannot carry the model.
+        if (alternate.urlBuilder) return alternate.urlBuilder(normalized, model, stream);
         return `${normalized}${alternate.chatPath || ""}${alternate.urlSuffix || ""}`;
       }
     }

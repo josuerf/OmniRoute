@@ -8,7 +8,7 @@ const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-skills-in
 process.env.DATA_DIR = TEST_DATA_DIR;
 
 const coreDb = await import("../../src/lib/db/core.ts");
-const { skillRegistry } = await import("../../src/lib/skills/registry.ts");
+const { GLOBAL_SKILL_OWNER_ID, skillRegistry } = await import("../../src/lib/skills/registry.ts");
 const { injectSkills, injectSkillTools, detectProvider, decodeSkillToolName } =
   await import("../../src/lib/skills/injection.ts");
 
@@ -101,6 +101,35 @@ test("injectSkills renders enabled tools in provider-specific shapes", async () 
     },
   ]);
   assert.deepEqual(fallbackTools, [openaiTools[0]]);
+});
+
+test("injectSkills includes global skills without leaking another API key's skills", async () => {
+  await skillRegistry.register({
+    name: "releaseNotes",
+    version: "1.0.0",
+    description: "draft release notes",
+    schema: { input: {}, output: {} },
+    handler: "release-notes-handler",
+    enabled: true,
+    apiKeyId: GLOBAL_SKILL_OWNER_ID,
+  });
+  await skillRegistry.register({
+    name: "privateSkill",
+    version: "1.0.0",
+    description: "private skill",
+    schema: { input: {}, output: {} },
+    handler: "private-handler",
+    enabled: true,
+    apiKeyId: "key-b",
+  });
+
+  const tools = injectSkills({ provider: "openai", apiKeyId: "key-a" });
+
+  assert.equal(tools.length, 1);
+  assert.equal(
+    decodeSkillToolName((tools[0] as { function: { name: string } }).function.name),
+    "releaseNotes@1.0.0"
+  );
 });
 
 test("injectSkillTools only injects into the last user message without tools", async () => {

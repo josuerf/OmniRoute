@@ -15,6 +15,7 @@ import { ensureNativeSqlite } from "./ensure-native-sqlite.mjs";
 import { isTurbopackCacheCorruption, purgeAllTurbopackCaches } from "./turbopackCacheHeal.mjs";
 import { randomUUID } from "node:crypto";
 import { getMainServerTimeoutConfig } from "./main-server-timeouts.mjs";
+import { createSystemdNotifier } from "./systemd-notify.mjs";
 
 const { maybeHandleDisallowedMethod } = methodGuard;
 const { wrapRequestListenerWithHeadResponseGuard } = headResponseGuard;
@@ -60,6 +61,13 @@ for (const [key, value] of Object.entries(mergedEnv)) {
   }
 }
 
+// systemd sd_notify (Type=notify / WatchdogSec=): this process owns the
+// watchdog pings — if its event loop blocks (freeze), the pings stop and
+// systemd kills the service. No-op outside systemd (no NOTIFY_SOCKET).
+// Created AFTER .env is merged so the OMNIROUTE_DISABLE_SD_NOTIFY opt-out
+// documented in .env is honored on this path too.
+const systemdNotifier = createSystemdNotifier();
+
 // The mergedEnv copy above pulls NODE_ENV straight from `.env` — and the shipped
 // `.env.example` default is `NODE_ENV=production`. Next's programmatic `next()`
 // entry (unlike the `next` CLI) trusts that value verbatim, so `npm run dev`
@@ -75,8 +83,10 @@ const { dashboardPort } = runtimePorts;
 const hostname = process.env.HOST || "0.0.0.0";
 // Turbopack by default in dev (matches the Next 16 CLI default and the production
 // build default in build-next-isolated.mjs); OMNIROUTE_USE_TURBOPACK=0 is the
-// webpack escape hatch.
-const useTurbopack = dev && mergedEnv.OMNIROUTE_USE_TURBOPACK !== "0";
+// webpack escape hatch. Under Bun, Turbopack native V8 bindings are unavailable,
+// so Bun automatically disables Turbopack and uses Webpack.
+const isBun = Boolean(process.versions.bun);
+const useTurbopack = dev && mergedEnv.OMNIROUTE_USE_TURBOPACK !== "0" && !isBun;
 process.env.OMNIROUTE_WS_BRIDGE_SECRET ||= randomUUID();
 // Per-process secret used to prove the trusted peer-IP stamp came from this
 // server (read by the authz middleware in the same process). See peer-stamp.mjs.
@@ -184,6 +194,7 @@ async function start() {
   });
 
   const shutdown = async (signal) => {
+    systemdNotifier.stopping();
     try {
       await new Promise((resolve) => server.close(resolve));
       await nextApp.close();
@@ -202,6 +213,8 @@ async function start() {
     console.log(
       `[Next] ${mode} server listening on http://${hostname}:${dashboardPort} (${bundler})`
     );
+    systemdNotifier.ready();
+    systemdNotifier.startWatchdog();
   });
 }
 

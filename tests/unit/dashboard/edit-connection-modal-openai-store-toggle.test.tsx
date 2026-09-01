@@ -32,9 +32,8 @@ vi.mock("@/store/emailPrivacyStore", () => ({
   default: () => ({ hidden: false, toggle: vi.fn() }),
 }));
 
-const { default: EditConnectionModal } = await import(
-  "../../../src/app/(dashboard)/dashboard/providers/[id]/components/modals/EditConnectionModal.tsx"
-);
+const { default: EditConnectionModal } =
+  await import("../../../src/app/(dashboard)/dashboard/providers/[id]/components/modals/EditConnectionModal.tsx");
 
 let container: HTMLDivElement;
 let root: Root;

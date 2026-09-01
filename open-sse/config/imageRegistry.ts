@@ -8,9 +8,8 @@
 import { LMARENA_DIRECT_IMAGE_MODELS } from "./providers/registry/lmarena/directModels.ts";
 import { SEGMIND_IMAGE_PROVIDER } from "./providers/registry/segmind/imageModels.ts";
 import { KIE_IMAGE_MODELS } from "./providers/registry/kie/imageModels.ts";
-import { FREEPIK_IMAGE_PROVIDER } from "./providers/registry/freepik/index.ts";
+import { MAGNIFIC_IMAGE_PROVIDER } from "./providers/registry/magnific/index.ts";
 import { STABILITY_AI_IMAGE_MODELS } from "./providers/registry/stability-ai/imageModels.ts";
-import { GEMINI_IMAGEN_PROVIDER } from "./providers/registry/gemini/imageModels.ts";
 import { CHEAPERINFERENCE_IMAGE_PROVIDER } from "./providers/registry/cheaperinference/imageModels.ts";
 import {
   ADOBE_FIREFLY_IMAGE_ROUTING_ALIASES,
@@ -211,6 +210,7 @@ export const IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
     authHeader: "bearer",
     format: "openai", // native OpenAI format
     models: [
+      { id: "dall-e-3", name: "DALL·E 3" },
       { id: "gpt-image-2", name: "GPT Image 2" },
       { id: "gpt-image-1.5", name: "GPT Image 1.5" },
       { id: "gpt-image-1-mini", name: "GPT Image 1 Mini" },
@@ -246,6 +246,45 @@ export const IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
     format: "chatgpt-web",
     models: [{ id: "gpt-5.5", name: "GPT-5.5 Instant (ChatGPT Web Image)" }],
     supportedSizes: ["1024x1024", "1024x1536", "1536x1024"],
+  },
+
+  // #10466: Gemini Web session image generation (Nano Banana). Same
+  // web-cookie transport as the gemini-web chat provider — the handler
+  // drives the session executor in image mode and extracts the generated
+  // asset URLs from the StreamGenerate frames.
+  "gemini-web": {
+    id: "gemini-web",
+    alias: "gweb",
+    baseUrl: "https://gemini.google.com/app",
+    authType: "apikey",
+    authHeader: "cookie",
+    format: "gemini-web",
+    // `-web` suffix on purpose: the bare `nano-banana` id is owned by
+    // adobe-firefly (operator decision 2026-07-31, pinned by the
+    // cheaperinference-image-models guard). parseImageModel's bare-model scan
+    // walks providers in insertion order, so a bare `nano-banana` here would
+    // steal that resolution. Keep this id distinct.
+    models: [{ id: "nano-banana-web", name: "Nano Banana (Gemini Web Image)" }],
+    supportedSizes: ["1024x1024", "1024x1536", "1536x1024"],
+  },
+
+  // Cursor plan image generation via the Agent CLI native `generateImage` tool.
+  // Reuses the same OAuth/API-key connection as chat (`provider: "cursor"`).
+  // Requires the `agent` binary (CURSOR_AGENT_BIN) — see cursorAgentImage handler.
+  cursor: {
+    id: "cursor",
+    alias: "cu",
+    // Sentinel: execution is local Agent CLI, not an HTTP image API.
+    baseUrl: "agent://cursor-agent",
+    authType: "oauth",
+    authHeader: "bearer",
+    format: "cursor-agent-image",
+    models: [
+      { id: "auto", name: "Cursor Auto (Image)" },
+      { id: "composer-2", name: "Composer 2 (Image)" },
+      { id: "composer-2.5", name: "Composer 2.5 (Image)" },
+    ],
+    supportedSizes: ["1024x1024", "1024x1792", "1792x1024", "1024x1536", "1536x1024"],
   },
 
   "microsoft-designer-web": {
@@ -358,10 +397,6 @@ export const IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
     supportedSizes: ["1024x1024"],
   },
 
-  // Google AI Studio Imagen family — dedicated :predict endpoint, not generateContent.
-  // See providers/registry/gemini/imageModels.ts for the full rationale.
-  gemini: GEMINI_IMAGEN_PROVIDER,
-
   //Curruntly no models serving
   nebius: {
     id: "nebius",
@@ -460,7 +495,7 @@ export const IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
     ],
     supportedSizes: ["1024x1024", "1024x1792", "1792x1024"],
   },
-  freepik: FREEPIK_IMAGE_PROVIDER,
+  magnific: MAGNIFIC_IMAGE_PROVIDER,
   sdwebui: {
     id: "sdwebui",
     baseUrl: "http://localhost:7860/sdapi/v1/txt2img",
@@ -849,7 +884,12 @@ export const IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
  * Get image provider config by ID
  */
 export function getImageProvider(providerId) {
-  return IMAGE_PROVIDERS[providerId] || null;
+  if (IMAGE_PROVIDERS[providerId]) return IMAGE_PROVIDERS[providerId];
+  if (!providerId) return null;
+  for (const config of Object.values(IMAGE_PROVIDERS)) {
+    if (config.alias === providerId) return config;
+  }
+  return null;
 }
 
 /**
@@ -883,9 +923,9 @@ export function parseImageModel(modelStr) {
     }
   }
 
-  // No provider prefix — try to find the model in every provider
+  // No provider prefix — try to find the model in every provider, excluding cookie-auth (web) bridges
   for (const [providerId, config] of Object.entries(IMAGE_PROVIDERS)) {
-    if (config.routingAliases?.includes(modelStr) || config.models.some((m) => m.id === modelStr)) {
+    if (config.authHeader !== "cookie" && (config.routingAliases?.includes(modelStr) || config.models.some((m) => m.id === modelStr))) {
       return { provider: providerId, model: modelStr };
     }
   }
@@ -986,12 +1026,7 @@ export function getImageModelEntry(modelStr) {
   };
 }
 
-/**
- * An image input is only MANDATORY for edit-only models — those whose modalities
- * are `["image"]` with no `"text"`. Models listing both `["text", "image"]` accept
- * an image but can also run pure text-to-image, so they must NOT be gated on an
- * image input (that gate previously blocked 41 dual-modality t2i models).
- */
+/** Image input is mandatory only for edit-only models (`["image"]`, no `"text"`). Dual-modality models also accept pure t2i. */
 export function modalitiesRequireImageInput(inputModalities) {
   const list = Array.isArray(inputModalities) ? inputModalities : ["text"];
   return list.includes("image") && !list.includes("text");

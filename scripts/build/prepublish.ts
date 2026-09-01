@@ -22,14 +22,12 @@ import {
   readdirSync,
   statSync,
   chmodSync,
-  openSync,
-  readSync,
-  closeSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assembleStandalone } from "./assembleStandalone.mjs";
+import { isNativeExecutable, resolveLocalBinEntry } from "./buildToolRunner.mjs";
 import { resolveBundledNpmEntry } from "./resolveNpmEntry.ts";
 import {
   APP_STAGING_ALLOWED_EXACT_PATHS,
@@ -51,52 +49,15 @@ const NPX_BIN = process.platform === "win32" ? "npx.cmd" : "npx";
 //
 // `shell: true` would fix the spawn but disables argument escaping (DEP0190), so it
 // is only the last resort. Preferred order: run the tool's own JS entry point with
-// this Node binary — no shim, no shell, nothing to escape.
-function resolveLocalBinEntry(packageName: string, binName: string): string | null {
-  try {
-    const packageJsonPath = join(ROOT, "node_modules", packageName, "package.json");
-    if (!existsSync(packageJsonPath)) return null;
-    const meta = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-      bin?: string | Record<string, string>;
-    };
-    const relative = typeof meta.bin === "string" ? meta.bin : meta.bin?.[binName];
-    if (!relative) return null;
-    const absolute = join(ROOT, "node_modules", packageName, relative);
-    return existsSync(absolute) ? absolute : null;
-  } catch {
-    return null;
-  }
-}
+// this Node binary — no shim, no shell, nothing to escape. `resolveLocalBinEntry()`
+// and `isNativeExecutable()` implement that resolution and now live in
+// buildToolRunner.mjs, shared with the plain-`node` build scripts.
 
 /**
  * Runs a build tool without ever touching a `.cmd` shim. `packageName` is where the
  * tool lives in the local dependency tree; when it is not installed there the call
  * falls back to the Node-resolved `npx` entry point, and only then to the shim.
  */
-/**
- * esbuild ≥0.25 ships its `bin/esbuild` as the NATIVE platform executable on
- * Linux/macOS (ELF / Mach-O) instead of a JS shim — running it through
- * `process.execPath` makes Node parse machine code as JavaScript and crash with
- * "SyntaxError: Invalid or unexpected token". Sniff the magic bytes and exec
- * native entries directly; JS entries keep going through this Node binary.
- */
-function isNativeExecutable(entryPath: string): boolean {
-  try {
-    const fd = openSync(entryPath, "r");
-    const head = Buffer.alloc(4);
-    readSync(fd, head, 0, 4, 0);
-    closeSync(fd);
-    return (
-      (head[0] === 0x7f && head[1] === 0x45 && head[2] === 0x4c && head[3] === 0x46) || // ELF
-      head.readUInt32BE(0) === 0xfeedfacf || // Mach-O 64
-      head.readUInt32BE(0) === 0xcffaedfe || // Mach-O 64 (LE on disk)
-      (head[0] === 0x4d && head[1] === 0x5a) // PE (Windows MZ)
-    );
-  } catch {
-    return false;
-  }
-}
-
 function runBuildTool(
   packageName: string,
   binName: string,
@@ -402,7 +363,7 @@ runBuildTool(
 // The worker is spawned via worker_threads at a path the Next.js bundler cannot
 // statically trace, so it must ship as a standalone .js (mirrors the MCP-server
 // bundling above). Heavy deps (@atjsh/llmlingua-2 / @huggingface/transformers /
-// @tensorflow/tfjs / js-tiktoken) stay EXTERNAL — they are optionalDependencies,
+// js-tiktoken) stay EXTERNAL — they are optionalDependencies,
 // dynamically imported at runtime, and the worker fail-opens if any is absent.
 const llmWorkerSrc = join(
   ROOT,
@@ -445,6 +406,40 @@ if (existsSync(llmWorkerSrc)) {
     console.warn("  ⚠️  LLMLingua worker bundle error:", err.message);
   }
 }
+
+// ── Step 8.6b: Bundle synchronous compression worker ──────────────────
+const compressionWorkerSrc = join(
+  ROOT,
+  "open-sse",
+  "services",
+  "compression",
+  "compressionWorker.ts"
+);
+const compressionWorkerDest = join(
+  DIST_DIR,
+  "open-sse",
+  "services",
+  "compression",
+  "compressionWorker.js"
+);
+if (!existsSync(compressionWorkerSrc)) {
+  throw new Error("Required compression worker source is missing");
+}
+console.log("  🔨 Bundling compression worker...");
+mkdirSync(dirname(compressionWorkerDest), { recursive: true });
+runBuildTool(
+  "esbuild",
+  "esbuild",
+  [
+    "open-sse/services/compression/compressionWorker.ts",
+    "--bundle",
+    "--platform=node",
+    "--packages=external",
+    "--format=esm",
+    "--outfile=dist/open-sse/services/compression/compressionWorker.js",
+  ],
+  { cwd: ROOT, stdio: "inherit" }
+);
 
 // ── Step 8.7: Bundle CLI Entrypoint ──────────────────────────
 const cliSrcFile = join(ROOT, "bin", "omniroute.ts");
@@ -678,10 +673,15 @@ for (const relativePath of APP_STAGING_REMOVAL_PATHS) {
 }
 
 // ── Step 10.7: Prune any staged dist/ file outside the allowed runtime set ──
+// #9985: neverAllowedSegments is EMPTY here on purpose — unlike the publish
+// tarball gate, the staged dist/ legitimately contains node_modules (the
+// standalone server's runtime deps, including Turbopack-hashed packages whose
+// wasm files DB init requires). The allowlist prefixes above are the contract.
 const stagedFiles = walkFiles(DIST_DIR);
 const unexpectedStagedFiles = findUnexpectedArtifactPaths(stagedFiles, {
   exactPaths: APP_STAGING_ALLOWED_EXACT_PATHS,
   prefixPaths: APP_STAGING_ALLOWED_PATH_PREFIXES,
+  neverAllowedSegments: [],
 });
 
 if (unexpectedStagedFiles.length > 0) {
@@ -696,6 +696,7 @@ if (unexpectedStagedFiles.length > 0) {
 const remainingUnexpectedFiles = findUnexpectedArtifactPaths(walkFiles(DIST_DIR), {
   exactPaths: APP_STAGING_ALLOWED_EXACT_PATHS,
   prefixPaths: APP_STAGING_ALLOWED_PATH_PREFIXES,
+  neverAllowedSegments: [],
 });
 
 if (remainingUnexpectedFiles.length > 0) {

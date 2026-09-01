@@ -70,10 +70,15 @@ test.after(async () => {
 const REAL_FETCH = globalThis.fetch;
 let fetchCallCount = 0;
 
+function isOpenRouterCatalogUrl(input: RequestInfo | URL): boolean {
+  const url = String(input instanceof Request ? input.url : input);
+  return url.includes("openrouter.ai");
+}
+
 function installFakeOpenRouterFetch(): void {
   fetchCallCount = 0;
-  globalThis.fetch = (async () => {
-    fetchCallCount++;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    if (isOpenRouterCatalogUrl(input)) fetchCallCount++;
     return new Response(JSON.stringify({ data: [{ id: "test/fake-model", architecture: {} }] }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -83,8 +88,8 @@ function installFakeOpenRouterFetch(): void {
 
 function installFailingOpenRouterFetch(): void {
   fetchCallCount = 0;
-  globalThis.fetch = (async () => {
-    fetchCallCount++;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    if (isOpenRouterCatalogUrl(input)) fetchCallCount++;
     throw new Error("simulated OpenRouter network failure");
   }) as typeof fetch;
 }

@@ -50,7 +50,6 @@ export const OPTIONAL_PACKS = [
       { name: "@huggingface/transformers" },
       { name: "onnxruntime-node" },
       { name: "@atjsh/llmlingua-2" },
-      { name: "@tensorflow/tfjs" },
       { name: "js-tiktoken" },
     ],
   },
@@ -156,7 +155,7 @@ export async function dirChecksum(dir) {
       hash.update(String(size));
       hash.update("\0");
       try {
-        // Stream to keep memory bounded on multi-hundred-MB packages (tfjs).
+        // Stream to keep memory bounded on multi-hundred-MB packages (onnxruntime-node).
         for await (const chunk of createReadStream(absolute)) hash.update(chunk);
       } catch {
         hash.update("<unreadable>");

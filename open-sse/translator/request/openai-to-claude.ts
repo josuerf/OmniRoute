@@ -7,10 +7,17 @@ import { sanitizeToolId } from "../helpers/schemaCoercion.ts";
 import { safeParseJSON } from "../helpers/jsonUtil.ts";
 import { applyKimiCodingThinking } from "../helpers/claudeHelper.ts";
 import { DEFAULT_THINKING_CLAUDE_SIGNATURE } from "../../config/defaultThinkingSignature.ts";
-import { getDefaultThinkingBudget, isAdaptiveThinkingOnly } from "../../../src/shared/constants/modelSpecs.ts";
+import {
+  getDefaultThinkingBudget,
+  isAdaptiveThinkingOnly,
+} from "../../../src/shared/constants/modelSpecs.ts";
 import { fitThinkingToMaxTokens } from "./openai-to-claude/thinkingBudget.ts";
 import { enforceToolResultAdjacency } from "./openai-to-claude/toolResultAdjacency.ts";
 import { sanitizeToolResultId } from "./openai-to-claude/sanitizeToolResultId.ts";
+import {
+  openAiImagePartToClaudeBlock,
+  normalizeToolResultImages,
+} from "./openai-to-claude/imageBlocks.ts";
 
 // Reasoning-effort levels Anthropic accepts on `output_config.effort`. Used to steer
 // adaptive-only Claude models (Opus 4.7+/Fable 5) without ever emitting a manual budget.
@@ -534,9 +541,10 @@ function getContentBlocksFromMessage(
     const sanitizedToolUseId = sanitizeToolResultId(msg.tool_call_id); // #7705
     if (!sanitizedToolUseId) return blocks;
     // T02: Strip empty text blocks from nested tool_result content to avoid Anthropic 400
-    const toolContent = Array.isArray(msg.content)
-      ? stripEmptyTextBlocks(msg.content)
-      : msg.content;
+    // #9692: rewrite OpenAI image_url parts to Claude image blocks (same as user turns)
+    const toolContent = normalizeToolResultImages(
+      Array.isArray(msg.content) ? stripEmptyTextBlocks(msg.content) : msg.content
+    );
     blocks.push({
       type: "tool_result",
       tool_use_id: sanitizedToolUseId,
@@ -555,43 +563,19 @@ function getContentBlocksFromMessage(
           // Skip tool_result with no tool_use_id (would be useless and may cause errors)
           if (!part.tool_use_id) continue;
           // T02: strip empty text blocks from nested content before passing to Anthropic
-          const resultContent = Array.isArray(part.content)
-            ? stripEmptyTextBlocks(part.content)
-            : part.content;
+          // #9692: convert OpenAI image_url nested in tool_result the same way
+          const resultContent = normalizeToolResultImages(
+            Array.isArray(part.content) ? stripEmptyTextBlocks(part.content) : part.content
+          );
           blocks.push({
             type: "tool_result",
             tool_use_id: sanitizeToolId(part.tool_use_id), // #7705
             content: resultContent,
             ...(part.is_error && { is_error: part.is_error }),
           });
-        } else if (part.type === "image_url") {
-          const url = part.image_url.url;
-          const match = url.match(/^data:([^;]+);base64,(.+)$/);
-          if (match) {
-            blocks.push({
-              type: "image",
-              source: { type: "base64", media_type: match[1], data: match[2] },
-            });
-          } else if (typeof url === "string" && url.trim()) {
-            blocks.push({
-              type: "image",
-              source: { type: "url", url },
-            });
-          }
-        } else if (part.type === "image" && part.source) {
-          blocks.push({ type: "image", source: part.source });
-        } else if (part.type === "image" && typeof part.image === "string") {
-          // AI SDK-style image part: { type: "image", image: "data:...;base64,..." } (#1330)
-          const url = part.image;
-          const match = url.match(/^data:([^;]+);base64,(.+)$/);
-          if (match) {
-            blocks.push({
-              type: "image",
-              source: { type: "base64", media_type: match[1], data: match[2] },
-            });
-          } else if (url.trim()) {
-            blocks.push({ type: "image", source: { type: "url", url } });
-          }
+        } else if (part.type === "image_url" || part.type === "image") {
+          const imageBlock = openAiImagePartToClaudeBlock(part);
+          if (imageBlock) blocks.push(imageBlock);
         } else if (part.type === "file" && (part.file?.file_data || part.file?.data)) {
           // OpenAI Chat Completions file block:
           // {type:"file", file:{filename, file_data:"data:<mime>;base64,..."}}.

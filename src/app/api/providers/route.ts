@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
 import { getAuditRequestContext, logAuditEvent } from "@/lib/compliance/index";
 import {
   getProviderAuditTarget,
@@ -17,6 +18,7 @@ import {
   isClaudeCodeCompatibleProvider,
   isOpenAICompatibleProvider,
   isAnthropicCompatibleProvider,
+  resolveProviderId,
 } from "@/shared/constants/providers";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { syncToCloud } from "@/lib/cloudSync";
@@ -26,6 +28,7 @@ import {
 } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { normalizeQoderPatProviderData } from "@omniroute/open-sse/services/qoderCli";
+import { projectCodexAccountPool } from "@omniroute/open-sse/services/codexAccount/index.ts";
 import {
   normalizeProviderSpecificData,
   sanitizeProviderSpecificDataForResponse,
@@ -64,16 +67,31 @@ export async function GET(request: Request) {
     const revealKeys = isApiKeyRevealEnabled();
 
     // Hide or mask sensitive fields
-    const safeConnections = connections.map((c) => ({
-      ...c,
-      apiKey: revealKeys ? c.apiKey : c.apiKey ? maskStoredApiKey(c.apiKey) : undefined,
-      accessToken: undefined,
-      refreshToken: undefined,
-      idToken: undefined,
-      providerSpecificData: c.providerSpecificData
+    const safeConnections = connections.map((c) => {
+      const providerSpecificData = c.providerSpecificData
         ? sanitizeProviderSpecificDataForResponse(c.providerSpecificData)
-        : undefined,
-    }));
+        : undefined;
+      return {
+        ...c,
+        apiKey: revealKeys ? c.apiKey : c.apiKey ? maskStoredApiKey(c.apiKey) : undefined,
+        accessToken: undefined,
+        refreshToken: undefined,
+        idToken: undefined,
+        providerSpecificData,
+        ...(c.provider === "codex"
+          ? {
+              codexAccountPool: projectCodexAccountPool(
+                {
+                  id: c.id,
+                  provider: c.provider,
+                  providerSpecificData: c.providerSpecificData ?? {},
+                },
+                Date.now()
+              ),
+            }
+          : {}),
+      };
+    });
 
     return NextResponse.json({ connections: safeConnections, total });
   } catch (error) {
@@ -98,7 +116,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
     const {
-      provider,
+      provider: requestedProvider,
       apiKey,
       name,
       priority,
@@ -107,6 +125,7 @@ export async function POST(request: Request) {
       testStatus,
       providerSpecificData: incomingPsd,
     } = validation.data;
+    const provider = resolveProviderId(requestedProvider);
 
     // Business validation
     const isValidProvider =
@@ -120,8 +139,6 @@ export async function POST(request: Request) {
 
     let providerSpecificData = incomingPsd || null;
     let persistedApiKey = apiKey;
-    const allowMultipleCompatibleConnections =
-      process.env.ALLOW_MULTI_CONNECTIONS_PER_COMPAT_NODE === "true";
 
     if (provider === "qoder") {
       providerSpecificData = normalizeQoderPatProviderData(providerSpecificData || {});
@@ -156,7 +173,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
       }
 
-      const existingConnections = await getProviderConnections({ provider });
       // Allow multiple connections for compatible nodes exactly like first-party providers
 
       providerSpecificData = {
@@ -182,7 +198,6 @@ export async function POST(request: Request) {
         );
       }
 
-      const existingConnections = await getProviderConnections({ provider });
       // Allow multiple connections for compatible nodes exactly like first-party providers
 
       providerSpecificData = {

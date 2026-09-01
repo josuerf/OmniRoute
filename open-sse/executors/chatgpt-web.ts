@@ -32,7 +32,11 @@ import {
   __resetChatGptImageCacheForTesting,
   type ChatGptImageConversationContext,
 } from "../services/chatgptImageCache.ts";
-import { isThinkingCapableModel, resolveChatGptModel } from "./chatgpt-web/models.ts";
+import {
+  resolveChatGptModel,
+  resolveChatGptSystemHints,
+  type ChatGptThinkingEffort,
+} from "./chatgpt-web/models.ts";
 import { cleanChatGptText } from "./chatgpt-web/citations.ts";
 import { resumeChatGptHandoff, type FinalAssistantAnswer } from "./chatgpt-web/handoff.ts";
 
@@ -43,7 +47,6 @@ const SESSION_URL = `${CHATGPT_BASE}/api/auth/session`;
 const SENTINEL_PREPARE_URL = `${CHATGPT_BASE}/backend-api/sentinel/chat-requirements/prepare`;
 const SENTINEL_CR_URL = `${CHATGPT_BASE}/backend-api/sentinel/chat-requirements`;
 const CONV_URL = `${CHATGPT_BASE}/backend-api/f/conversation`;
-const USER_LAST_USED_MODEL_CONFIG_URL = `${CHATGPT_BASE}/backend-api/settings/user_last_used_model_config`;
 const DEFAULT_PRO_POLL_TIMEOUT_MS = 20 * 60_000;
 const DEFAULT_PRO_POLL_INTERVAL_MS = 4_000;
 
@@ -81,10 +84,8 @@ function deviceIdFor(cookie: string): string {
   return id;
 }
 
-// OmniRoute model ID → ChatGPT internal slug. The public ChatGPT Web catalog
-// keeps OmniRoute's historical dot-form IDs (e.g. "gpt-5.5-pro"), while
-// ChatGPT's backend routes use dash-form slugs (e.g. "gpt-5-5-pro"). The slug
-// catalog comes from /backend-api/models on a logged-in account.
+// OmniRoute model IDs select a GPT-5.6 Sol performance lane. Captured browser
+// requests use one of `gpt-5-6`, `gpt-5-6-thinking`, or `gpt-5-6-pro`.
 
 // ─── Browser-like default headers ──────────────────────────────────────────
 
@@ -408,25 +409,6 @@ async function runSessionWarmup(
   }
 }
 
-// ─── Thinking-effort preference (PATCH user_last_used_model_config) ────────
-// chatgpt.com has two thinking levels for its dedicated thinking-models:
-//   • standard — default, faster
-//   • extended — longer reasoning budget
-// The browser sets the level by PATCHing `/backend-api/settings/user_last_used_model_config`
-// once, then issues the conversation request — the conversation endpoint itself
-// has no `thinking_effort` field; the server reads the user's stored preference
-// at routing time. We mirror that handshake when an OpenAI-style request
-// includes `reasoning_effort` (or a direct `providerSpecificData.thinkingEffort`
-// override).
-//
-// Cached per (cookie, slug, effort): the preference persists server-side, so
-// re-PATCHing the same combination is wasted bytes. Refreshed on TTL expiry or
-// whenever the caller switches efforts.
-
-const thinkingEffortCache = new Map<string, number>();
-const THINKING_EFFORT_TTL_MS = 5 * 60 * 1000;
-const THINKING_EFFORT_CACHE_MAX = 400;
-
 function configuredProPollTimeoutMs(): number {
   const raw = Number(process.env.OMNIROUTE_CGPT_WEB_PRO_TIMEOUT_MS);
   if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_PRO_POLL_TIMEOUT_MS;
@@ -437,73 +419,6 @@ function configuredProPollIntervalMs(): number {
   const raw = Number(process.env.OMNIROUTE_CGPT_WEB_PRO_POLL_INTERVAL_MS);
   if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_PRO_POLL_INTERVAL_MS;
   return Math.floor(raw);
-}
-
-async function setUserThinkingEffort(
-  modelSlug: string,
-  effort: "standard" | "extended" | "max",
-  accessToken: string,
-  accountId: string | null,
-  sessionId: string,
-  deviceId: string,
-  cookie: string,
-  signal: AbortSignal | null | undefined,
-  log:
-    | {
-        debug?: (tag: string, msg: string) => void;
-        warn?: (tag: string, msg: string) => void;
-      }
-    | null
-    | undefined
-): Promise<void> {
-  const cacheKey = `${cookieKey(cookie)}:${modelSlug}:${effort}`;
-  const now = Date.now();
-  const last = thinkingEffortCache.get(cacheKey);
-  if (last && now - last < THINKING_EFFORT_TTL_MS) {
-    log?.debug?.("CGPT-WEB", `thinking_effort cached (${modelSlug}=${effort}) — skip PATCH`);
-    return;
-  }
-  if (thinkingEffortCache.size >= THINKING_EFFORT_CACHE_MAX && !thinkingEffortCache.has(cacheKey)) {
-    const first = thinkingEffortCache.keys().next().value;
-    if (first) thinkingEffortCache.delete(first);
-  }
-
-  const url =
-    `${USER_LAST_USED_MODEL_CONFIG_URL}` +
-    `?model_slug=${encodeURIComponent(modelSlug)}` +
-    `&thinking_effort=${encodeURIComponent(effort)}`;
-  const headers: Record<string, string> = {
-    ...browserHeaders(),
-    ...oaiHeaders(sessionId, deviceId),
-    Accept: "application/json",
-    Authorization: `Bearer ${accessToken}`,
-    Cookie: buildSessionCookieHeader(cookie),
-    Priority: "u=4",
-  };
-  if (accountId) headers["chatgpt-account-id"] = accountId;
-
-  try {
-    const r = await tlsFetchChatGpt(url, {
-      method: "PATCH",
-      headers,
-      timeoutMs: 15_000,
-      signal,
-    });
-    if (r.status >= 400) {
-      log?.warn?.(
-        "CGPT-WEB",
-        `thinking_effort PATCH ${r.status} for ${modelSlug}=${effort} (continuing)`
-      );
-      return;
-    }
-    thinkingEffortCache.set(cacheKey, now);
-    log?.debug?.("CGPT-WEB", `thinking_effort PATCH OK (${modelSlug}=${effort})`);
-  } catch (err) {
-    log?.warn?.(
-      "CGPT-WEB",
-      `thinking_effort PATCH failed: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
 }
 
 async function prepareChatRequirements(
@@ -889,6 +804,7 @@ interface ChatGptMessage {
   id: string;
   author: { role: string };
   content: { content_type: "text"; parts: string[] };
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -984,7 +900,8 @@ function buildConversationBody(
     // chatgpt.com history. Disable Temporary Chat only when ChatGPT needs a
     // durable image conversation (image generation/editing).
     persistConversation: boolean;
-    thinkingEffort: "standard" | "extended" | "max" | null;
+    thinkingEffort: ChatGptThinkingEffort | null;
+    systemHints: readonly string[];
     continuation?: ChatGptImageConversationContext | null;
   }
 ): Record<string, unknown> {
@@ -1021,6 +938,8 @@ function buildConversationBody(
     });
   }
 
+  const systemHints = options.systemHints;
+
   const currentUserContent = hasOpenWebUIImageContext(parsed)
     ? "Briefly acknowledge the image result described in the system context. Do not generate, edit, or request another image."
     : parsed.currentMsg || "";
@@ -1029,6 +948,7 @@ function buildConversationBody(
     id: randomUUID(),
     author: { role: "user" },
     content: { content_type: "text", parts: [currentUserContent] },
+    ...(systemHints.length > 0 ? { metadata: { system_hints: [...systemHints] } } : {}),
   });
 
   return {
@@ -1051,6 +971,7 @@ function buildConversationBody(
     supports_buffering: true,
     force_parallel_switch: "auto",
     paragen_cot_summary_display_override: "allow",
+    ...(systemHints.length > 0 ? { system_hints: [...systemHints] } : {}),
     ...(options.thinkingEffort ? { thinking_effort: options.thinkingEffort } : {}),
   };
 }
@@ -2920,24 +2841,6 @@ export class ChatGptWebExecutor extends BaseExecutor {
       log
     );
 
-    // 2a''. Apply thinking-effort preference for thinking models.
-    // Dedicated thinking models mirror the browser's user-config PATCH;
-    // GPT-5.5 Pro effort is sent with the conversation body.
-    const requestedEffort = resolvedModel.effort;
-    if (requestedEffort && isThinkingCapableModel(model, modelSlug)) {
-      await setUserThinkingEffort(
-        modelSlug,
-        requestedEffort,
-        tokenEntry.accessToken,
-        tokenEntry.accountId,
-        sessionId,
-        deviceId,
-        cookie,
-        signal,
-        log
-      );
-    }
-
     // 2b. Sentinel chat-requirements
     let reqs: ChatRequirements;
     try {
@@ -3019,7 +2922,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
     }
 
     // Toggle Temporary Chat off only when ChatGPT needs a durable image
-    // conversation. Text requests, including GPT-5.5 Pro, stay temporary so
+    // conversation. Text requests, including GPT-5.6 Sol Pro, stay temporary so
     // they do not show up in the user's chatgpt.com sidebar/history.
     const imageEdit = looksLikeImageEditRequest(parsed);
     const continuation = imageEdit ? parsed.latestImageContext : null;
@@ -3033,13 +2936,14 @@ export class ChatGptWebExecutor extends BaseExecutor {
           : "Image-gen intent detected — disabling Temporary Chat for this turn"
       );
     } else if (resolvedModel.isPro) {
-      log?.debug?.("CGPT-WEB", "GPT-5.5 Pro text request — keeping Temporary Chat enabled");
+      log?.debug?.("CGPT-WEB", "GPT-5.6 Sol Pro text request — keeping Temporary Chat enabled");
     }
 
     const parentMessageId = continuation?.parentMessageId ?? randomUUID();
     const cgptBody = buildConversationBody(parsed, modelSlug, parentMessageId, {
       persistConversation,
-      thinkingEffort: requestedEffort,
+      thinkingEffort: resolvedModel.effort,
+      systemHints: resolveChatGptSystemHints(model),
       continuation,
     });
 
@@ -3230,7 +3134,6 @@ function stringToStream(text: string): ReadableStream<Uint8Array> {
 export function __resetChatGptWebCachesForTesting(): void {
   tokenCache.clear();
   warmupCache.clear();
-  thinkingEffortCache.clear();
   deviceIdCache.clear();
   __resetChatGptImageCacheForTesting();
   dplCache = null;

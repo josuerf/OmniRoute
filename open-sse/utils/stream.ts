@@ -10,6 +10,7 @@ import {
   filterUsageForFormat,
   normalizeUsage as normalizeTokenUsage,
   sanitizeUsagePayloadForRequest,
+  type UsageLike,
 } from "./usageTracking.ts";
 import {
   parseSSELine,
@@ -36,6 +37,7 @@ import {
 import { STREAM_IDLE_TIMEOUT_MS, FETCH_BODY_TIMEOUT_MS, HTTP_STATUS } from "../config/constants.ts";
 import {
   OMIT_STREAMING_CHUNK_MARKER,
+  isResponsesCommentaryMessageItem,
   sanitizeStreamingChunk,
 } from "../handlers/responseSanitizer.ts";
 import { isFeatureFlagEnabled } from "@/shared/utils/featureFlags";
@@ -59,6 +61,7 @@ import {
 } from "../services/sessionManager.ts";
 import {
   backfillResponsesCompletedOutput,
+  filterResponsesCommentaryFromItems,
   normalizeResponsesCompletedUsage as normalizeUsage,
   normalizeResponsesSseIds,
   pushUniqueResponsesOutputItems,
@@ -81,6 +84,7 @@ import {
 import { restoreClaudeToolName } from "../services/claudeCodeToolRemapper.ts";
 import { normalizeFinalOpenAIStreamChunk } from "./openAIStreamChunk.ts";
 import { collectClaudeDelta } from "./streamClaudeDelta.ts";
+import { createStreamTiming, type StreamTiming } from "./streamTiming.ts";
 
 /**
  * Race a response body read against a timeout.
@@ -129,7 +133,15 @@ type StreamCompletePayload = {
   clientPayload?: unknown;
   error?: string | null;
   errorCode?: string | null;
+  /**
+   * Time-to-first-forwarded-SSE-chunk in ms, or null when nothing was forwarded.
+   * NOT token-level TTFT — see open-sse/utils/streamTiming.ts for what is measured.
+   */
   ttft?: number | null;
+  /** Mean inter-chunk gap in ms (chunk-latency proxy for ITL), or null. */
+  itlMs?: number | null;
+  /** True when the stream was interrupted (timeout/abort/error) before a clean finish. */
+  interrupted?: boolean;
 };
 
 type StreamOptions = {
@@ -577,7 +589,10 @@ function getOpenAIIntermediateChunks(value: unknown): unknown[] {
   return Array.isArray(candidate) ? candidate : [];
 }
 
-export function restoreClaudePassthroughToolUseName(parsed: JsonRecord, toolNameMap: unknown): boolean {
+export function restoreClaudePassthroughToolUseName(
+  parsed: JsonRecord,
+  toolNameMap: unknown
+): boolean {
   const block =
     parsed.content_block && typeof parsed.content_block === "object"
       ? (parsed.content_block as JsonRecord)
@@ -660,6 +675,16 @@ export function createSSEStream(options: StreamOptions = {}) {
     performance.clearMarks("omni-request-body-size");
   }
 
+  // Canonical streaming timing (TTFT / ITL / interruption). One instance per
+  // stream, marked from the transform below. ttft() = first-forwarded-SSE-chunk
+  // latency (NOT token-level) — see streamTiming.ts.
+  const timing: StreamTiming = createStreamTiming();
+  /** Forward a pre-encoded SSE chunk, marking TTFT/ITL on the way. */
+  const forward = (controller: TransformStreamDefaultController<Uint8Array>, bytes: Uint8Array) => {
+    timing.markForward();
+    controller.enqueue(bytes);
+  };
+
   // Drop internal commentary-phase Responses output before forwarding (#6199).
   // Explicit option wins; otherwise read the feature flag (default on) — resolved once per stream.
   const shouldDropResponsesCommentary =
@@ -699,7 +724,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     !clientExpectsResponsesStream && !clientExpectsClaudeStream && !clientExpectsAntigravityStream;
 
   let buffer = "";
-  let usage: UsageTokenRecord | null = null;
+  let usage: UsageLike | null = null;
   /** Passthrough (OpenAI CC shape): saw tool_calls in stream before finish_reason */
   let passthroughHasToolCalls = false;
   /** Passthrough: whether a chunk with non-null finish_reason was seen (#7800) */
@@ -948,7 +973,7 @@ export function createSSEStream(options: StreamOptions = {}) {
       clientPayloadCollector.push(event);
       const output = formatSSE(event, FORMATS.CLAUDE);
       reqLogger?.appendConvertedChunk?.(output);
-      controller.enqueue(encoder.encode(output));
+      forward(controller, encoder.encode(output));
     }
   };
 
@@ -973,7 +998,8 @@ export function createSSEStream(options: StreamOptions = {}) {
     const errOutput = formatSSE(errorEvent, FORMATS.CLAUDE);
     reqLogger?.appendConvertedChunk?.(errOutput);
     clientPayloadCollector.push(errorEvent);
-    controller.enqueue(encoder.encode(errOutput));
+    forward(controller, encoder.encode(errOutput));
+    timing.markInterrupted();
     let failureHandled = false;
     if (onFailure) {
       try {
@@ -1007,7 +1033,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     if (
       state?.finishReason &&
       isFinishChunk &&
-      !hasValidUsage(itemSanitized.usage) &&
+      !hasValidUsage(itemSanitized.usage as UsageLike) &&
       totalContentLength > 0
     ) {
       const estimated = estimateUsage(body, totalContentLength, sourceFormat);
@@ -1034,7 +1060,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     clientPayloadCollector.push(itemSanitized);
     reqLogger?.appendConvertedChunk?.(output);
     forwardedValuableChunk = true;
-    controller.enqueue(encoder.encode(output));
+    forward(controller, encoder.encode(output));
   };
 
   const emitFinalSseMetadata = async (
@@ -1059,7 +1085,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     });
     if (!comment) return;
     reqLogger?.appendConvertedChunk?.(comment);
-    controller.enqueue(encoder.encode(comment));
+    forward(controller, encoder.encode(comment));
   };
 
   const getResponsesReasoningKey = (payload: Record<string, unknown>): string | null => {
@@ -1146,7 +1172,7 @@ export function createSSEStream(options: StreamOptions = {}) {
       clientPayloadCollector.push(syntheticEvent.body);
       const output = `event: ${syntheticEvent.event}\ndata: ${JSON.stringify(syntheticEvent.body)}\n\n`;
       reqLogger?.appendConvertedChunk?.(output);
-      controller.enqueue(encoder.encode(output));
+      forward(controller, encoder.encode(output));
     }
   };
 
@@ -1164,6 +1190,7 @@ export function createSSEStream(options: StreamOptions = {}) {
               let failureHandled = false;
               if (onFailure) {
                 try {
+                  timing.markInterrupted();
                   failureHandled =
                     onFailure({
                       status: HTTP_STATUS.GATEWAY_TIMEOUT,
@@ -1195,6 +1222,7 @@ export function createSSEStream(options: StreamOptions = {}) {
       transform(chunk, controller) {
         if (streamTimedOut) return;
         const now = Date.now();
+        timing.markByte();
         lastChunkTime = now;
         const text = decoder.decode(chunk, { stream: true });
         buffer += text;
@@ -1253,7 +1281,7 @@ export function createSSEStream(options: StreamOptions = {}) {
               const pendingOutput = passthroughEventPrefix.flush();
               if (pendingOutput) {
                 reqLogger?.appendConvertedChunk?.(pendingOutput);
-                controller.enqueue(encoder.encode(pendingOutput));
+                forward(controller, encoder.encode(pendingOutput));
               }
               clearPendingPassthroughEvent();
               continue;
@@ -1420,7 +1448,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                             clientPayloadCollector.push(event);
                           }
                           reqLogger?.appendConvertedChunk?.(output);
-                          controller.enqueue(encoder.encode(output));
+                          forward(controller, encoder.encode(output));
                           injectedUsage = true;
                         } else {
                           output = `data: ${JSON.stringify(parsed)}\n\n`;
@@ -1540,11 +1568,26 @@ export function createSSEStream(options: StreamOptions = {}) {
                       }
                     }
                   }
+                  let responsesCommentaryStrippedFromCompleted = false;
                   if (
                     parsed.type === "response.completed" &&
                     Array.isArray(parsed.response?.output) &&
                     parsed.response.output.length > 0
                   ) {
+                    // #10156 — an upstream may echo a `phase:"commentary"` item back
+                    // inside a non-empty terminal `output` array even though its live
+                    // SSE frames were already dropped above. Keep both representations
+                    // consistent by applying the same drop here.
+                    if (shouldDropResponsesCommentary) {
+                      const { items, changed } = filterResponsesCommentaryFromItems(
+                        parsed.response.output,
+                        isResponsesCommentaryMessageItem
+                      );
+                      if (changed) {
+                        parsed.response.output = items;
+                        responsesCommentaryStrippedFromCompleted = true;
+                      }
+                    }
                     pushUniqueResponsesOutputItems(
                       passthroughResponsesOutputItems,
                       parsed.response.output
@@ -1588,9 +1631,19 @@ export function createSSEStream(options: StreamOptions = {}) {
                     ]) as typeof parsed;
                   }
                   const stripped = stripResponsesLifecycleEcho(parsed);
+                  // Belt-and-suspenders for #10156: filter the backfill buffer itself
+                  // before it can seed an empty `response.completed.response.output`,
+                  // in case a future code path pushes a commentary item into it
+                  // without going through the response.completed branch above.
+                  const backfillCandidates = shouldDropResponsesCommentary
+                    ? filterResponsesCommentaryFromItems(
+                        passthroughResponsesOutputItems,
+                        isResponsesCommentaryMessageItem
+                      ).items
+                    : passthroughResponsesOutputItems;
                   const backfilled = backfillResponsesCompletedOutput(
                     parsed,
-                    passthroughResponsesOutputItems
+                    backfillCandidates
                   );
                   const usageNormalized = normalizeUsage(parsed);
                   if (
@@ -1598,7 +1651,8 @@ export function createSSEStream(options: StreamOptions = {}) {
                     backfilled ||
                     textualToolCallBackfilled ||
                     responsesIdsNormalized ||
-                    usageNormalized
+                    usageNormalized ||
+                    responsesCommentaryStrippedFromCompleted
                   ) {
                     output = `data: ${JSON.stringify(parsed)}\n\n`;
                     injectedUsage = true;
@@ -1709,7 +1763,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                       clientPayload = parsed;
                       clientPayloadCollector.push(clientPayload);
                       reqLogger?.appendConvertedChunk?.(output);
-                      controller.enqueue(encoder.encode(output));
+                      forward(controller, encoder.encode(output));
                       continue;
                     }
 
@@ -1785,7 +1839,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                     totalContentLength += delta.reasoning_content.length;
                     clientPayloadCollector.push(reasoningChunk);
                     reqLogger?.appendConvertedChunk?.(rOutput);
-                    controller.enqueue(encoder.encode(rOutput));
+                    forward(controller, encoder.encode(rOutput));
                     delete delta.reasoning_content;
                     splitMixedReasoningContent = true;
                   }
@@ -1964,7 +2018,7 @@ export function createSSEStream(options: StreamOptions = {}) {
             }
 
             reqLogger?.appendConvertedChunk?.(output);
-            controller.enqueue(encoder.encode(output));
+            forward(controller, encoder.encode(output));
             if (failurePayload) {
               let failureHandled = false;
               if (onFailure) {
@@ -2004,7 +2058,7 @@ export function createSSEStream(options: StreamOptions = {}) {
           if (parsed.error) {
             const output = formatTranslatedStreamError(parsed, sourceFormat);
             reqLogger?.appendConvertedChunk?.(output);
-            controller.enqueue(encoder.encode(output));
+            forward(controller, encoder.encode(output));
             upstreamErrorForwarded = true;
             doneSent = true;
             continue;
@@ -2223,12 +2277,12 @@ export function createSSEStream(options: StreamOptions = {}) {
               passthroughEventPrefix,
               emitConvertedOutput: (output: string) => {
                 reqLogger?.appendConvertedChunk?.(output);
-                controller.enqueue(encoder.encode(output));
+                forward(controller, encoder.encode(output));
               },
               pushProviderPayload: (payload: unknown) => providerPayloadCollector.push(payload),
               pushClientPayload: (payload: unknown) => clientPayloadCollector.push(payload),
               sanitizeUsagePayload: (payload: unknown) =>
-                sanitizeUsagePayloadForRequest(payload, body, clientResponseFormat),
+                sanitizeUsagePayloadForRequest(payload as UsageLike, body, clientResponseFormat),
               setPassthroughResponsesId: (value: string) => {
                 passthroughResponsesId = value;
               },
@@ -2336,7 +2390,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 output = output.endsWith("\n") ? `${output}\n` : `${output}\n\n`;
               }
               reqLogger?.appendConvertedChunk?.(output);
-              controller.enqueue(encoder.encode(output));
+              forward(controller, encoder.encode(output));
             }
 
             if (shouldInjectClaudeEmptyResponseOnFlush(claudeEmptyResponseLifecycle)) {
@@ -2380,7 +2434,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 flushOutput = `data: ${JSON.stringify(syntheticChunk)}\n\n`;
               }
               reqLogger?.appendConvertedChunk?.(flushOutput);
-              controller.enqueue(encoder.encode(flushOutput));
+              forward(controller, encoder.encode(flushOutput));
               passthroughAccumulatedContent = appendBoundedText(
                 passthroughAccumulatedContent,
                 passthroughBufferedTextualToolCallContent
@@ -2397,7 +2451,7 @@ export function createSSEStream(options: StreamOptions = {}) {
               totalContentLength += thinkFlush.addedLength;
               clientPayloadCollector.push(thinkFlush.syntheticChunk);
               reqLogger?.appendConvertedChunk?.(thinkFlush.flushOutput);
-              controller.enqueue(encoder.encode(thinkFlush.flushOutput));
+              forward(controller, encoder.encode(thinkFlush.flushOutput));
             }
 
             // Estimate usage if provider didn't return valid usage
@@ -2431,7 +2485,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 );
                 const finishOutput = `data: ${JSON.stringify(syntheticFinishChunk)}\n\n`;
                 reqLogger?.appendConvertedChunk?.(finishOutput);
-                controller.enqueue(encoder.encode(finishOutput));
+                forward(controller, encoder.encode(finishOutput));
                 clientPayloadCollector.push(syntheticFinishChunk);
               }
               await emitFinalSseMetadata(controller, usage);
@@ -2440,7 +2494,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 clientPayloadCollector.push({ done: true });
                 const doneOutput = "data: [DONE]\n\n";
                 reqLogger?.appendConvertedChunk?.(doneOutput);
-                controller.enqueue(encoder.encode(doneOutput));
+                forward(controller, encoder.encode(doneOutput));
               }
             }
             // Notify caller for call log persistence (include full response body with accumulated content)
@@ -2514,6 +2568,9 @@ export function createSSEStream(options: StreamOptions = {}) {
                   status: 200,
                   usage,
                   responseBody,
+                  ttft: timing.ttftMs(),
+                  itlMs: timing.avgItlMs(),
+                  interrupted: timing.interrupted,
                   // #9315 switched the summary to the accumulated responseBody to avoid
                   // stale/truncated event data — but responseBody here is synthesized in
                   // chat-completion shape, which loses the Responses API `response` object.
@@ -2616,6 +2673,7 @@ export function createSSEStream(options: StreamOptions = {}) {
             let failureHandled = false;
             if (onFailure) {
               try {
+                timing.markInterrupted();
                 failureHandled =
                   onFailure({
                     status: err.status,
@@ -2635,6 +2693,9 @@ export function createSSEStream(options: StreamOptions = {}) {
                   status: err.status,
                   usage: state?.usage,
                   responseBody: errorBody,
+                  ttft: timing.ttftMs(),
+                  itlMs: timing.avgItlMs(),
+                  interrupted: timing.interrupted,
                   error: err.message,
                   errorCode: err.code,
                   providerPayload: providerPayloadCollector.build(
@@ -2731,7 +2792,7 @@ export function createSSEStream(options: StreamOptions = {}) {
               clientPayloadCollector.push({ done: true });
               const doneOutput = "data: [DONE]\n\n";
               reqLogger?.appendConvertedChunk?.(doneOutput);
-              controller.enqueue(encoder.encode(doneOutput));
+              forward(controller, encoder.encode(doneOutput));
             }
           }
 

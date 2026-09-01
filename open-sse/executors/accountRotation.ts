@@ -1,7 +1,7 @@
 /**
  * Shared multi-account rotation mechanics for noauth executors that round-robin
  * across several "accounts" (fingerprints), each with an optional dedicated
- * proxy — currently `OpencodeExecutor` and `MimocodeExecutor`.
+ * proxy — currently `OpencodeExecutor`.
  *
  * Extracted after both executors independently implemented the same
  * pickAccount/markCooldown/markSuccess skeleton with the same exponential
@@ -40,6 +40,15 @@ export interface RotatableAccount {
   cooldownUntil: number;
   consecutiveFails: number;
   proxy: AccountProxyConfig["proxy"];
+  evictedAt?: number | null;
+}
+
+export type CooldownKind = "transient" | "terminal";
+
+const EVICT_AFTER_TERMINAL = 3;
+
+export function isAccountEvicted(account: RotatableAccount): boolean {
+  return account.evictedAt != null;
 }
 
 const COOLDOWN_BASE_MS = TRANSIENT_COOLDOWN_MS;
@@ -74,17 +83,21 @@ export function pickAccount<T extends RotatableAccount>(
   return accounts[fallbackIdx];
 }
 
-export function markCooldown(account: RotatableAccount): void {
+export function markCooldown(account: RotatableAccount, kind: CooldownKind = "transient"): void {
   account.consecutiveFails++;
   const backoff = Math.min(
     COOLDOWN_BASE_MS * Math.pow(2, account.consecutiveFails - 1),
     COOLDOWN_MAX_MS
   );
   account.cooldownUntil = Date.now() + backoff + Math.random() * 1000;
+  if (kind === "terminal" && account.consecutiveFails >= EVICT_AFTER_TERMINAL) {
+    account.evictedAt = Date.now();
+  }
 }
 
 export function markSuccess(account: RotatableAccount): void {
   account.consecutiveFails = 0;
+  account.evictedAt = null;
 }
 
 /** Mask an account id for logs (UI calls it a fingerprint). */
@@ -106,4 +119,59 @@ export function maskAccountId(fingerprint: string): string {
  */
 export function isNetworkErrorRotatable(account: RotatableAccount): boolean {
   return account.proxy !== null;
+}
+
+/**
+ * Detect an *empty* upstream rejection: a 400 whose body carries no usable
+ * completion — the kind `OpencodeExecutor` must rotate/retry on instead of
+ * propagating as a fatal success.
+ *
+ * Signature is deliberately strict and scoped to the observed malformed
+ * envelope (`choices[0].message` with no `error`, no real `content`,
+ * `finish_reason: null`):
+ *  - status must be exactly 400 (anything else → false);
+ *  - body must parse and contain a `choices` array with at least one entry
+ *    holding a `message` object;
+ *  - an `error` field (present or empty) → false, so genuine 400s keep
+ *    propagating immediately (#10460 precedent: classify by signature before
+ *    rotating);
+ *  - `tool_calls` / `reasoning_content` → false (real content);
+ *  - `message.content` absent / null / "" → eligible; any other value
+ *    (non-empty text, number, block array…) → false (conservative);
+ *  - a literal `finish_reason` (not null) → false (a completed, if empty, turn).
+ *
+ * Does NOT reuse `detectMalformedNonStream` (diagnostics.ts): that classifier
+ * also flags `{error:{…}}` bodies as `empty_choices`, which would rotate on
+ * real errors — a false-positive class with a history here.
+ */
+export function isEmptyUpstreamRejection(status: number, bodyText: string): boolean {
+  if (status !== 400) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return false;
+  }
+  const choices = (parsed as { choices?: unknown })?.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return false;
+  const first = choices[0] as { message?: unknown; finish_reason?: unknown };
+  if (typeof first !== "object" || first === null) return false;
+  const rawMessage = (first as { message?: unknown }).message;
+  if (typeof rawMessage === "undefined" || rawMessage === null) return false;
+  if (typeof parsed !== "object" || parsed === null) return false;
+  if ("error" in (parsed as Record<string, unknown>)) return false;
+  const msg = rawMessage as Record<string, unknown>;
+  if ("tool_calls" in msg) return false;
+  if ("reasoning_content" in msg) return false;
+  const content = msg.content;
+  if (content !== undefined && content !== null && content !== "") return false;
+  if (first.finish_reason !== null && first.finish_reason !== undefined) return false;
+  return true;
+}
+
+/** Best-effort extraction of the upstream `chatcmpl_*` id from a response body,
+ * for observability logging. Returns `"unknown"` when absent or unparseable. */
+export function extractChatcmplId(bodyText: string): string {
+  const match = /"id"\s*:\s*"(chatcmpl_[^"]+)"/.exec(bodyText);
+  return match ? match[1] : "unknown";
 }

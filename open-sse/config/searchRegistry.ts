@@ -10,6 +10,8 @@
  * perplexity-search reuses credentials from the "perplexity" chat provider.
  */
 
+import { isProviderBlockedByIdOrAlias } from "@/shared/utils/noAuthProviders";
+
 export interface SearchProviderConfig {
   id: string;
   name: string;
@@ -261,6 +263,36 @@ export const SEARCH_PROVIDERS: Record<string, SearchProviderConfig> = {
     cacheTTLMs: 5 * 60 * 1000,
   },
 
+  // Context7 (context7.com) — library-docs search. Anonymous tier works without a
+  // key (per-minute rate limit, context7-quota-tier: anonymous); a configured
+  // ctx7sk-* key raises the quota, sent as Bearer when a connection exists.
+  // fallbackOnly: doc-focused corpus, never auto-selected for generic web search.
+  context7: {
+    id: "context7",
+    name: "Context7 (library docs)",
+    baseUrl: "https://context7.com/api/v1",
+    method: "GET",
+    // authType "none" means the framework skips credential injection entirely
+    // (registryUtils.ts). A configured ctx7sk-* key still reaches the builder
+    // via params.token, which attaches it as Bearer manually — authHeader
+    // stays "none" so the generic injector never double-writes it.
+    // The Bearer attachment lives in buildContext7Request
+    // (open-sse/handlers/search.ts) — keep the two in sync when editing.
+    authType: "none",
+    authHeader: "none",
+    costPerQuery: 0,
+    // Anonymous tier is unlimited per-minute (rate-limited, not metered):
+    // a 0 here would let the quota preflight reject anonymous traffic (the
+    // same reason DuckDuckGo uses 999999 — see its entry above).
+    freeMonthlyQuota: 999999,
+    searchTypes: ["web"],
+    defaultMaxResults: 5,
+    maxMaxResults: 20,
+    timeoutMs: 10_000,
+    cacheTTLMs: 5 * 60 * 1000,
+    fallbackOnly: true,
+  },
+
   // Free, no-API-key DuckDuckGo lite scraping (free-claude-code port). Last-resort
   // only (fallbackOnly): never auto-selected over a configured provider; served by
   // the dedicated HTML path in open-sse/handlers/search.ts (not the generic JSON one).
@@ -280,18 +312,43 @@ export const SEARCH_PROVIDERS: Record<string, SearchProviderConfig> = {
     cacheTTLMs: 5 * 60 * 1000,
     fallbackOnly: true,
   },
+
+  // SuperGrok / xAI server-side X Search. Not web search. Explicit provider or
+  // search_type "x" only — never auto-selected for generic web queries.
+  "x-search": {
+    id: "x-search",
+    name: "X Search (Grok)",
+    baseUrl: "https://api.x.ai/v1/responses",
+    method: "POST",
+    authType: "apikey",
+    authHeader: "bearer",
+    costPerQuery: 0,
+    freeMonthlyQuota: 0,
+    searchTypes: ["x"],
+    defaultMaxResults: 5,
+    maxMaxResults: 20,
+    timeoutMs: 60_000,
+    cacheTTLMs: 5 * 60 * 1000,
+  },
 };
 
 /**
  * Credential fallback mapping — search providers that can reuse credentials
  * from a related provider (e.g., perplexity-search uses the same API key as perplexity chat).
  */
-export const SEARCH_CREDENTIAL_FALLBACKS: Record<string, string> = {
+export const SEARCH_CREDENTIAL_FALLBACKS: Record<string, string | string[]> = {
   "perplexity-search": "perplexity",
   "ollama-search": "ollama-cloud",
   "zai-search": "zai",
   "jina-search": "jina-ai",
+  "x-search": ["xai-oauth", "xao", "xai"],
 };
+
+export function getSearchCredentialFallbacks(providerId: string): string[] {
+  const mapped = SEARCH_CREDENTIAL_FALLBACKS[providerId];
+  if (!mapped) return [];
+  return Array.isArray(mapped) ? mapped : [mapped];
+}
 
 /**
  * Request-only aliases for POST /v1/search.
@@ -303,6 +360,23 @@ export const SEARCH_CREDENTIAL_FALLBACKS: Record<string, string> = {
 export const SEARCH_PROVIDER_ALIASES: Record<string, string> = {
   "jina-ai": "jina-search",
   jina: "jina-search",
+  brave: "brave-search",
+  serper: "serper-search",
+  perplexity: "perplexity-search",
+  exa: "exa-search",
+  tavily: "tavily-search",
+  "google-pse": "google-pse-search",
+  linkup: "linkup-search",
+  ollama: "ollama-search",
+  searchapi: "searchapi-search",
+  youcom: "youcom-search",
+  searxng: "searxng-search",
+  zai: "zai-search",
+  duckduckgo: "duckduckgo-free",
+  ctx7: "context7",
+  c7: "context7",
+  x_search: "x-search",
+  x: "x-search",
 };
 
 export function resolveSearchProviderId(providerId: string): string {
@@ -314,6 +388,24 @@ export function resolveSearchProviderId(providerId: string): string {
  * Request routing should use resolveSearchProvider() so aliases work
  * without colliding with the Foundation jina-ai provider id.
  */
+const CATALOG_SEARXNG_DEFAULT_URL = "http://localhost:8888/search";
+
+/**
+ * Catalog default SearXNG URL is a desktop convenience. In Docker/K8s nothing
+ * listens on :8888, and OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS (needed for
+ * ClusterIP providers) lets ProxyFetch attempt it, producing ECONNREFUSED and
+ * a 502 that then burns the next fallback's quota. Skip unless the operator
+ * overrode baseUrl.
+ */
+export function isUnconfiguredLoopbackSearchProvider(
+  provider: SearchProviderConfig | null | undefined
+): boolean {
+  if (!provider || provider.id !== "searxng-search") return false;
+  const configured = String(provider.baseUrl || "").replace(/\/+$/, "");
+  const catalog = CATALOG_SEARXNG_DEFAULT_URL.replace(/\/+$/, "");
+  return configured === catalog;
+}
+
 export function getSearchProvider(providerId: string): SearchProviderConfig | null {
   return SEARCH_PROVIDERS[providerId] || null;
 }
@@ -336,16 +428,18 @@ export function supportsSearchType(
 /**
  * Get all search providers as a flat list
  */
-export function getAllSearchProviders(): Array<{
+export function getAllSearchProviders(blockedProviders: string[] = []): Array<{
   id: string;
   name: string;
   searchTypes: string[];
 }> {
-  return Object.values(SEARCH_PROVIDERS).map((p) => ({
-    id: p.id,
-    name: p.name,
-    searchTypes: p.searchTypes,
-  }));
+  return Object.values(SEARCH_PROVIDERS)
+    .filter((p) => !p.disabled && !isProviderBlockedByIdOrAlias(p.id, blockedProviders))
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      searchTypes: p.searchTypes,
+    }));
 }
 
 /**
@@ -366,10 +460,11 @@ export function selectProvider(
 
   // Auto-selection excludes fallbackOnly providers so a free cost-0 provider never
   // overrides a configured paid one — they are reached only via explicit id or the
-  // route handler's last-resort step.
+  // route handler's last-resort step. Missing searchType follows the API default
+  // (`web`) so X-only providers are never cheapest-wins for generic queries.
+  const effectiveType = searchType || "web";
   const providers = Object.values(SEARCH_PROVIDERS).filter(
-    (provider) =>
-      !provider.fallbackOnly && (searchType ? supportsSearchType(provider, searchType) : true)
+    (provider) => !provider.fallbackOnly && supportsSearchType(provider, effectiveType)
   );
   if (providers.length === 0) return null;
 

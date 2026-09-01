@@ -390,3 +390,26 @@ test("provider schemas reject invalid quotaPerUnit values", () => {
   assert.equal(negative.success, false);
   assert.equal(string.success, false);
 });
+
+test("provider schemas accept integer timeoutMs in providerSpecificData", () => {
+  const created = createProviderSchema.safeParse({
+    provider: "openai",
+    apiKey: "token",
+    name: "OpenAI",
+    providerSpecificData: { timeoutMs: 1_800_000 },
+  });
+  const updated = updateProviderConnectionSchema.safeParse({
+    providerSpecificData: { timeoutMs: 900_000 },
+  });
+  assert.equal(created.success, true);
+  assert.equal(updated.success, true);
+});
+
+test("provider schemas reject invalid timeoutMs values", () => {
+  for (const bad of [-1, 0, 1.5, "60000", 86_400_001]) {
+    const updated = updateProviderConnectionSchema.safeParse({
+      providerSpecificData: { timeoutMs: bad },
+    });
+    assert.equal(updated.success, false, `timeoutMs=${String(bad)} must be rejected`);
+  }
+});

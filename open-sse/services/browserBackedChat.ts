@@ -275,11 +275,13 @@ export async function browserBackedChat(
   });
   try {
     const tNavStart = Date.now();
-    await page.goto(chatPageUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 60000,
-      signal: signal ?? undefined,
-    });
+    await withAbort(
+      page.goto(chatPageUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 60000,
+      }),
+      signal
+    );
     await waitWithSignal(2500, signal);
     const navigateMs = Date.now() - tNavStart;
 
@@ -617,11 +619,13 @@ async function doCookieRefreshOnContext(
 ): Promise<string | null> {
   const page = await openPage(pooled);
   try {
-    await page.goto(chatPageUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 60000,
-      signal: signal ?? undefined,
-    });
+    await withAbort(
+      page.goto(chatPageUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 60000,
+      }),
+      signal
+    );
     return await waitForCookiesWithPolling(pooled.context, cookieDomain, signal);
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;

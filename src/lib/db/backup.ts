@@ -28,7 +28,7 @@ type CountRow = { cnt?: number };
 // ──────────────── Backup Config ────────────────
 
 let _lastBackupAt = 0;
-const BACKUP_THROTTLE_MS = 60 * 60 * 1000; // 60 minutes
+const BACKUP_THROTTLE_MS = 60 * 60 * 1000; // 60 minutes — high-churn pre-write (models.dev pricing) must not copy the whole SQLite file every call (#10351)
 const TRUE_ENV_VALUES = new Set(["1", "true", "yes", "on"]);
 
 // #3834: the "Keep latest backups" UI value is persisted here so it survives a page

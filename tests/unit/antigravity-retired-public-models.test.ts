@@ -17,44 +17,42 @@ import { CLI_TOOLS } from "../../src/shared/constants/cliTools.ts";
 
 const RETIRED_PUBLIC_MODELS = [
   "gemini-3-pro-preview",
+  "gemini-3.6-flash-high",
+  "gemini-3.6-flash-medium",
+  "gemini-3.6-flash-low",
+  "gemini-3-flash-agent",
+  "gemini-3.5-flash",
+  "gemini-3.5-flash-low",
+  "gemini-3.5-flash-extra-low",
   "gemini-2.5-pro",
+  "gemini-2.5-flash-thinking",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
   "gemini-2.5-computer-use-preview-10-2025",
 ] as const;
 
 const EXPECTED_LEADING_MODEL_ORDER = [
-  "gemini-3.6-flash-high",
-  "gemini-3.6-flash-medium",
-  "gemini-3.6-flash-low",
-  "claude-opus-4-6-thinking",
-  "claude-sonnet-4-6",
-  "gemini-pro-agent",
-  "gemini-3.1-pro-low",
-  "gemini-3-flash-agent",
-  "gemini-3.5-flash-low",
-  "gemini-3.5-flash-extra-low",
-] as const;
-
-const EXPECTED_ANTIGRAVITY_LEADING_MODEL_ORDER = [
   "gemini-3.7-flash-high",
   "gemini-3.7-flash-medium",
-  ...EXPECTED_LEADING_MODEL_ORDER,
+  "gemini-3.7-flash-low",
+  "gemini-3.7-flash-tiered",
+  "gemini-pro-agent",
+  "gemini-3.1-pro-low",
+  "gemini-3.1-flash-lite",
+  "claude-opus-4-6-thinking",
+  "claude-sonnet-4-6",
+  "gpt-oss-120b-medium",
 ] as const;
 
 const ACTIVE_FLASH_MODEL_IDS = [
-  "gemini-3-flash-agent",
-  "gemini-3.5-flash-low",
-  "gemini-3.5-flash-extra-low",
-] as const;
-
-const CURRENT_36_FLASH_MODEL_IDS = [
-  "gemini-3.6-flash-high",
-  "gemini-3.6-flash-medium",
-  "gemini-3.6-flash-low",
+  "gemini-3.7-flash-high",
+  "gemini-3.7-flash-medium",
+  "gemini-3.7-flash-low",
 ] as const;
 
 test("Antigravity and AGY place their live Gemini Flash tiers first", () => {
   for (const [provider, models, expectedOrder] of [
-    ["antigravity", ANTIGRAVITY_PUBLIC_MODELS, EXPECTED_ANTIGRAVITY_LEADING_MODEL_ORDER],
+    ["antigravity", ANTIGRAVITY_PUBLIC_MODELS, EXPECTED_LEADING_MODEL_ORDER],
     ["agy", AGY_PUBLIC_MODELS, EXPECTED_LEADING_MODEL_ORDER],
   ] as const) {
     assert.deepEqual(
@@ -114,7 +112,7 @@ test("Antigravity and AGY expose gemini-pro-agent and gemini-3.1-pro-high as cal
   );
 });
 
-test("Antigravity support catalogs expose every live Gemini 3.6 Flash tier", () => {
+test("Antigravity support catalogs expose every live Gemini 3.7 Flash tier", () => {
   const antigravityModelIds = new Set(ANTIGRAVITY_PUBLIC_MODELS.map((model) => model.id));
   const agyModelIds = new Set(AGY_PUBLIC_MODELS.map((model) => model.id));
   const cliAliases = new Set(CLI_TOOLS.antigravity.modelAliases);
@@ -123,7 +121,7 @@ test("Antigravity support catalogs expose every live Gemini 3.6 Flash tier", () 
     FREE_MODEL_BUDGETS.filter((model) => model.provider === "agy").map((model) => model.modelId)
   );
 
-  for (const modelId of CURRENT_36_FLASH_MODEL_IDS) {
+  for (const modelId of ACTIVE_FLASH_MODEL_IDS) {
     assert.equal(antigravityModelIds.has(modelId), true, `${modelId} missing from Antigravity`);
     assert.equal(agyModelIds.has(modelId), true, `${modelId} missing from AGY`);
     assert.equal(cliAliases.has(modelId), true, `${modelId} missing from CLI aliases`);
@@ -142,7 +140,7 @@ test("Antigravity support catalogs no longer advertise or price the rejected Hig
   assert.ok(pricing["gemini-pro-agent"]);
 });
 
-test("Antigravity and AGY support metadata excludes the retired Gemini 3 Flash id", () => {
+test("Antigravity and AGY support metadata excludes retired Flash ids", () => {
   const cliAliases = CLI_TOOLS.antigravity.modelAliases;
   const cliModelIds = CLI_TOOLS.antigravity.defaultModels.map((model) => model.id);
   const agyFreeModelIds = FREE_MODEL_BUDGETS.filter((model) => model.provider === "agy").map(

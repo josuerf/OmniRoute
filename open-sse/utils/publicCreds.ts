@@ -180,6 +180,12 @@ const EMBEDDED_DEFAULTS = {
     13, 88, 13, 91, 68, 89, 65, 21, 72, 26, 21, 76, 0, 65, 93, 2, 26, 23, 28, 87, 14, 87, 8, 95, 12,
     17, 70, 6, 24, 66, 17, 1, 10, 95, 81, 28,
   ],
+  // Microsoft 365 Copilot web (m365.cloud.microsoft) — public SPA client id
+  // observed in browser tokens and M365-Copilot2API. Not a per-user secret.
+  m365_oauth_client_id: [
+    12, 93, 15, 11, 74, 12, 16, 77, 72, 72, 73, 20, 82, 65, 93, 81, 72, 65, 28, 13, 93, 88, 93, 95,
+    92, 70, 16, 81, 31, 66, 17, 4, 88, 88, 5, 28,
+  ],
   // Microsoft Edge Read Aloud (EdgeTTS) — public "trusted client token" used to
   // derive the Sec-MS-GEC anti-abuse header. Hardcoded in every known Edge
   // browser build and every open-source edge-tts reimplementation (e.g.

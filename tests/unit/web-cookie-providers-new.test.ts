@@ -670,7 +670,7 @@ test("v0 Vercel Web: error response returns error result", async () => {
 
 // ── Kimi Web Execution Tests ─────────────────────────────────────────────────
 
-test("Kimi Web: targets www.kimi.com (international)", async () => {
+test("Kimi Web: targets www.kimi.ai (international)", async () => {
   // The new executor talks to the Connect-RPC streaming endpoint on the
   // international domain. A bare empty credential is rejected before the
   // fetch fires, so we feed a fake JWT and let the mock absorb the request.
@@ -684,11 +684,11 @@ test("Kimi Web: targets www.kimi.com (international)", async () => {
     });
     assert.ok(result.response instanceof Response);
     // Parse the URL and assert on the exact hostname rather than a substring
-    // match — `includes("www.kimi.com")` would also accept a hostile host like
-    // `www.kimi.com.evil.net` or `evil.net/?x=www.kimi.com` (CodeQL
+    // match — `includes("www.kimi.ai")` would also accept a hostile host like
+    // `www.kimi.ai.evil.net` or `evil.net/?x=www.kimi.ai` (CodeQL
     // js/incomplete-url-substring-sanitization).
     const host = new URL(result.url).hostname;
-    assert.equal(host, "www.kimi.com", `got ${result.url}`);
+    assert.equal(host, "www.kimi.ai", `got ${result.url}`);
     assert.notEqual(host, "www.moonshot.cn", `got ${result.url}`);
   } finally {
     restore.restore();

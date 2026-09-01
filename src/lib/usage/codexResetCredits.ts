@@ -5,6 +5,7 @@ import {
   refreshAndUpdateCredentials,
 } from "@/lib/usage/providerLimits";
 import { invalidateCodexQuotaCache } from "@omniroute/open-sse/services/codexQuotaFetcher.ts";
+import { getCodexBackendIdentityHeaders } from "@omniroute/open-sse/config/codexClient.ts";
 import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
 
@@ -291,6 +292,9 @@ function buildCodexResetCreditHeaders(connection: CodexConnectionLike): Record<s
     Authorization: `Bearer ${connection.accessToken}`,
     "Content-Type": "application/json",
     Accept: "application/json",
+    // Canonical Codex backend identity (UA + originator + version), same
+    // chain as inference — see getCodexUsage.
+    ...getCodexBackendIdentityHeaders(),
   };
 
   const workspaceId = getWorkspaceId(connection);

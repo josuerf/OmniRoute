@@ -177,6 +177,7 @@ test("grok-cli live model discovery uses the authenticated session contract", ()
       owned_by: "grok-cli",
       inputTokenLimit: 500000,
       supportsThinking: true,
+      supportedThinkingEfforts: ["low", "medium", "high"],
       apiFormat: "responses",
       supportedEndpoints: ["responses"],
     },

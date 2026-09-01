@@ -16,7 +16,6 @@ import { assembleStandalone } from "../../scripts/build/assembleStandalone.mjs";
 const REQUIRED_RUNTIME_PACKAGES = [
   "@atjsh/llmlingua-2",
   "@huggingface/transformers",
-  "@tensorflow/tfjs",
   "js-tiktoken",
 ];
 
@@ -47,7 +46,7 @@ function mkPkg(
 
 function buildLlmlinguaRoot(
   rootDir: string,
-  transformersVersion = "3.5.2"
+  transformersVersion = "4.2.0"
 ): void {
   const rootNm = join(rootDir, "node_modules");
 
@@ -61,7 +60,6 @@ function buildLlmlinguaRoot(
       },
       peerDependencies: {
         "@huggingface/transformers": "*",
-        "@tensorflow/tfjs": "*",
         "js-tiktoken": "*",
       },
     },
@@ -71,18 +69,6 @@ function buildLlmlinguaRoot(
   );
 
   mkPkg(rootNm, "es-toolkit");
-
-  mkPkg(rootNm, "@tensorflow/tfjs", {
-    dependencies: {
-      "@tensorflow/tfjs-core": "4.22.0",
-    },
-  });
-  mkPkg(rootNm, "@tensorflow/tfjs-core", {
-    dependencies: {
-      long: "^5.0.0",
-    },
-  });
-  mkPkg(rootNm, "long");
 
   mkPkg(rootNm, "js-tiktoken", {
     dependencies: {
@@ -138,8 +124,6 @@ test("#9166 standalone assembly includes the complete LLMLingua runtime closure"
     for (const packageName of [
       ...REQUIRED_RUNTIME_PACKAGES,
       "es-toolkit",
-      "@tensorflow/tfjs-core",
-      "long",
       "base64-js",
       "onnxruntime-node",
     ]) {
@@ -175,14 +159,14 @@ test("#9166 standalone assembly never overwrites an already pinned transformers 
   );
 
   try {
-    buildLlmlinguaRoot(root, "4.2.0");
+    buildLlmlinguaRoot(root, "5.0.0");
     const { distDir, standaloneDir } = createStandalone(root);
 
     mkPkg(
       join(standaloneDir, "node_modules"),
       "@huggingface/transformers",
       {
-        version: "3.5.2",
+        version: "4.2.0",
       }
     );
 
@@ -208,7 +192,7 @@ test("#9166 standalone assembly never overwrites an already pinned transformers 
 
     assert.equal(
       targetManifest.version,
-      "3.5.2",
+      "4.2.0",
       "standalone's pinned transformers version must not be overwritten"
     );
 
@@ -286,9 +270,6 @@ test("#9166 co-location is not skipped when every closure dir exists but one is 
     // llmlingua-2 one is the partial NFT-trace shell without its main.
     for (const packageName of [
       "es-toolkit",
-      "@tensorflow/tfjs",
-      "@tensorflow/tfjs-core",
-      "long",
       "js-tiktoken",
       "base64-js",
       "@huggingface/transformers",

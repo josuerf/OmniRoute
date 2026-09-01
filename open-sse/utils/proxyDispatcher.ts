@@ -249,9 +249,8 @@ function normalizePort(port: string | number | null | undefined, protocol: strin
  * listen on these ports, so we must always include the port explicitly.
  */
 function buildProxyUrlString(parsed: URL, port: string): string {
-  const auth = parsed.username
-    ? `${parsed.username}${parsed.password ? `:${parsed.password}` : ""}@`
-    : "";
+  const auth =
+    parsed.username || parsed.password ? `${parsed.username}:${parsed.password}@` : "";
   return `${parsed.protocol}//${auth}${parsed.hostname}:${port}`;
 }
 
@@ -390,9 +389,10 @@ export function proxyConfigToUrl(
   const port = normalizePort(config.port, protocol);
 
   // Build the URL string manually to preserve the port through normalization.
-  const auth = config.username
-    ? `${encodeURIComponent(config.username)}:${config.password ? encodeURIComponent(config.password) : ""}@`
-    : "";
+  const auth =
+    config.username || config.password
+      ? `${encodeURIComponent(config.username || "")}:${encodeURIComponent(config.password || "")}@`
+      : "";
 
   const proxyUrlStr = `${type}://${auth}${config.host}:${port}`;
 

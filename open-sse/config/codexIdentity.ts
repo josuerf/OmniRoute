@@ -1,15 +1,30 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { normalizeCodexSessionId } from "./codexClient.ts";
+import { isCrossAccountCodexTurnState, readCodexTurnStateHeader } from "./codexTurnState.ts";
 
 const CODEX_INSTALLATION_SALT = "omniroute-codex-installation";
 const CODEX_SESSION_SEED_PREFIX = "omniroute:codex-session-id:v1:";
 const CODEX_THREAD_SEED_PREFIX = "omniroute:codex-thread-id:v1:";
+// v2 derivations are keyed by the persisted per-connection random seed
+// (codexFingerprintSeed) instead of the connection-id chain, mirroring
+// sub2api v0.1.178 (#5696): deterministic derivation stays stable, but the
+// seed is generated per connection so identities never collide across
+// deployments and survive connection export/import.
+const CODEX_INSTALLATION_SEED_PREFIX_V2 = "omniroute:codex-installation:v2:";
+const CODEX_SESSION_SEED_PREFIX_V2 = "omniroute:codex-session-id:v2:";
+const CODEX_THREAD_SEED_PREFIX_V2 = "omniroute:codex-thread-id:v2:";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const CODEX_FINGERPRINT_MODES = ["off", "device", "session", "full"] as const;
 export type CodexFingerprintMode = (typeof CODEX_FINGERPRINT_MODES)[number];
 export const CODEX_FINGERPRINT_MODE_KEY = "codexFingerprintMode";
+/**
+ * System-managed per-connection random seed used as the fingerprint
+ * derivation source. Never sent upstream, stripped from API responses, and
+ * preserved across connection updates (sub2api `codex_fingerprint_seed`).
+ */
+export const CODEX_FINGERPRINT_SEED_KEY = "codexFingerprintSeed";
 
 export type CodexClientIdentity = {
   mode: CodexFingerprintMode;
@@ -72,6 +87,61 @@ function accountSeed(
   );
 }
 
+/** The persisted system-managed random seed, when present and a valid UUID. */
+export function getCodexFingerprintSeed(
+  providerSpecificData?: Record<string, unknown> | null
+): string | null {
+  return normalizeUuid(providerSpecificData?.[CODEX_FINGERPRINT_SEED_KEY]);
+}
+
+/** Modes that rewrite account-scoped identifiers and therefore need a stable seed. */
+export function codexFingerprintModeRequiresSeed(mode: CodexFingerprintMode): boolean {
+  return mode === "device" || mode === "session" || mode === "full";
+}
+
+/**
+ * Ensure a Codex OAuth connection carries a persisted fingerprint seed when its
+ * convergence mode derives account-scoped identifiers. Called at connection
+ * create/update time (the persistence layer owns the write); the request path
+ * only ever READS the seed, so an identity never rotates mid-flight.
+ *
+ * Semantics mirror sub2api v0.1.178 `prepareCodexFingerprintExtraFor{Create,Update}`:
+ * - the key is system-managed: any client-supplied value is stripped first;
+ * - an existing valid seed is ALWAYS carried forward (even when the new mode
+ *   is `off` — it stays dormant, ready if convergence is re-enabled later);
+ * - otherwise a fresh seed is created only when the mode requires one
+ *   (device/session/full; the OmniRoute default is session).
+ *
+ * Returns the (possibly new) providerSpecificData, or undefined when there is
+ * nothing to store. Pre-seed connections keep their legacy connection-id
+ * derived identity until the next save — one deliberate rotation, same as
+ * sub2api's migration-225 backfill.
+ */
+export function ensureCodexFingerprintSeed(
+  providerSpecificData?: Record<string, unknown> | null,
+  credentials?: { accessToken?: unknown; refreshToken?: unknown } | null,
+  existingProviderSpecificData?: Record<string, unknown> | null
+): Record<string, unknown> | undefined {
+  const psd: Record<string, unknown> = { ...(providerSpecificData || {}) };
+  // System-managed key: never trust an inbound value, regardless of auth type.
+  delete psd[CODEX_FINGERPRINT_SEED_KEY];
+  if (!isCodexOAuthCredentials(credentials)) {
+    return Object.keys(psd).length > 0 ? psd : undefined;
+  }
+
+  const existingSeed = getCodexFingerprintSeed(existingProviderSpecificData);
+  if (existingSeed) {
+    psd[CODEX_FINGERPRINT_SEED_KEY] = existingSeed;
+    return psd;
+  }
+  const mode = getCodexFingerprintMode(psd, true);
+  if (codexFingerprintModeRequiresSeed(mode)) {
+    psd[CODEX_FINGERPRINT_SEED_KEY] = randomUUID();
+    return psd;
+  }
+  return Object.keys(psd).length > 0 ? psd : undefined;
+}
+
 function readNamedHeader(
   headers: Headers | Record<string, unknown> | null | undefined,
   name: string
@@ -120,6 +190,11 @@ export function getCodexInstallationId(
   const explicit = normalizeUuid(providerSpecificData?.codexInstallationId);
   if (explicit) return explicit;
 
+  const persistedSeed = getCodexFingerprintSeed(providerSpecificData);
+  if (persistedSeed) {
+    return deriveStableUUIDv4(`${CODEX_INSTALLATION_SEED_PREFIX_V2}${persistedSeed}`);
+  }
+
   const legacyStableSource =
     nonEmptyString(providerSpecificData?.workspaceId) ||
     nonEmptyString(providerSpecificData?.accountId) ||
@@ -137,6 +212,10 @@ export function getCodexConvergedSessionId(
   providerSpecificData?: Record<string, unknown> | null,
   accountKey?: string | null
 ): string {
+  const persistedSeed = getCodexFingerprintSeed(providerSpecificData);
+  if (persistedSeed) {
+    return deriveStableUUIDv4(`${CODEX_SESSION_SEED_PREFIX_V2}${persistedSeed}`);
+  }
   return deriveStableUUIDv4(
     `${CODEX_SESSION_SEED_PREFIX}${accountSeed(providerSpecificData, accountKey)}`
   );
@@ -148,6 +227,10 @@ export function getCodexConvergedThreadId(
   accountKey?: string | null
 ): string {
   if (!nonEmptyString(clientSessionId)) return "";
+  const persistedSeed = getCodexFingerprintSeed(providerSpecificData);
+  if (persistedSeed) {
+    return deriveStableUUIDv4(`${CODEX_THREAD_SEED_PREFIX_V2}${persistedSeed}:${clientSessionId}`);
+  }
   return deriveStableUUIDv4(
     `${CODEX_THREAD_SEED_PREFIX}${accountSeed(providerSpecificData, accountKey)}:${clientSessionId}`
   );
@@ -161,6 +244,26 @@ export function getCodexClientSessionId(
     normalizeCodexSessionId(readNamedHeader(headers, "session_id")) ||
     null
   );
+}
+
+/**
+ * Decide what to do with the client's `x-codex-turn-state` echo for the
+ * account about to serve this request. The blob is minted per account by the
+ * upstream; replaying another account's blob after failover is a proxy-only
+ * contradiction, so a known cross-account echo is stripped. Same-account or
+ * unknown provenance passes through unchanged (strip only, never inject).
+ * Independent of the fingerprint-convergence mode — account consistency also
+ * applies to explicit `off` / passthrough.
+ */
+export function resolveCodexTurnStateEcho(
+  clientHeaders?: Headers | Record<string, unknown> | null,
+  accountKey?: string | null
+): string | null {
+  const value = readCodexTurnStateHeader(clientHeaders);
+  if (!value) return null;
+  const sessionId = getCodexClientSessionId(clientHeaders);
+  if (sessionId && isCrossAccountCodexTurnState(sessionId, accountKey)) return null;
+  return value;
 }
 
 /**
@@ -284,13 +387,19 @@ export function withCodexFingerprintCredentials<T extends CodexCredentialIdentit
 ): T {
   const identity = resolveCodexFingerprintIdentity({ credentials, clientHeaders, body });
   const original = resolveCodexOriginalIdentityHeaders({ credentials, clientHeaders });
-  if (!identity && !original) return credentials;
+  // The turn-state echo guard runs for every Codex request (including compact
+  // and explicit-off), unlike the convergence identity above.
+  const turnStateEcho = credentials
+    ? resolveCodexTurnStateEcho(clientHeaders, credentials.connectionId ?? null)
+    : null;
+  if (!identity && !original && !turnStateEcho) return credentials;
   return {
     ...credentials,
     providerSpecificData: {
       ...(credentials.providerSpecificData || {}),
       ...(identity ? { codexClientIdentity: identity } : {}),
       ...(original ? { codexOriginalIdentityHeaders: original } : {}),
+      ...(turnStateEcho ? { codexTurnStateEcho: turnStateEcho } : {}),
     },
   };
 }

@@ -199,3 +199,52 @@ test("#9485 Crof synced effort aliases appear exactly in the Combo Builder picke
   );
   assert.deepEqual(actualAliases, expectedAliases);
 });
+
+test("Command Code static reasoning models expose all documented effort suffixes", async () => {
+  const connection = await providersDb.createProviderConnection({
+    provider: "command-code",
+    authType: "apikey",
+    name: "command-code-efforts",
+    apiKey: "command-code-key",
+    isActive: true,
+    testStatus: "active",
+  });
+  assert.ok(connection);
+
+  const payload = await getComboBuilderOptions();
+  const provider = payload.providers.find((entry) => entry.providerId === "command-code");
+  assert.ok(provider, "command-code provider must appear in the combo builder output");
+
+  const reasoningModels = [
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.3-codex",
+    "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
+    "moonshotai/Kimi-K2.6",
+    "moonshotai/Kimi-K2.5",
+    "zai-org/GLM-5.1",
+    "zai-org/GLM-5",
+    "MiniMaxAI/MiniMax-M2.7",
+    "MiniMaxAI/MiniMax-M2.5",
+    "Qwen/Qwen3.6-Max-Preview",
+    "Qwen/Qwen3.6-Plus",
+  ];
+  const effortTiers = ["low", "medium", "high", "xhigh", "max"];
+  for (const baseId of reasoningModels) {
+    const base = provider!.models.find((model) => model.id === baseId);
+    assert.ok(base, `${baseId} base model must appear in the model picker`);
+    for (const effort of effortTiers) {
+      const alias = provider!.models.find((model) => model.id === `${baseId}-${effort}`);
+      assert.ok(alias, `${baseId}-${effort} must appear in the model picker`);
+      assert.equal(alias!.contextLength, base!.contextLength);
+      assert.equal(alias!.outputTokenLimit, base!.outputTokenLimit);
+      assert.equal(alias!.supportsThinking, true);
+    }
+  }
+});

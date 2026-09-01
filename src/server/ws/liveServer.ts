@@ -11,6 +11,10 @@
  *   Server → Client: { type: "pong" }
  *   Server → Client: { type: "welcome", version, sessionId, channels, backlog }
  *   Server → Client: { type: "error", code, message }
+ *
+ * Liveness: besides the application ping/pong above, the server sends a protocol-level
+ * ping (RFC 6455 §5.5.2) each HEARTBEAT_INTERVAL_MS. Conformant clients answer it with a
+ * pong control frame automatically, so a quiet-but-alive subscriber survives.
  */
 
 import { WebSocketServer, WebSocket } from "ws";
@@ -428,10 +432,13 @@ function startHeartbeat(server: WebSocketServer): void {
         clients.delete(clientId);
         continue;
       }
-      // Send the application-level heartbeat response. Only inbound client
-      // messages (including { type: "ping" }) refresh lastActivity; renewing it
-      // here would keep a half-open socket alive indefinitely (#10452).
+      // Send the application-level heartbeat response for clients that still rely on it.
       sendTo(client.ws, { type: "pong" } as WsServerMessage);
+      // Protocol-level ping: the client's automatic pong reply is what keeps a
+      // silent-but-alive subscriber alive, while a half-open socket stays silent and is
+      // still reaped. Nothing here refreshes lastActivity — only a received pong does,
+      // so #10452 holds.
+      client.ws.ping();
     }
   }, HEARTBEAT_INTERVAL_MS);
   // Don't keep the process alive solely for the heartbeat (it is also cleared on close).
@@ -567,6 +574,13 @@ export async function startLiveDashboardServer(
       console.error("[LiveWS] Client error %s: %s", clientId, err.message);
       clients.delete(clientId);
     });
+
+    // A control-frame pong (RFC 6455 §5.5.3) from the client is the only signal that
+    // proves the socket is not half-open (see startHeartbeat).
+    ws.on("pong", () => {
+      const current = clients.get(clientId);
+      if (current) current.lastActivity = Date.now();
+    });
   });
 
   // Heartbeat
@@ -610,9 +624,7 @@ export async function startLiveDashboardServer(
 // Build/test environments never auto-start regardless of the flag.
 
 function isBuildOrTest(): boolean {
-  return (
-    isBuildProcess() || isAutomatedTestProcess()
-  );
+  return isBuildProcess() || isAutomatedTestProcess();
 }
 
 export function isLiveWsEnabled(): boolean {

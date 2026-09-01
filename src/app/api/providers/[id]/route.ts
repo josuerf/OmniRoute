@@ -29,6 +29,7 @@ import { canUpdateProviderApiKey } from "@/shared/providers/webSessionCredential
 import {
   refreshConnectionRateLimits,
   enableRateLimitProtection,
+  disableRateLimitProtection,
 } from "@/../open-sse/services/rateLimitManager";
 import {
   finalizeValidatedChatGptWebCodexSecrets,
@@ -121,7 +122,17 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const validation = validateBody(updateProviderConnectionSchema, rawBody);
     if (isValidationFailure(validation)) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
+      // never drop an operator's intent silently. Surface the rejected
+      // keys (field paths and unrecognized-key names) alongside the existing
+      // error envelope so clients and the UI can tell exactly what was refused.
+      const rejected = [
+        ...validation.error.details.map((d) => d.field).filter(Boolean),
+        ...validation.error.details.flatMap((d) => d.keys ?? []),
+      ];
+      return NextResponse.json(
+        { error: { ...validation.error, rejected } },
+        { status: 400 }
+      );
     }
     const body = validation.data;
     const {
@@ -332,10 +343,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     // If rateLimitOverrides was included in the request, refresh the in-memory
     // rate limiter state so the change takes effect without a server restart.
-    // Also ensure rate limit protection is active so the limiter is enforced.
+    // Only (re)enable enforcement when rate limit protection is actually
+    // persisted for this connection — this route never lets a caller flip
+    // `rateLimitProtection` itself, so any drift here would silently start
+    // queuing requests through Bottleneck for a connection whose DB row (and
+    // the dashboard toggle reading it) both still say "off" (#11278).
     if (rateLimitOverrides !== undefined) {
       refreshConnectionRateLimits(id, updated?.rateLimitOverrides ?? null);
-      enableRateLimitProtection(id);
+      if (updated?.rateLimitProtection === true) {
+        enableRateLimitProtection(id);
+      } else {
+        disableRateLimitProtection(id);
+      }
     }
 
     // Hide sensitive fields

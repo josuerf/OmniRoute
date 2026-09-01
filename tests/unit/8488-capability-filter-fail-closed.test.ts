@@ -19,6 +19,7 @@ const {
 } = await import("../../open-sse/services/combo/comboStructure.ts");
 const { resolveAutoStrategyOrder } =
   await import("../../open-sse/services/combo/resolveAutoStrategy.ts");
+const { handleComboChat } = await import("../../open-sse/services/combo.ts");
 
 function capabilityEntry(limit_context: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -129,10 +130,7 @@ test("#8488 filter: chatgpt-web emulation providers stay eligible for tools (#52
   assert.equal(providerSupportsEmulatedToolCalling("openai"), false);
 
   const kept = filterTargetsByRequestCompatibility(
-    [
-      target("chatgpt-web", "chatgpt-web/gpt-5.5"),
-      target("chatgpt-web", "chatgpt-web/o3"),
-    ],
+    [target("chatgpt-web", "chatgpt-web/gpt-5.5"), target("chatgpt-web", "chatgpt-web/o3")],
     {
       messages: [{ role: "user", content: "Use a tool." }],
       tools: [{ type: "function", function: { name: "lookup", parameters: {} } }],
@@ -146,10 +144,7 @@ test("#8488 filter: chatgpt-web emulation providers stay eligible for tools (#52
   );
 
   const exhaustion = describeCapabilityFilterExhaustion(
-    [
-      target("chatgpt-web", "chatgpt-web/gpt-5.5"),
-      target("chatgpt-web", "chatgpt-web/o3"),
-    ],
+    [target("chatgpt-web", "chatgpt-web/gpt-5.5"), target("chatgpt-web", "chatgpt-web/o3")],
     {
       messages: [{ role: "user", content: "Use a tool." }],
       tools: [{ type: "function", function: { name: "lookup", parameters: {} } }],
@@ -175,7 +170,10 @@ test("#8488 auto: chatgpt-web emulation survives tool pre-filter (#5240)", async
     buildAutoCandidates: (async () => []) as never,
   });
 
-  assert.ok(!("earlyResponse" in result), "must not 400 capability_mismatch for emulation providers");
+  assert.ok(
+    !("earlyResponse" in result),
+    "must not 400 capability_mismatch for emulation providers"
+  );
   if ("orderedTargets" in result) {
     assert.equal(result.orderedTargets.length, 1);
     assert.equal(result.orderedTargets[0].modelStr, "chatgpt-web/gpt-5.5");
@@ -287,7 +285,7 @@ test("#8488 auto: tool pre-filter fail-open opt-in keeps full pool", async () =>
   }
 });
 
-test("#8488 auto: context pre-filter fail closed when all known limits too small", async () => {
+test("auto context estimate still dispatches when all known limits look too small", async () => {
   saveModelsDevCapabilities({
     openai: {
       tiny: capabilityEntry(100, { tool_call: true }),
@@ -295,22 +293,24 @@ test("#8488 auto: context pre-filter fail closed when all known limits too small
   });
 
   const hugePrompt = "x".repeat(4000); // ~1000 tokens at 4 chars/token
-  const result = await resolveAutoStrategyOrder({
-    orderedTargets: [target("openai", "openai/tiny")] as never,
+  const dispatches: string[] = [];
+  const result = await handleComboChat({
     body: { messages: [{ role: "user", content: hugePrompt }] },
-    combo: { id: "c1", name: "auto-ctx", config: {} } as never,
+    combo: { id: "c1", name: "auto-ctx", strategy: "auto", models: ["openai/tiny"] },
+    handleSingleModel: async (_body, modelStr) => {
+      dispatches.push(modelStr);
+      return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    isModelAvailable: async () => true,
+    log,
     settings: null,
-    config: {},
     relayOptions: null,
-    resilienceSettings: { quotaPreflight: { enabled: false } } as never,
-    log: log as never,
-    buildAutoCandidates: (async () => []) as never,
+    allCombos: null,
   });
 
-  assert.ok("earlyResponse" in result);
-  if ("earlyResponse" in result) {
-    assert.equal(result.earlyResponse.status, 400);
-    const body = await result.earlyResponse.json();
-    assert.equal(body?.error?.code, "context_length_exceeded");
-  }
+  assert.equal(result.status, 200);
+  assert.deepEqual(dispatches, ["openai/tiny"]);
 });

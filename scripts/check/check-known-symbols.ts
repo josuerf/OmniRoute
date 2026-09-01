@@ -263,7 +263,7 @@ export function findNewMcpTools(frozen: readonly string[], live: Set<string>): s
  * the reason in the commit message.
  *
  * Sources:
- *   - MCP_TOOLS (33 base tools: omniroute_* + compression + agent_skills)
+ *   - MCP_TOOLS (34 base tools: omniroute_* + compression + agent_skills)
  *   - memoryTools (3): omniroute_memory_*
  *   - skillTools (4): omniroute_skills_*
  *   - gamificationTools (8): gamification_*
@@ -273,7 +273,7 @@ export function findNewMcpTools(frozen: readonly string[], live: Set<string>): s
  * agentSkillTools and compressionTools are included in MCP_TOOLS (deduped by RESERVED_MCP_NAMES).
  */
 export const KNOWN_MCP_TOOL_NAMES: readonly string[] = [
-  // MCP_TOOLS base (33)
+  // MCP_TOOLS base (34)
   "omniroute_get_health",
   "omniroute_list_combos",
   "omniroute_get_combo_metrics",
@@ -283,6 +283,7 @@ export const KNOWN_MCP_TOOL_NAMES: readonly string[] = [
   "omniroute_cost_report",
   "omniroute_list_models_catalog",
   "omniroute_web_search",
+  "omniroute_x_search",
   "omniroute_simulate_route",
   "omniroute_set_budget_guard",
   "omniroute_set_routing_strategy",

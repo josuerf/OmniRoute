@@ -17,6 +17,7 @@ const CODEX_REASONING_EFFORT_VALUES = new Set(["none", "low", "medium", "high", 
 const REQUEST_DEFAULT_SERVICE_TIER_VALUES = new Set(["default", "priority", "fast", "flex"]);
 const CODEX_FINGERPRINT_MODE_VALUES = new Set(["off", "device", "session", "full"]);
 const CACHE_PASSTHROUGH_VALUES = new Set(["strip", "openai-format", "claude-format"]);
+export const MAX_PROVIDER_SPECIFIC_TIMEOUT_MS = 86_400_000; // 24h — operator cap, anti-DoS
 
 // #6880 — per-connection prompt-cache capability override, extracted so
 // validateProviderSpecificData() stays under the complexity gate.
@@ -493,6 +494,25 @@ export function validateProviderSpecificData(
         code: z.ZodIssueCode.custom,
         message: "providerSpecificData.quotaPerUnit must be a positive number",
         path: ["quotaPerUnit"],
+      });
+    }
+  }
+
+  // Per-connection operator timeout tier: a slow model must not monopolize an
+  // executor slot indefinitely. Bounded to 24h (anti-DoS); below 1ms is
+  // meaningless.
+  const timeoutMs = data.timeoutMs;
+  if (timeoutMs !== undefined && timeoutMs !== null) {
+    if (
+      typeof timeoutMs !== "number" ||
+      !Number.isInteger(timeoutMs) ||
+      timeoutMs < 1 ||
+      timeoutMs > MAX_PROVIDER_SPECIFIC_TIMEOUT_MS
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `providerSpecificData.timeoutMs must be an integer between 1 and ${MAX_PROVIDER_SPECIFIC_TIMEOUT_MS}`,
+        path: ["timeoutMs"],
       });
     }
   }

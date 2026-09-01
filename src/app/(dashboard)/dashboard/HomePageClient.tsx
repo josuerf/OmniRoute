@@ -19,6 +19,7 @@ import { getProviderDisplayLabel } from "@/shared/utils/providerDisplayLabel";
 import { useIsElectron, useOpenExternal } from "@/shared/hooks/useElectron";
 import { HomeProviderTopologySection } from "./HomeProviderTopologySection";
 import { shouldShowProviderTopologyOnHome } from "./homeAppearance";
+import HomeRecentRequests from "../home/HomeRecentRequests";
 
 type UpdateStep = {
   step: string;
@@ -1126,12 +1127,15 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
       )}
 
       {showProviderTopologyOnHome && (
-        <HomeProviderTopologySection
-          providers={topologyProviders}
-          lastProvider={lastProvider}
-          errorProvider={errorProvider}
-          enabled={showProviderTopologyOnHome}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3">
+          <HomeProviderTopologySection
+            providers={topologyProviders}
+            lastProvider={lastProvider}
+            errorProvider={errorProvider}
+            enabled={showProviderTopologyOnHome}
+          />
+          <HomeRecentRequests enabled={showProviderTopologyOnHome} />
+        </div>
       )}
 
       {/* Provider Models Modal */}

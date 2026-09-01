@@ -59,6 +59,12 @@ RUN set -eux; \
 # ── Builder ────────────────────────────────────────────────────────────────
 FROM base AS builder
 
+# No telemetry, anywhere. Disable Next.js's anonymous build-time telemetry
+# (it otherwise pings Vercel during `next build`). Set on the builder stage so
+# every image build is silent; the runtime never builds, so this covers the
+# only phase Next telemetry can fire.
+ENV NEXT_TELEMETRY_DISABLED=1
+
 # Build tools for native module compilation
 # apt-get update needed here because base's rm -rf clears the shared cache
 RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-apt-cache,target=/var/cache/apt,sharing=locked \
@@ -140,6 +146,18 @@ ENV OMNIROUTE_USE_TURBOPACK="${OMNIROUTE_USE_TURBOPACK}"
 ARG OMNIROUTE_BASE_PATH=""
 ENV OMNIROUTE_BASE_PATH=$OMNIROUTE_BASE_PATH
 
+# #10273: the dashboard's `frame-ancestors` policy is compiled into the route
+# manifest by next.config.mjs (via scripts/build/dashboardEmbed.mjs), so it is
+# fixed when the image is built and cannot be flipped with `-e` on a running
+# container. Build with `--build-arg DASHBOARD_ALLOW_EMBED=vscode` to produce an
+# image whose HTML pages may be framed by the VS Code Simple Browser
+# (OmniCopilot's `dashboardOpen: "editor"`). Unset — the default — keeps every
+# route on `frame-ancestors 'none'` + X-Frame-Options: DENY. Builder-stage only:
+# the runner stage deliberately does not carry it, because a runtime value would
+# suggest an effect it cannot have.
+ARG DASHBOARD_ALLOW_EMBED=""
+ENV DASHBOARD_ALLOW_EMBED=$DASHBOARD_ALLOW_EMBED
+
 # Docker containers cannot run the MITM/Agent-Bridge stack (no host DNS/cert
 # access), so keep @/mitm/manager on the graceful stub (#3390). This flag is
 # Docker-only: npm/Electron/VPS builds must bundle the REAL manager (#6344).
@@ -154,14 +172,38 @@ ENV OMNIROUTE_MITM_STUB=1
 # child (build-next-isolated.mjs → resolveNextBuildEnv spreads process.env).
 # Build-only; the runtime heap is set separately on the runner stage
 # (OMNIROUTE_MEMORY_MB). Override: `--build-arg OMNIROUTE_BUILD_MEMORY_MB=6144`.
-ARG OMNIROUTE_BUILD_MEMORY_MB=4096
+# Default raised 4096 → 6144 (#10060): the Next 16 production pass on a codebase
+# this size intermittently OOMs a build worker at 4 GB on memory-tight hosts.
+ARG OMNIROUTE_BUILD_MEMORY_MB=6144
 ENV NODE_OPTIONS="--max-old-space-size=${OMNIROUTE_BUILD_MEMORY_MB}"
+
+# Cap Next.js build worker pools. Next 16 defaults to `os.cpus().length - 1`
+# workers for page-data collection (31 on a 32-core builder); on memory-tight
+# hosts 31 workers + webpack's multi-GB heap blow past RAM and a worker dies
+# with SIGSEGV at teardown ("worker exited with code: null and signal: SIGSEGV"),
+# silently leaving no standalone bundle. Next derives the worker count from
+# CIRCLE_NODE_TOTAL (workers = N-1). (#10060)
+#
+# Lowered 8 → 3 (7 workers → 2). Every page-data worker inherits NODE_OPTIONS
+# above, so the ceiling is per PROCESS, not per build: 7 workers on a 16 GB
+# GitHub runner (ubuntu-24.04 / ubuntu-24.04-arm, 4 vCPU) exhausted the host and
+# buildkit failed the whole step with `ResourceExhausted: ... cannot allocate
+# memory`. The compile phase always finished ("✓ Compiled successfully in
+# 4.2min"); the kernel killed the build right after "Collecting page data using
+# 7 workers". It was intermittent for a while and went 100% on 2026-08-22, which
+# is what a threshold being crossed by ordinary codebase growth looks like.
+# tests/unit/docker-build-memory-budget.test.ts does the arithmetic and fails if
+# either knob is raised past what a 16 GB runner holds. 2 workers also stops
+# oversubscribing the runner's 4 vCPU, which 7 did. Override for a big builder:
+# `--build-arg OMNIROUTE_BUILD_WORKERS=8`.
+ARG OMNIROUTE_BUILD_WORKERS=3
+ENV CIRCLE_NODE_TOTAL=${OMNIROUTE_BUILD_WORKERS}
 
 COPY . ./
 RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-next-cache,target=/app/.build/next/cache \
   mkdir -p /app/data \
   && npm run build \
-  && node --input-type=module -e "import { createRequire } from 'node:module'; import { pathToFileURL } from 'node:url'; const standaloneRoot = '/app/.build/next/standalone/node_modules/'; const require = createRequire('/app/.build/next/standalone/package.json'); for (const pkg of ['@atjsh/llmlingua-2', '@huggingface/transformers', '@tensorflow/tfjs', 'js-tiktoken']) { const resolved = require.resolve(pkg); if (!resolved.startsWith(standaloneRoot)) throw new Error(pkg + ' resolved outside standalone: ' + resolved); await import(pathToFileURL(resolved).href); } const onnxRuntime = require.resolve('onnxruntime-node'); if (!onnxRuntime.startsWith(standaloneRoot)) throw new Error('onnxruntime-node resolved outside standalone: ' + onnxRuntime); await import(pathToFileURL(onnxRuntime).href);"
+  && node --input-type=module -e "import { createRequire } from 'node:module'; import { pathToFileURL } from 'node:url'; const standaloneRoot = '/app/.build/next/standalone/node_modules/'; const require = createRequire('/app/.build/next/standalone/package.json'); for (const pkg of ['@atjsh/llmlingua-2', '@huggingface/transformers', 'js-tiktoken']) { const resolved = require.resolve(pkg); if (!resolved.startsWith(standaloneRoot)) throw new Error(pkg + ' resolved outside standalone: ' + resolved); await import(pathToFileURL(resolved).href); } const onnxRuntime = require.resolve('onnxruntime-node'); if (!onnxRuntime.startsWith(standaloneRoot)) throw new Error('onnxruntime-node resolved outside standalone: ' + onnxRuntime); await import(pathToFileURL(onnxRuntime).href);"
 
 # ── Runner base ────────────────────────────────────────────────────────────
 FROM base AS runner-base

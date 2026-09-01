@@ -170,6 +170,15 @@ export function extractKimiAccessToken(rawValue: string): string {
   const raw = String(rawValue ?? "").trim();
   if (!raw) return "";
 
+  // 1. JSON dump extraction
+  if (raw.startsWith("{") && raw.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(raw);
+      const access = parsed?.access_token || parsed?.token || "";
+      if (access && typeof access === "string") return access.trim();
+    } catch {}
+  }
+
   const bearer = raw.match(/^(?:authorization:\s*)?bearer\s+([^;\s]+)/i);
   if (bearer) return bearer[1];
 
@@ -181,6 +190,42 @@ export function extractKimiAccessToken(rawValue: string): string {
   }
 
   return !trimmed.includes("=") && !trimmed.includes(";") ? trimmed : "";
+}
+
+/** Extract Kimi Web refresh_token from key-value, raw string, or localStorage JSON dump. */
+export function extractKimiRefreshToken(rawValue: string): string {
+  const raw = String(rawValue ?? "").trim();
+  if (!raw) return "";
+
+  // 1. JSON dump extraction
+  if (raw.startsWith("{") && raw.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.refresh_token && typeof parsed.refresh_token === "string") {
+        return parsed.refresh_token.trim();
+      }
+    } catch {}
+  }
+
+  // 2. Key-value extraction
+  const match = raw.match(/(?:^|[\s;])refresh_token=([^;\s]+)/);
+  if (match) return match[1];
+
+  return "";
+}
+
+/** Extract both access_token and refresh_token from user input. */
+export function extractKimiCredentials(rawValue: string): {
+  accessToken: string;
+  refreshToken: string;
+} {
+  const raw = String(rawValue ?? "").trim();
+  if (!raw) return { accessToken: "", refreshToken: "" };
+
+  return {
+    accessToken: extractKimiAccessToken(raw),
+    refreshToken: extractKimiRefreshToken(raw),
+  };
 }
 
 /** @deprecated Use extractKimiAccessToken; retained for existing imports. */

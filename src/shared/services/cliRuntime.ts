@@ -245,6 +245,15 @@ const CLI_TOOLS: Record<string, any> = {
       config: ".jcode/config.json",
     },
   },
+  "prime-agent": {
+    defaultCommand: "prime-agent",
+    envBinKey: "CLI_PRIME_AGENT_BIN",
+    requiresBinary: true,
+    healthcheckTimeoutMs: 8000,
+    paths: {
+      config: ".prime-agent/config.json",
+    },
+  },
   "grok-build": GROK_BUILD_RUNTIME_ENTRY,
   "deepseek-tui": {
     defaultCommand: "deepseek-tui",
@@ -329,6 +338,7 @@ export const CLI_TOOL_ALIASES: Readonly<Record<string, string>> = {
   "claude-code": "claude",
   "openai-codex": "codex",
   openai: "codex",
+  "codex-app-server": "codex",
   cn: "continue",
   qodercli: "qoder",
 };
@@ -856,6 +866,16 @@ export const locateCommand = async (command: string, env: Record<string, string 
       const preferred = lines.find((l: string) => winExt.test(l)) || lines[0];
       return { installed: true, commandPath: normalizeMsys2Path(preferred), reason: null };
     }
+    // #10710: a probe timeout is NOT the same fact as a genuinely absent binary
+    // -- runProcess sets `timedOut` when its own 3s timer SIGKILLs the child
+    // before it answered. Collapsing that into "not_found" makes an installed
+    // CLI starved under concurrent fan-out (see all-statuses route) look
+    // identical to one that was never installed. Surface a distinct reason so
+    // callers can decide (retry, remember-and-continue, etc.) instead of
+    // silently reporting a false negative.
+    if (located.timedOut) {
+      return { installed: false, commandPath: null, reason: "timeout" };
+    }
     return { installed: false, commandPath: null, reason: "not_found" };
   }
 
@@ -865,6 +885,11 @@ export const locateCommand = async (command: string, env: Record<string, string 
   });
   if (located.ok && located.stdout) {
     return { installed: true, commandPath: command, reason: null };
+  }
+  // #10710: see the matching Windows branch above -- a timeout must not be
+  // reported as "not_found".
+  if (located.timedOut) {
+    return { installed: false, commandPath: null, reason: "timeout" };
   }
   return { installed: false, commandPath: null, reason: "not_found" };
 };
@@ -945,7 +970,7 @@ export const checkKnownPath = async (commandPath: string) => {
 
 type KnownPathResult = Awaited<ReturnType<typeof checkKnownPath>>;
 
-const locateCommandCandidate = async (
+export const locateCommandCandidate = async (
   commands: string[],
   env: Record<string, string | undefined>,
   toolId?: string
@@ -975,13 +1000,31 @@ const locateCommandCandidate = async (
 
   // Always try PATH — a stray/broken known-path guess must never hide a genuinely
   // PATH-resolvable binary (#7774). User can also set CLI_EXTRA_PATHS if needed.
+  //
+  // #10710: "timeout" is deliberately NOT terminal like other failure reasons
+  // (unsafe_path, symlink_escape, ...). A timeout only proves the probe was
+  // too slow, not that the binary is absent, so remaining command aliases are
+  // still worth trying (the next one may resolve quickly). Remember the first
+  // timeout as a fallback so a genuine "not_found" for every alias doesn't
+  // silently swallow the fact that one probe never actually completed.
+  let bestTimeoutFailure: Awaited<ReturnType<typeof locateCommand>> | null = null;
   for (const command of commands) {
     const located = await locateCommand(command, env);
-    if (located.installed || located.reason !== "not_found") {
+    if (located.installed) {
+      return { command, ...located };
+    }
+    if (located.reason === "timeout") {
+      if (!bestTimeoutFailure) bestTimeoutFailure = located;
+      continue;
+    }
+    if (located.reason !== "not_found") {
       return { command, ...located };
     }
   }
 
+  if (bestTimeoutFailure) {
+    return { command: commands[0], ...bestTimeoutFailure };
+  }
   if (bestKnownPathFailure) {
     return { command: commands[0], ...bestKnownPathFailure };
   }

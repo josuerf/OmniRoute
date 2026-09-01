@@ -81,6 +81,10 @@ export const COOLDOWN_MS = {
   // account, so re-probe only after a long window (or when the operator routes
   // egress through a supported-region proxy).
   geoBlocked: 24 * 60 * 60 * 1000,
+  // Antigravity BYOP (GCP_PROJECT_REQUIRED): nothing changes on the account
+  // until the operator enters a Project ID, so keep the connection excluded
+  // from selection for a long window (mirrors the geo-blocked treatment).
+  gcpProjectRequired: 24 * 60 * 60 * 1000,
 };
 
 /**

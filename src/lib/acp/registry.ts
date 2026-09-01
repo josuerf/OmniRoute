@@ -200,6 +200,14 @@ let _customAgentDefs: CustomAgentDef[] = [];
 
 const DISALLOWED_VERSION_COMMAND_CHARS = /[;&|<>`$\r\n]/;
 
+// A version probe only ever needs a version flag. For untrusted (client-registered)
+// custom agents the binary-match check alone is not enough: the caller controls both
+// `binary` and `versionCommand`, so a matching interpreter with an eval-style argument
+// (`node -e …`, `python -c …`, `ruby -e …`) reaches execFileSync as arbitrary code
+// execution without any shell metacharacter. Restricting the args to a recognized
+// version flag closes that path — see GHSA-jphr-2gw7-xrwp / GHSA-hf57-cqmx-p4gr.
+const SAFE_VERSION_PROBE_ARG = /^(-v|-V|--version|-version|version|--ver)$/;
+
 /**
  * Set custom agent definitions from settings.
  */
@@ -298,6 +306,12 @@ export function resolveVersionProbe(
       normalizeCommandToken(path.basename(binary)),
     ]);
     if (!allowed.has(normalizedCommand)) {
+      return null;
+    }
+
+    // Untrusted probe: allow only a bare binary or a single recognized version
+    // flag, so a matching interpreter cannot smuggle an eval/exec argument.
+    if (args.length > 1 || (args.length === 1 && !SAFE_VERSION_PROBE_ARG.test(args[0]))) {
       return null;
     }
   }

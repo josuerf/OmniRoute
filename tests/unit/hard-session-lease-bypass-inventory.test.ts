@@ -13,15 +13,20 @@ type BypassClass = "A" | "B" | "C";
 
 const EXPECTED: Record<InventoryKind, Record<string, number>> = {
   credential: {
-    "open-sse/handlers/chatCore.ts": 1,
+    "open-sse/handlers/chatCore.ts": 2,
     "open-sse/services/imageCombo.ts": 1,
+    "open-sse/services/speechCombo.ts": 1,
+    "open-sse/services/videoCombo.ts": 2,
     "src/app/api/compression/compare/verify/route.ts": 1,
     "src/app/api/internal/codex-responses-ws/route.ts": 1,
     "src/app/api/search/providers/route.ts": 3,
+    "src/app/api/v1/_shared/elevenLabsProxy.ts": 1,
     "src/app/api/v1/audio/speech/route.ts": 1,
-    "src/app/api/v1/audio/transcriptions/route.ts": 1,
+    "src/app/api/v1/_shared/videoModelResolution.ts": 1,
+    "src/app/api/v1/audio/transcriptions/route.ts": 2,
     "src/app/api/v1/audio/translations/route.ts": 1,
-    "src/app/api/v1/images/edits/route.ts": 5,
+    "src/app/api/v1/classify/route.ts": 1,
+    "src/app/api/v1/images/edits/route.ts": 6,
     "src/app/api/v1/images/generations/route.ts": 3,
     "src/app/api/v1/images/upscale/route.ts": 1,
     "src/app/api/v1/messages/count_tokens/route.ts": 1,
@@ -32,10 +37,15 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/app/api/v1/providers/[provider]/images/generations/route.ts": 1,
     "src/app/api/v1/rerank/route.ts": 2,
     "src/app/api/v1/search/route.ts": 2,
+    "src/app/api/v1/segment/route.ts": 1,
     "src/app/api/v1/session-leases/route.ts": 1,
-    "src/app/api/v1/videos/generations/route.ts": 3,
+    "src/app/api/v1/videos/generations/route.ts": 2,
     "src/app/api/v1/web/fetch/route.ts": 1,
-    "src/lib/embeddings/service.ts": 2,
+    // #11088/#11271: third site is the synced local-endpoint route — it resolves
+    // credentials through getProviderCredentials with the connection allowlist
+    // from resolveLocalSyncedEndpointRoute, and handles allRateLimited, so it is
+    // fenced the same way as the two pre-existing sites.
+    "src/lib/embeddings/service.ts": 3,
     "src/lib/memory/embedding/index.ts": 1,
     "src/lib/search/executeWebSearch.ts": 2,
     "src/lib/skills/webFetchExecution.ts": 1,
@@ -49,6 +59,7 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "open-sse/handlers/chatCore/cliproxyapiCredentials.ts": 1,
     "open-sse/handlers/imageGeneration.ts": 1,
     "open-sse/handlers/imageGeneration/providers/chatgptWeb.ts": 1,
+    "open-sse/handlers/imageGeneration/providers/geminiWeb.ts": 1,
     "open-sse/handlers/videoGeneration.ts": 1,
     "open-sse/services/compression/eval/executorModelClient.ts": 1,
     "src/lib/compression/judgeModelClient.ts": 1,
@@ -57,8 +68,13 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
   connection: {
     "open-sse/handlers/autoComboCandidates.ts": 1,
     "open-sse/handlers/chatCore.ts": 2,
+    "open-sse/handlers/cursorCliProxy.ts": 1,
     "open-sse/services/alibabaFreeTier.ts": 1,
     "open-sse/services/alibabaFreeTierQuotaFetcher.ts": 1,
+    // Volcano Ark plan cycle: readConnectionForCooldownGate() reads the row backing the
+    // pre-dispatch persisted-cooldown gate, i.e. it is on the routing/dispatch path - same
+    // class as providerWildcard/autoComboCandidates, so it is classified B below.
+    "open-sse/services/combo.ts": 1,
     "open-sse/services/combo/providerWildcard.ts": 1,
     "open-sse/services/tokenRefresh.ts": 1,
     "src/app/(dashboard)/dashboard/tools/agent-bridge/page.tsx": 1,
@@ -74,11 +90,12 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/app/api/playground/simulate-route/route.ts": 1,
     "src/app/api/provider-nodes/[id]/route.ts": 1,
     "src/app/api/providers/[id]/chatgpt-web-codex-doctor/route.ts": 1,
+    "src/app/api/providers/[id]/refresh-token/route.ts": 1,
     "src/app/api/providers/bulk/route.ts": 1,
     "src/app/api/providers/client/route.ts": 1,
     "src/app/api/providers/free-onboarding/route.ts": 2,
     "src/app/api/providers/import/route.ts": 1,
-    "src/app/api/providers/route.ts": 4,
+    "src/app/api/providers/route.ts": 2,
     "src/app/api/providers/test-batch/route.ts": 2,
     "src/app/api/rate-limits/route.ts": 1,
     "src/app/api/services/dario/admin/import-from-omniroute/route.ts": 2,
@@ -90,6 +107,7 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/app/api/translator/translate/route.ts": 1,
     "src/app/api/usage/call-logs/route.ts": 1,
     "src/app/api/usage/quota/route.ts": 1,
+    "src/app/api/usage/utilization/route.ts": 1,
     "src/app/api/v1/vscode/[token]/api/tags/route.ts": 1,
     "src/app/api/v1/vscode/raw/[token]/api/tags/route.ts": 1,
     "src/app/api/v1beta/models/route.ts": 1,
@@ -104,14 +122,24 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/lib/db/readCache.ts": 2,
     "src/lib/freeProviderRankings.ts": 1,
     "src/lib/guardrails/visionBridgeCredentials.ts": 1,
+    "src/lib/kimi/tokenRefresh.ts": 1,
     "src/lib/monitoring/providerHealthAutopilot.ts": 1,
     "src/lib/monitoring/providerHealthMatrix.ts": 1,
     "src/lib/oauth/connectionPersistence.ts": 1,
+    "src/lib/oauth/services/persistCursorConnection.ts": 1,
     "src/lib/oauth/utils/agyAuthImport.ts": 1,
     "src/lib/oauth/utils/claudeAuthImport.ts": 1,
     "src/lib/oauth/utils/codexAuthImport.ts": 1,
     "src/lib/providerModels/managedModelImport.ts": 1,
     "src/lib/providers/codexConnectionDefaults.ts": 1,
+    // Volcano Ark plan connect flow (commit d732cf615): both are connection *persistence*
+    // sites, not dispatch. volcenginePlanBinding looks the plan connection up by name to
+    // decide update-vs-create during connect (same shape as oauth/connectionPersistence);
+    // volcPlanAutoSyncBackfill is a one-shot boot backfill that patches a providerSpecificData
+    // flag and issues no upstream call. Neither selects a connection to serve a request, so
+    // both stay class C (see CLASSIFICATION below).
+    "src/lib/providers/volcPlanAutoSyncBackfill.ts": 1,
+    "src/lib/providers/volcenginePlanBinding.ts": 1,
     "src/lib/proxyEgress.ts": 1,
     "src/lib/quota/connectionRecovery.ts": 2,
     "src/lib/sync/bundle.ts": 1,
@@ -128,7 +156,7 @@ const EXPECTED: Record<InventoryKind, Record<string, number>> = {
     "src/shared/services/codexCatalogRevalidation.ts": 2,
     "src/shared/services/modelSyncScheduler.ts": 1,
     "src/sse/handlers/chatHelpers.ts": 1,
-    "src/sse/services/auth.ts": 3,
+    "src/sse/services/auth.ts": 4,
   },
 };
 
@@ -149,6 +177,7 @@ const CLASSIFICATION: Record<InventoryKind, Record<string, BypassClass>> = {
     "open-sse/handlers/chatCore/cliproxyapiCredentials.ts": "A",
     "open-sse/handlers/imageGeneration.ts": "B",
     "open-sse/handlers/imageGeneration/providers/chatgptWeb.ts": "B",
+    "open-sse/handlers/imageGeneration/providers/geminiWeb.ts": "B",
     "open-sse/handlers/videoGeneration.ts": "B",
     "open-sse/services/compression/eval/executorModelClient.ts": "B",
     "src/lib/compression/judgeModelClient.ts": "B",
@@ -160,6 +189,7 @@ const CLASSIFICATION: Record<InventoryKind, Record<string, BypassClass>> = {
       [
         "open-sse/handlers/autoComboCandidates.ts",
         "open-sse/handlers/chatCore.ts",
+        "open-sse/services/combo.ts",
         "open-sse/services/alibabaFreeTier.ts",
         "open-sse/services/alibabaFreeTierQuotaFetcher.ts",
         "open-sse/services/combo/providerWildcard.ts",

@@ -818,11 +818,15 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
       return { provider: "claude", model: modelId, extendedContext };
     }
     // Claude models → Anthropic provider (canonical source for Claude models)
-    return { provider: "anthropic", model: modelId, extendedContext };
+    if (activeProviders?.has("anthropic")) {
+      return { provider: "anthropic", model: modelId, extendedContext };
+    }
   }
   if (/^gemini-/i.test(modelId) || /^gemma-/i.test(modelId)) {
     // Gemini/Gemma models → Gemini provider
-    return { provider: "gemini", model: modelId, extendedContext };
+    if (activeProviders?.has("gemini")) {
+      return { provider: "gemini", model: modelId, extendedContext };
+    }
   }
 
   // Last resort: no provider could be inferred — return a clear error instead

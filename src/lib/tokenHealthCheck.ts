@@ -29,6 +29,7 @@ import { pickMaskedDisplayValue } from "@/shared/utils/maskEmail";
 import { isAutomatedTestProcess } from "@/shared/utils/testProcess";
 import { refreshGithubCopilotSubTokenIfNeeded } from "@/lib/tokenHealthCheckCopilot";
 import { checkCursorConnectionIfNeeded } from "@/lib/tokenHealthCheckCursor";
+import { checkKimiWebConnectionIfNeeded } from "@/lib/tokenHealthCheckKimi";
 
 const LOG_PREFIX = "[HealthCheck]";
 const TRUE_ENV_VALUES = new Set(["1", "true", "yes", "on"]);
@@ -603,6 +604,22 @@ export async function checkConnection(conn) {
     return;
   }
 
+  // Kimi Web proactive token check and jittered auto-refresh
+  const providerLower = String(conn.provider || "").toLowerCase();
+  if (providerLower === "kimi-web" || providerLower === "kimi_web") {
+    const now = new Date().toISOString();
+    await checkKimiWebConnectionIfNeeded({
+      conn,
+      now,
+      log,
+      logWarn,
+      logError,
+      getConnectionLogLabel,
+      logPrefix: LOG_PREFIX,
+    });
+    return;
+  }
+
   if (!conn.refreshToken || typeof conn.refreshToken !== "string") {
     if (isGitHubAccessTokenOnlyConnection(conn)) {
       const now = new Date().toISOString();
@@ -619,35 +636,45 @@ export async function checkConnection(conn) {
         copilotExpiresAtMs - Date.now() < TOKEN_EXPIRY_BUFFER;
 
       let refreshedProviderSpecificData: Record<string, unknown> | null = null;
-      if (copilotAboutToExpire) {
-        const hideLogs = await shouldHideLogs();
-        const proxyResolution = await resolveProxyForConnection(conn.id);
-        const proxyConfig = extractResolvedProxyConfig(proxyResolution);
-        const healthCheckLog = {
-          info: (tag: string, msg: string) => {
-            if (!hideLogs) console.log(LOG_PREFIX, `[${tag}]`, msg);
-          },
-          warn: (tag: string, msg: string) => {
-            if (!hideLogs) console.warn(LOG_PREFIX, `[${tag}]`, msg);
-          },
-          error: (tag: string, msg: string, extra?: Record<string, unknown>) => {
-            if (!hideLogs) console.error(LOG_PREFIX, `[${tag}]`, msg, extra || "");
-          },
-        };
+      const hideLogs = await shouldHideLogs();
+      const proxyResolution = await resolveProxyForConnection(conn.id);
+      const proxyConfig = extractResolvedProxyConfig(proxyResolution);
+      const healthCheckLog = {
+        info: (tag: string, msg: string) => {
+          if (!hideLogs) console.log(LOG_PREFIX, `[${tag}]`, msg);
+        },
+        warn: (tag: string, msg: string) => {
+          if (!hideLogs) console.warn(LOG_PREFIX, `[${tag}]`, msg);
+        },
+        error: (tag: string, msg: string, extra?: Record<string, unknown>) => {
+          if (!hideLogs) console.error(LOG_PREFIX, `[${tag}]`, msg, extra || "");
+        },
+      };
 
-        const copilotResult = await refreshCopilotToken(
-          conn.accessToken,
-          healthCheckLog,
-          proxyConfig,
-          getCopilotTokenBaseUrl(conn)
-        );
-        if (copilotResult?.token) {
-          refreshedProviderSpecificData = {
-            ...providerSpecificData,
-            copilotToken: copilotResult.token,
-            copilotTokenExpiresAt: copilotResult.expiresAt,
-          };
-        }
+      const copilotResult = await refreshCopilotToken(
+        conn.accessToken,
+        healthCheckLog,
+        proxyConfig,
+        getCopilotTokenBaseUrl(conn)
+      );
+      if (copilotResult?.status === 401) {
+        await updateProviderConnection(conn.id, {
+          testStatus: "expired",
+          lastHealthCheckAt: now,
+          lastError: "GitHub rejected the access token",
+          lastErrorAt: now,
+          lastErrorType: "github_access_token_invalid",
+          lastErrorSource: "oauth",
+          errorCode: "github_access_token_invalid",
+        });
+        return;
+      }
+      if (copilotResult?.token && copilotAboutToExpire) {
+        refreshedProviderSpecificData = {
+          ...providerSpecificData,
+          copilotToken: copilotResult.token,
+          copilotTokenExpiresAt: copilotResult.expiresAt,
+        };
       }
 
       if (canClearGitHubNoRefreshTokenState(conn)) {
@@ -701,10 +728,12 @@ export async function checkConnection(conn) {
     // cosmetic "Token Expired". Surface reality as a terminal "expired" status instead.
     // Guard tightly so we do NOT clobber:
     //   - providers without refresh tokens (supportsTokenRefresh=false; #8407 devin-cli)
+    //   - Cursor access-token-only imports (refresh is optional; deep-control stores one)
     //   - connections already in a terminal/specific state (expired/banned/credits_exhausted)
     //   - transient cooldown state (unavailable) owned by the request path
     const refreshCapableNeedsReauth =
       supportsTokenRefresh(conn.provider) &&
+      conn.provider !== "cursor" &&
       (!conn.testStatus || conn.testStatus === "active") &&
       !(conn.apiKey && conn.apiKey.length > 0); // API-key-only connections don't need refresh tokens
     if (refreshCapableNeedsReauth) {

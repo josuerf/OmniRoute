@@ -8,7 +8,7 @@
  *
  * ## Fail-open paths
  *  1. Optional-deps gate: if any of `@atjsh/llmlingua-2`, `@huggingface/transformers`,
- *     `@tensorflow/tfjs`, `js-tiktoken` does not resolve, return `text` immediately —
+ *     `js-tiktoken` does not resolve, return `text` immediately —
  *     NO worker spawn. This is the default in CI / most installs (deps are OPTIONAL).
  *  2. Per-call timeout: first call for a model gets `FIRST_CALL_TIMEOUT_MS` (one-time
  *     model load); warm calls get `LLMLINGUA_WORKER_TIMEOUT_MS`. On timeout → original
@@ -16,7 +16,7 @@
  *  3. Worker error/exit → resolve all pending with their original text + respawn next.
  *
  * ## Serialization
- *  ONNX/tfjs are not reentrant — calls are queued FIFO and only one message is
+ *  ONNX inference is not reentrant — calls are queued FIFO and only one message is
  *  in-flight at a time (the next is posted after the previous reply or its timeout).
  *
  * ## Idle eviction
@@ -45,7 +45,7 @@ const FIRST_CALL_TIMEOUT_MS = 60000;
 
 /**
  * Gate probe: `@atjsh/llmlingua-2` is the entry package that declares the others
- * (`@huggingface/transformers`, `@tensorflow/tfjs`, `js-tiktoken`) as peers. We probe
+ * (`@huggingface/transformers`, `js-tiktoken`) as peers. We probe
  * ONLY it (by manifest existence) because the peers are ESM-only and `require.resolve`
  * throws for them even when installed; the worker still fail-opens if a peer is
  * genuinely missing at `import()` time.
