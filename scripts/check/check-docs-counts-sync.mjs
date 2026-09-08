@@ -85,6 +85,27 @@ function countScoringFactors() {
   return parseScoringFactors(fs.readFileSync(file, "utf8"));
 }
 
+// PURE: the reference document must NAME every shipped pack. Reporting which one is
+// missing is the point — "6 packs" tells a doc it is stale, "chaos-mode is missing"
+// tells it what to write.
+export function makeModePackNamesValidator(names) {
+  return (content) => {
+    if (!names.length) return { ok: true, detail: "no mode packs found in source — skipping" };
+    // Token boundary, not `includes`: "ship-fast" is a substring of
+    // "ship-fast-v2", so a doc could satisfy the gate while naming a pack that
+    // does not ship — and a future pack named as a prefix of another would be
+    // masked by it.
+    const missing = names.filter(
+      (name) =>
+        !new RegExp(`(^|[^\\w-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\w-]|$)`).test(
+          content
+        )
+    );
+    if (!missing.length) return { ok: true, detail: `all ${names.length} mode packs are named` };
+    return { ok: false, detail: `mode pack(s) never named in this file: ${missing.join(", ")}` };
+  };
+}
+
 // PURE: parse the canonical provider total out of the auto-generated catalog text.
 export function parseProviderTotal(referenceText) {
   if (!referenceText) return 0;
@@ -163,7 +184,8 @@ export function tallyDrift(checks, getContent) {
 // Returns null when tsx is unavailable so the gate degrades to a skip, not a false red.
 function readCodeFacts() {
   const script = [
-    'import {computeFreeModelTotals} from "./open-sse/config/freeModelCatalog.ts";',
+    'import {computeFreeModelTotals,FREE_MODEL_BUDGETS} from "./open-sse/config/freeModelCatalog.ts";',
+    'import {MODE_PACKS} from "./open-sse/services/autoCombo/modePacks.ts";',
     'import {ENGINE_IDS} from "./open-sse/services/compression/engineCatalog.ts";',
     'import {CLI_TOOLS} from "./src/shared/constants/cliTools.ts";',
     'import {countUniqueMcpTools} from "./open-sse/mcp-server/toolCount.ts";',
@@ -196,14 +218,21 @@ function readCodeFacts() {
     "const t=computeFreeModelTotals();const cli=Object.values(CLI_TOOLS);",
     "const by=(c)=>cli.filter(x=>x.category===c).length;",
     // "Free forever" = every provider whose free access renews or needs no key at all.
-    // one-time-initial (signup credits) and discontinued pools are excluded on purpose.
+    // one-time-initial (signup credits) and discontinued pools are excluded on purpose,
+    // and so is every eligibility-gated row: a provider nobody can sign up for without
+    // clearing a gate is not "free forever" for the reader of the headline.
     "const FOREVER=new Set(['recurring-monthly','recurring-daily','recurring-uncapped',",
     "'recurring-credit','keyless']);",
-    "const ff=new Set();for(const m of t.perModel)if(FOREVER.has(m.freeType))ff.add(m.provider);",
-    'console.log("@@"+JSON.stringify({freeSteady:t.steadyRecurringTokens,',
-    "freeFirst:t.firstMonthRealisticTokens,freePools:t.poolCount,engines:ENGINE_IDS.length,",
+    "const ff=new Set();for(const m of t.perModel)",
+    "if(FOREVER.has(m.freeType)&&!m.eligibilityGate)ff.add(m.provider);",
+    'console.log("@@"+JSON.stringify({freeSteady:t.steadyRecurringTokens,entries:t.perModel.length,',
+    "freeFirst:t.firstMonthRealisticTokens,freeGated:t.gatedRecurringTokens,",
+    "freePools:t.poolCount,engines:ENGINE_IDS.length,",
     "cliTotal:cli.length,cliCode:by('code'),cliAgent:by('agent'),",
-    "mcpTools:countUniqueMcpTools(cols),mcpScopes:sc.size,providers:pids.size,freeForever:ff.size}));",
+    "mcpTools:countUniqueMcpTools(cols),mcpScopes:sc.size,providers:pids.size,freeForever:ff.size,",
+    "modePacks:Object.keys(MODE_PACKS),",
+    "hardStop:FREE_MODEL_BUDGETS.filter(e=>e.hardStopGuaranteed===true).length,",
+    "trainsOnPrompts:FREE_MODEL_BUDGETS.filter(e=>e.trainsOnPrompts===true).length}));",
   ].join("");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "docs-counts-"));
   try {
@@ -246,6 +275,20 @@ export function extractHeadlineClaims(content) {
   return claims;
 }
 
+// The eligibility-gated figure ("+~6M behind regional identity verification") is validated
+// with its own anchor so it can neither drift nor be silently dropped once it exists.
+const GATED_ANCHOR = /^\s*behind regional identity verification/i;
+
+export function extractGatedClaims(content) {
+  const claims = [];
+  for (const m of content.matchAll(/\+?~?(\d+(?:\.\d+)?)([BM])\b/g)) {
+    const after = content.slice(m.index + m[0].length, m.index + m[0].length + 60);
+    if (!GATED_ANCHOR.test(after)) continue;
+    claims.push({ tokens: Number(m[1]) * (m[2] === "B" ? 1e9 : 1e6), unit: m[2], text: m[0] });
+  }
+  return claims;
+}
+
 export function checkFreeTierHeadline(content, totals) {
   const claims = extractHeadlineClaims(content);
   if (!claims.length) return { ok: true, detail: "no aggregate free-tier headline in this file" };
@@ -254,13 +297,66 @@ export function checkFreeTierHeadline(content, totals) {
   const stale = claims.filter(
     (c) => Math.abs(c.value - steady) >= 0.05 && Math.abs(c.value - first) >= 0.05
   );
-  if (!stale.length)
-    return { ok: true, detail: `${claims.length} headline claim(s) match the live catalog` };
-  return {
-    ok: false,
-    detail:
+  const problems = [];
+  if (stale.length) {
+    problems.push(
       `stale headline ${[...new Set(stale.map((c) => c.text))].join(", ")} — live catalog ` +
-      `computes ~${steady.toFixed(2)}B steady / ~${first.toFixed(2)}B first month`,
+        `computes ~${steady.toFixed(2)}B steady / ~${first.toFixed(2)}B first month`
+    );
+  }
+  if (totals.g != null && totals.g > 0) {
+    const gated = extractGatedClaims(content);
+    const tol = (c) => (c.unit === "B" ? 0.05e9 : 0.5e6);
+    const gatedStale = gated.filter((c) => Math.abs(c.tokens - totals.g) >= tol(c));
+    if (!gated.length) {
+      problems.push(
+        `missing gated figure — live catalog computes ${Math.round(totals.g / 1e6)}M behind regional identity verification`
+      );
+    } else if (gatedStale.length) {
+      problems.push(
+        `stale gated figure ${[...new Set(gatedStale.map((c) => c.text))].join(", ")} — live catalog ` +
+          `computes ${Math.round(totals.g / 1e6)}M behind regional identity verification`
+      );
+    }
+  }
+  if (!problems.length)
+    return { ok: true, detail: `${claims.length} headline claim(s) match the live catalog` };
+  return { ok: false, detail: problems.join("; ") };
+}
+
+// PURE: docs prose that names the product version ("OmniRoute v3.8.50 ·",
+// "**Current version:** 3.8.50") must match package.json exactly.
+export function readPackageVersion() {
+  try {
+    return String(JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version);
+  } catch {
+    return null;
+  }
+}
+
+export function makeVersionClaimValidator(expected) {
+  const PATTERNS = [
+    /OmniRoute v(\d+\.\d+\.\d+)/g,
+    /Current version:\*{0,2}\s*\*{0,2}(\d+\.\d+\.\d+)/g,
+  ];
+  return (content) => {
+    if (!expected) return { ok: false, detail: "package.json version could not be read" };
+    const claims = [];
+    for (const pattern of PATTERNS)
+      for (const m of content.matchAll(pattern)) claims.push({ value: m[1], text: m[0].trim() });
+    if (!claims.length) return { ok: true, detail: "no version claim in this file" };
+    const stale = claims.filter((c) => c.value !== expected);
+    if (!stale.length)
+      return {
+        ok: true,
+        detail: `${claims.length} version claim(s) match package.json ${expected}`,
+      };
+    return {
+      ok: false,
+      detail:
+        `stale version: ${[...new Set(stale.map((c) => `"${c.text}"`))].join(", ")} — ` +
+        `package.json is ${expected}`,
+    };
   };
 }
 
@@ -281,10 +377,31 @@ export function extractNumberClaims(content, { pattern, skipBefore, skipAfter })
   return claims;
 }
 
+// Three spellings of the same claim are in use across the docs, and all three
+// must be watched: "6 curated **mode packs**", "6 pre-defined weight profiles",
+// "4 weight profiles". Matching only the first left the other two unguarded.
+const MODE_PACK_CLAIM_PATTERN =
+  /(\d+)\s+(?:curated\s+|pre-defined\s+)?\*{0,2}(?:mode\s+packs?|weight\s+profiles?)\b/gi;
+
 export function makeNumberClaimValidator(expected, opts) {
   return (content) => {
     const claims = extractNumberClaims(content, opts);
-    if (!claims.length) return { ok: true, detail: `no ${opts.what} claim in this file` };
+    if (!claims.length) {
+      // Most files in a check's list legitimately never mention the number, so
+      // "no claim" is normally a pass. But for a reference document that is
+      // supposed to state it, silence is the failure mode that matters: reword
+      // the sentence past the pattern and the gate goes quiet while reporting
+      // green. `requireClaim` says this file must carry the claim.
+      if (opts.requireClaim)
+        return {
+          ok: false,
+          detail:
+            `no ${opts.what} claim found, and this file is required to state one — ` +
+            `either the sentence was reworded past the pattern, or it was deleted ` +
+            `(code has ${expected})`,
+        };
+      return { ok: true, detail: `no ${opts.what} claim in this file` };
+    }
     const stale = claims.filter((c) => c.value !== expected);
     if (!stale.length)
       return { ok: true, detail: `${claims.length} ${opts.what} claim(s) match the code` };
@@ -371,6 +488,8 @@ const SVG_DIAGRAM_FILES = [
   "docs/diagrams/comparison-table.svg",
   "docs/diagrams/cli-terminal.svg",
   "docs/diagrams/tier-cascade.svg",
+  "public/images/tier-flow-dark.svg",
+  "public/images/tier-flow-light.svg",
 ];
 
 export function buildChecks() {
@@ -398,8 +517,19 @@ export function buildChecks() {
       files: ["README.md", "AGENTS.md", "llm.txt"],
       validate: makeNumberClaimValidator(countMigrations(), {
         what: "migrations",
-        pattern: /(\d+)\+? migrations?\b/gi,
+        pattern: /(\d+)\+? (?:versioned )?(?:SQL )?migrations?\b/gi,
       }),
+    },
+    {
+      // The README footer and llm.txt each carry the product version as prose; both
+      // shipped stale ("v3.8.50" on a 3.8.51 tree) in the 2026-08-31 audit. Compare
+      // every such claim against package.json, which is authoritative.
+      label: "Package version (docs prose)",
+      actual: readPackageVersion(),
+      docKey: "package version",
+      strict: true,
+      files: ["README.md", "llm.txt"],
+      validate: makeVersionClaimValidator(readPackageVersion()),
     },
     {
       label: "i18n locales count",
@@ -428,7 +558,56 @@ export function buildChecks() {
         files,
         validate: makeNumberClaimValidator(expected, { what, ...opts }),
       });
+      const packs = Array.isArray(f.modePacks) ? f.modePacks : [];
       return [
+        {
+          // Two packs shipped after the docs were written and nothing noticed.
+          // The count and the names are two different gates: a table can carry
+          // the right number and still describe the wrong four out of six.
+          label: "Auto-Combo mode packs",
+          actual: packs.length,
+          docKey: "mode packs",
+          strict: true,
+          files: [
+            "README.md",
+            "llm.txt",
+            "docs/guides/FEATURES.md",
+            "docs/architecture/ARCHITECTURE.md",
+            "docs/architecture/REPOSITORY_MAP.md",
+            "docs/routing/AUTO-COMBO.md",
+          ],
+          validate: makeNumberClaimValidator(packs.length, {
+            what: "mode packs",
+            // Three spellings are in use across the docs, and all three are the
+            // same claim: "6 curated **mode packs**", "6 pre-defined weight
+            // profiles", "4 weight profiles". Matching only the first left the
+            // other two unwatched.
+            pattern: MODE_PACK_CLAIM_PATTERN,
+          }),
+        },
+        {
+          // Same claim, but on the one document that MUST carry it. Without
+          // `requireClaim` the strongest gate in this file is also the easiest to
+          // silence: reword the sentence and "no claim in this file" reads as a pass.
+          label: "Auto-Combo mode packs (reference doc must state the count)",
+          actual: packs.length,
+          docKey: "mode packs",
+          strict: true,
+          files: ["docs/routing/AUTO-COMBO.md"],
+          validate: makeNumberClaimValidator(packs.length, {
+            what: "mode packs",
+            pattern: MODE_PACK_CLAIM_PATTERN,
+            requireClaim: true,
+          }),
+        },
+        {
+          label: "Auto-Combo mode packs (named in the reference doc)",
+          actual: packs.length,
+          docKey: "mode packs",
+          strict: true,
+          files: ["docs/routing/AUTO-COMBO.md"],
+          validate: makeModePackNamesValidator(packs),
+        },
         {
           label: "Provider reference total (doc vs live modules)",
           actual: f.providers,
@@ -455,12 +634,12 @@ export function buildChecks() {
         },
         {
           label: "Free-tier headline (live catalog)",
-          actual: `~${(f.freeSteady / 1e9).toFixed(2)}B steady / ${f.freePools} pools`,
+          actual: `~${(f.freeSteady / 1e9).toFixed(2)}B steady / ${f.freePools} pools / ${Math.round(f.freeGated / 1e6)}M gated`,
           docKey: "free-tier headline",
           strict: true,
           files: ["README.md", "docs/reference/FREE_TIERS.md"],
           validate: (content) =>
-            checkFreeTierHeadline(content, { s: f.freeSteady, m: f.freeFirst }),
+            checkFreeTierHeadline(content, { s: f.freeSteady, m: f.freeFirst, g: f.freeGated }),
         },
         claim(
           f.engines,
@@ -472,23 +651,86 @@ export function buildChecks() {
           f.mcpTools,
           "MCP tools",
           {
-            pattern: /(\d+) tools/gi,
+            pattern: /(\d+)[- ]tools?\b/gi,
             // per-module rows ("Memory tool definitions (3 tools)") and the CLI catalog
             // total ("33 tools (25 CLI Code's …)") are not the MCP aggregate
             // per-module rows read "… tool definitions (N tools" / "… management tools
             // (N tools" — the word tool(s)/definitions sits right before the paren. The
             // aggregate ("MCP Server (109 tools", "all 109 tools") never does.
-            skipBefore: /(tools?|definitions?)\s*\(\s*$/i,
+            // "Phase 2 tool handlers" is a phase number, not a tool count
+            skipBefore: /(tools?|definitions?)\s*\(\s*$|phase\s+$/i,
             skipAfter: /^\s*\(\d+ CLI/,
           },
-          ["README.md", "AGENTS.md", "docs/frameworks/MCP-SERVER.md"]
+          [
+            "README.md",
+            "AGENTS.md",
+            "docs/frameworks/MCP-SERVER.md",
+            "llm.txt",
+            "open-sse/mcp-server/README.md",
+            "skills/omni-mcp/SKILL.md",
+          ]
         ),
-        claim(f.mcpScopes, "MCP scopes", { pattern: /(\d+) scopes/gi }, ["README.md", "AGENTS.md"]),
-        claim(f.cliTotal, "CLI tools", { pattern: /(\d+) tools(?=\s*\(\d+ CLI)/gi }, ["README.md"]),
-        claim(f.freeForever, "free-forever providers", { pattern: /(\d+) free forever/gi }, [
+        claim(f.mcpScopes, "MCP scopes", { pattern: /(\d+) scopes/gi }, [
           "README.md",
-          "docs/diagrams/promise-pillars.svg",
+          "AGENTS.md",
+          "llm.txt",
+          "skills/omni-mcp/SKILL.md",
         ]),
+        claim(f.cliTotal, "CLI tools", { pattern: /(\d+) tools(?=\s*\(\d+ CLI)/gi }, ["README.md"]),
+        claim(
+          f.freeForever,
+          "free-forever providers",
+          { pattern: /(\d+)(?:\s+recurring(?:\/|\s+or\s+)keyless)?\s+free[- ]forever/gi },
+          ["README.md", "docs/diagrams/promise-pillars.svg"]
+        ),
+        claim(
+          f.entries,
+          "free-tier catalog entries",
+          { pattern: /(\d+) (?:cataloged |catalogued )?(?:free-tier |catalog )entries\b/gi },
+          ["README.md", "docs/diagrams/free-tier-budget.svg"]
+        ),
+        claim(
+          f.freePools,
+          "recurring pools",
+          {
+            pattern: /(\d+) (?:documented )?(?:recurring|free-tier) pool(?:s|(?:\s+keys))?\b/gi,
+            // "20 recurring pools with a published positive monthly budget" is the
+            // positive-budget SUBSET, not the recurring-pool total — never gate it.
+            skipAfter: /^\s+with a published positive/i,
+          },
+          ["README.md", "docs/diagrams/free-tier-budget.svg", "docs/reference/FREE_TIERS.md"]
+        ),
+        // The reference page says what an entry vouches for. These two facts are
+        // curated by hand rather than inferred, so the page quotes their counts —
+        // and quoting a count is how a page goes stale. The patterns are deliberately
+        // narrow: FREE_TIERS.md is full of numbers, and a loose one would gate a
+        // token budget by accident.
+        claim(
+          f.hardStop,
+          "hard-stop-guaranteed entries",
+          {
+            // `requireClaim`: this page is the one place that states the number,
+            // so a reworded or deleted sentence must fail rather than pass as
+            // "no claim in this file" — otherwise the gate is one edit from silent.
+            requireClaim: true,
+            pattern:
+              /(\d+) entr(?:y|ies) (?:that )?(?:carry|carries) an? independently documented hard stop/gi,
+          },
+          ["docs/reference/FREE_TIERS.md"]
+        ),
+        claim(
+          f.trainsOnPrompts,
+          "training-disclosure entries",
+          {
+            // `requireClaim`: this page is the one place that states the number,
+            // so a reworded or deleted sentence must fail rather than pass as
+            // "no claim in this file" — otherwise the gate is one edit from silent.
+            requireClaim: true,
+            pattern:
+              /(\d+) entr(?:y|ies) (?:that )?(?:carry|carries) a (?:prompt-)?training disclosure/gi,
+          },
+          ["docs/reference/FREE_TIERS.md"]
+        ),
       ];
     })(),
     {
@@ -517,7 +759,14 @@ export function buildChecks() {
         "docs/guides/FEATURES.md",
         "docs/guides/FREE_PROVIDER_RANKINGS.md",
         "docs/diagrams/strategies-grid.svg",
-        "docs/diagrams/auto-combo-12factor.mmd",
+        "docs/diagrams/auto-combo-scoring.mmd",
+        "llm.txt",
+        "docs/architecture/ARCHITECTURE.md",
+        "docs/architecture/REPOSITORY_MAP.md",
+        "docs/architecture/RESILIENCE_GUIDE.md",
+        "docs/frameworks/OPEN_SSE_ARCHITECTURE.md",
+        "docs/getting-started/AUTO-COMBO-GUIDE.md",
+        "skills/omni-combos-routing/SKILL.md",
         "open-sse/services/autoCombo/routerStrategy.ts",
         "open-sse/services/taskAwareRouter.ts",
         "tests/unit/lkgp-enabled-context-11181.test.ts",
@@ -533,7 +782,7 @@ export function buildChecks() {
       actual: countRoutingStrategies(),
       docKey: "strategies",
       strict: false,
-      files: ["docs/routing/AUTO-COMBO.md", "docs/architecture/RESILIENCE_GUIDE.md"],
+      files: ["docs/routing/AUTO-COMBO.md", "docs/architecture/RESILIENCE_GUIDE.md", "llm.txt"],
     },
     {
       label: "OAuth providers count",

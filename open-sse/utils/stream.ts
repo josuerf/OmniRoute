@@ -47,11 +47,14 @@ import {
 } from "./responsesCommentaryDrop.ts";
 import { buildErrorBody } from "./error.ts";
 import { parseTextualToolCallCandidate, isValidToolCallHeaderPrefix } from "./textualToolCall.ts";
+import { stripObfuscationZeroWidth } from "./zeroWidth.ts";
 import {
   formatTranslatedStreamError,
-  normalizeStreamFailurePayload,
+  prepareTranslatedStreamFailure,
+  projectStreamFailureEvent,
   type StreamFailurePayload,
 } from "./streamErrorFormat.ts";
+import { createStreamFailureAborter } from "./streamFailureBoundary.ts";
 import { recordToolLatency } from "../services/toolLatencyTracker.ts";
 import { extractToolSchemaMap } from "../translator/response/openai-responses/toolSchemas.ts";
 import {
@@ -272,7 +275,7 @@ function containsMalformedTextualToolCall(
   allowedToolNames?: Set<string> | null
 ): boolean {
   if (typeof text !== "string") return false;
-  const normalized = text.replace(/[\u200B-\u200D\uFEFF]/g, "");
+  const normalized = stripObfuscationZeroWidth(text);
 
   let searchIdx = 0;
   while (true) {
@@ -763,12 +766,15 @@ export function createSSEStream(options: StreamOptions = {}) {
   let passthroughAccumulatedContent = "";
   let passthroughAccumulatedReasoning = "";
   let passthroughBufferedTextualToolCallContent = "";
+  /** Passthrough: whether a usage block was already forwarded to the client (prevents double). */
+  let passthroughForwardedUsage = false;
   // Passthrough Responses SSE: snapshots of items seen via `response.output_item.done`,
   // used to backfill `response.completed.response.output` when upstream returns it
   // empty (which happens when `store: false` — see backfillResponsesCompletedOutput).
   const passthroughResponsesOutputItems: unknown[] = [];
   const passthroughResponsesPendingFunctionCalls = new Map<string, JsonRecord>();
   let passthroughResponsesId: string | null = null;
+  let passthroughLastChatId: string | null = null;
   let passthroughResponsesCurrentFunctionCallKey: string | null = null;
   const passthroughResponsesReasoningSummarySeen = new Set<string>();
   // #6199 — commentary-phase items announced via `response.output_item.added` are
@@ -839,13 +845,6 @@ export function createSSEStream(options: StreamOptions = {}) {
   const clientPayloadCollector = createStructuredSSECollector({
     stage: "client_response",
   });
-  const requestRecord = asRecord(body);
-  const requestStreamOptions = asRecord(
-    requestRecord.stream_options ?? requestRecord.streamOptions
-  );
-  const expectsOpenAIUsageOnlyChunk =
-    requestStreamOptions.include_usage === true || requestStreamOptions.includeUsage === true;
-
   // Per-stream instances to avoid shared state with concurrent streams
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -1037,11 +1036,11 @@ export function createSSEStream(options: StreamOptions = {}) {
       totalContentLength > 0
     ) {
       const estimated = estimateUsage(body, totalContentLength, sourceFormat);
-      itemSanitized.usage = filterUsageForFormat(estimated, sourceFormat);
+      itemSanitized.usage = timing.withTps(filterUsageForFormat(estimated, sourceFormat));
       state.usage = estimated;
     } else if (state?.finishReason && isFinishChunk && state.usage) {
       const buffered = addBufferToUsage(state.usage);
-      itemSanitized.usage = filterUsageForFormat(buffered, sourceFormat);
+      itemSanitized.usage = timing.withTps(filterUsageForFormat(buffered, sourceFormat));
     }
 
     if (
@@ -1080,8 +1079,8 @@ export function createSSEStream(options: StreamOptions = {}) {
       model,
       cacheHit: false,
       latencyMs: Date.now() - streamStartedAt,
-      usage: finalUsage,
-      costUsd,
+      usage: timing.withTps(finalUsage),
+      costUsd, ttftMs: timing.ttftMs(),
     });
     if (!comment) return;
     reqLogger?.appendConvertedChunk?.(comment);
@@ -1176,6 +1175,40 @@ export function createSSEStream(options: StreamOptions = {}) {
     }
   };
 
+  const abortStreamFailure = createStreamFailureAborter({
+    onFailure,
+    onComplete,
+    getUsage: () => state?.usage,
+    timing,
+    buildProviderPayload: () =>
+      providerPayloadCollector.build(providerPayloadCollector.getSummary(), {
+        includeEvents: false,
+      }),
+    buildClientPayload: (body) => clientPayloadCollector.build(body, { includeEvents: false }),
+    clearIdleTimer,
+    clearPendingRequest: clearPendingRequestFromStream,
+    markPendingRequestCleared,
+    model,
+  });
+
+  const emitTranslatedFailureAndAbort = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    payload: unknown
+  ): boolean => {
+    const failure = prepareTranslatedStreamFailure(payload);
+    if (!failure) return false;
+    providerPayloadCollector.push(failure.providerPayload);
+    const output = formatTranslatedStreamError(failure.record, sourceFormat);
+    reqLogger?.appendConvertedChunk?.(output);
+    forward(controller, encoder.encode(output));
+    upstreamErrorForwarded = true;
+    doneSent = true;
+    abortStreamFailure(controller, failure.internalFailure, failure.publicMessage, {
+      notifyComplete: true,
+    });
+    return true;
+  };
+
   return new TransformStream(
     {
       start(controller) {
@@ -1240,6 +1273,7 @@ export function createSSEStream(options: StreamOptions = {}) {
             let injectedUsage = false;
             let clientPayload: unknown = null;
             let failurePayload: StreamFailurePayload | null = null;
+            let publicFailureMessage: string | null = null;
 
             if (skipPassthroughEvent) {
               if (!trimmed) {
@@ -1327,6 +1361,14 @@ export function createSSEStream(options: StreamOptions = {}) {
             if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
               try {
                 let parsed = parsedPassthroughData ?? JSON.parse(trimmed.slice(5).trim());
+                const projectedFailure = projectStreamFailureEvent(parsed);
+                if (projectedFailure) {
+                  parsed = projectedFailure.publicPayload;
+                  failurePayload = projectedFailure.internalFailure;
+                  publicFailureMessage = projectedFailure.publicMessage;
+                  output = `data: ${JSON.stringify(parsed)}\n\n`;
+                  injectedUsage = true;
+                }
 
                 // Some upstream Responses-compatible providers leak an initial Chat Completions
                 // bootstrap chunk (assistant role + empty content) before emitting proper
@@ -1483,9 +1525,6 @@ export function createSSEStream(options: StreamOptions = {}) {
                       );
                     }
                   }
-                  if (parsed.type === "response.failed") {
-                    failurePayload = normalizeStreamFailurePayload(parsed);
-                  }
                   if (
                     parsed.type === "response.reasoning_summary_text.delta" ||
                     parsed.type === "response.reasoning_summary_text.done" ||
@@ -1641,10 +1680,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                         isResponsesCommentaryMessageItem
                       ).items
                     : passthroughResponsesOutputItems;
-                  const backfilled = backfillResponsesCompletedOutput(
-                    parsed,
-                    backfillCandidates
-                  );
+                  const backfilled = backfillResponsesCompletedOutput(parsed, backfillCandidates);
                   const usageNormalized = normalizeUsage(parsed);
                   if (
                     stripped ||
@@ -1751,7 +1787,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                         !parsed.choices[0]?.finish_reason))
                   ) {
                     const emptyChoicesUsage = extractUsage(parsed) ?? parsed.usage;
-                    if (hasValidUsage(emptyChoicesUsage)) {
+                    if (hasValidUsage(emptyChoicesUsage) && !passthroughForwardedUsage) {
                       // Some upstreams (e.g. Ollama Cloud) emit prompt_tokens: 0
                       // even when input was sent — they simply don't count input
                       // tokens.  When we have a non-zero output but zero input,
@@ -1764,7 +1800,11 @@ export function createSSEStream(options: StreamOptions = {}) {
                       ) {
                         const pt = emptyChoicesUsage.prompt_tokens ?? 0;
                         if (pt === 0) {
-                          const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
+                          const estimated = estimateUsage(
+                            body,
+                            totalContentLength,
+                            sourceFormat || FORMATS.OPENAI
+                          );
                           if (estimated?.prompt_tokens > 0) {
                             emptyChoicesUsage.prompt_tokens = estimated.prompt_tokens;
                             emptyChoicesUsage.total_tokens =
@@ -1773,12 +1813,18 @@ export function createSSEStream(options: StreamOptions = {}) {
                         }
                       }
                       usage = emptyChoicesUsage;
+                      passthroughForwardedUsage = true;
                       output = `data: ${JSON.stringify(parsed)}\n\n`;
                       injectedUsage = true;
                       clientPayload = parsed;
                       clientPayloadCollector.push(clientPayload);
                       reqLogger?.appendConvertedChunk?.(output);
                       forward(controller, encoder.encode(output));
+                      continue;
+                    }
+
+                    // If we already forwarded usage, drop any trailing empty-choices valid usage
+                    if (passthroughForwardedUsage && hasValidUsage(emptyChoicesUsage)) {
                       continue;
                     }
 
@@ -1802,20 +1848,22 @@ export function createSSEStream(options: StreamOptions = {}) {
                   const rawDelta = parsed.choices?.[0]?.delta;
                   const hadReasoningAlias = hasUnsupportedReasoningSignal(rawDelta);
 
-                  parsed = sanitizeStreamingChunk(parsed);
-                  if (
-                    parsed &&
-                    typeof parsed === "object" &&
-                    !Array.isArray(parsed) &&
-                    (parsed as Record<string, unknown>)[OMIT_STREAMING_CHUNK_MARKER] === true
-                  ) {
-                    continue;
+                  if (!projectedFailure) {
+                    parsed = sanitizeStreamingChunk(parsed);
+                    if (
+                      parsed &&
+                      typeof parsed === "object" &&
+                      !Array.isArray(parsed) &&
+                      (parsed as Record<string, unknown>)[OMIT_STREAMING_CHUNK_MARKER] === true
+                    ) {
+                      continue;
+                    }
                   }
 
                   const restoredOpenAIToolName = restoreOpenAIToolNames(parsed, toolNameMap);
                   const idFixed = hadNonStringTopLevelId ? false : fixInvalidId(parsed);
 
-                  if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
+                  if (!projectedFailure && !hasValuableContent(parsed, FORMATS.OPENAI)) {
                     continue;
                   }
 
@@ -1954,6 +2002,16 @@ export function createSSEStream(options: StreamOptions = {}) {
 
                   const isFinishChunk = parsed.choices?.[0]?.finish_reason;
 
+                  // Remember the upstream's chat-completion id so synthetic chunks
+                  // emitted at flush (e.g. the estimated usage-only chunk) carry the
+                  // stream's real string id instead of null on the chat path
+                  // (passthroughResponsesId is only ever set on the Responses path).
+                  if (typeof parsed.id === "string" && parsed.id) {
+                    passthroughLastChatId = parsed.id;
+                  } else if (typeof parsed.id === "number") {
+                    passthroughLastChatId = String(parsed.id);
+                  }
+
                   if (isFinishChunk) {
                     passthroughSawFinishReason = true;
                   }
@@ -1972,26 +2030,25 @@ export function createSSEStream(options: StreamOptions = {}) {
                     parsed.choices[0].finish_reason !== "tool_calls"
                   ) {
                     parsed.choices[0].finish_reason = "tool_calls";
-                    // If we modify it, we must output the modified object
-                    if (!injectedUsage && hasValidUsage(parsed.usage)) {
-                      output = `data: ${JSON.stringify(parsed)}\n\n`;
-                      injectedUsage = true;
-                    }
-                  }
-                  if (
-                    isFinishChunk &&
-                    !hasValidUsage(parsed.usage) &&
-                    !expectsOpenAIUsageOnlyChunk
-                  ) {
-                    const estimated = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
-                    parsed.usage = filterUsageForFormat(estimated, FORMATS.OPENAI);
+                    // If we modify it, we must output the modified object. This used to
+                    // piggyback on the estimated-usage rewrite below; with the estimate
+                    // moved to flush() (#12151 follow-up) the rewrite must happen here.
+                    // injectedUsage doubles as the "output already rewritten" latch —
+                    // without it the raw line overwrites this rewrite further down.
                     output = `data: ${JSON.stringify(parsed)}\n\n`;
-                    usage = estimated;
                     injectedUsage = true;
-                  } else if (isFinishChunk && usage) {
+                  }
+                  // #12151 follow-up: do NOT inject estimated usage into the finish chunk.
+                  // A genuine OpenAI upstream sends its usage in a trailing empty-choices
+                  // chunk AFTER the finish; estimating here marked passthroughForwardedUsage
+                  // and made the real trailing block get dropped in favor of the estimate
+                  // (billing regression pinned by tests/unit/stream-utils.test.ts). The
+                  // estimate is now emitted in flush(), only when the upstream stayed silent.
+                  if (isFinishChunk && hasValidUsage(usage) && !passthroughForwardedUsage) {
                     const buffered = addBufferToUsage(usage);
-                    parsed.usage = filterUsageForFormat(buffered, FORMATS.OPENAI);
+                    parsed.usage = timing.withTps(filterUsageForFormat(buffered, sourceFormat || FORMATS.OPENAI));
                     output = `data: ${JSON.stringify(parsed)}\n\n`;
+                    passthroughForwardedUsage = true;
                     injectedUsage = true;
                   } else if (textualToolCallConverted) {
                     output = `data: ${JSON.stringify(parsed)}\n\n`;
@@ -2035,20 +2092,10 @@ export function createSSEStream(options: StreamOptions = {}) {
             reqLogger?.appendConvertedChunk?.(output);
             forward(controller, encoder.encode(output));
             if (failurePayload) {
-              let failureHandled = false;
-              if (onFailure) {
-                try {
-                  failureHandled = onFailure(failurePayload) === true;
-                } catch (e) {
-                  console.debug(`[STREAM] onFailure callback error:`, e);
-                }
-              }
-              clearIdleTimer();
-              if (!failureHandled) {
-                clearPendingRequestFromStream();
-              }
-              controller.error(
-                markPendingRequestCleared(new Error(failurePayload.message || "Upstream failure"))
+              abortStreamFailure(
+                controller,
+                failurePayload,
+                publicFailureMessage || "Upstream failure"
               );
               return;
             }
@@ -2070,14 +2117,7 @@ export function createSSEStream(options: StreamOptions = {}) {
 
           if (upstreamErrorForwarded) continue;
 
-          if (parsed.error) {
-            const output = formatTranslatedStreamError(parsed, sourceFormat);
-            reqLogger?.appendConvertedChunk?.(output);
-            forward(controller, encoder.encode(output));
-            upstreamErrorForwarded = true;
-            doneSent = true;
-            continue;
-          }
+          if (emitTranslatedFailureAndAbort(controller, parsed)) return;
 
           // #5786 — drop replayed Responses-API events (identical/lower sequence_number
           // re-sent on an upstream reconnect) so their deltas are not glued twice into
@@ -2339,6 +2379,8 @@ export function createSSEStream(options: StreamOptions = {}) {
                 ]) as JsonRecord,
               restoreOpenAIToolNames: (parsed: JsonRecord) =>
                 restoreOpenAIToolNames(parsed, toolNameMap),
+              abortFailure: (failure: StreamFailurePayload, publicMessage: string) =>
+                abortStreamFailure(controller, failure, publicMessage),
             };
 
             for (const line of normalizedTailLines) {
@@ -2352,12 +2394,18 @@ export function createSSEStream(options: StreamOptions = {}) {
               clearPendingPassthroughEvent();
             } else if (buffer) {
               let output = buffer;
+              let bufferedProjectedFailure: ReturnType<typeof projectStreamFailureEvent> = null;
               if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
                 output = "data: " + buffer.slice(5);
               }
-              const bufferedPayload = parseSSELine(bufferedLine);
+              let bufferedPayload = parseSSELine(bufferedLine);
               if (bufferedPayload) {
                 providerPayloadCollector.push(bufferedPayload);
+                bufferedProjectedFailure = projectStreamFailureEvent(bufferedPayload);
+                if (bufferedProjectedFailure) {
+                  bufferedPayload = bufferedProjectedFailure.publicPayload;
+                  output = `data: ${JSON.stringify(bufferedPayload)}\n\n`;
+                }
                 if (sanitizeUsagePayloadForRequest(bufferedPayload, body, clientResponseFormat))
                   output = `data: ${JSON.stringify(bufferedPayload)}\n\n`;
                 if (
@@ -2406,6 +2454,14 @@ export function createSSEStream(options: StreamOptions = {}) {
               }
               reqLogger?.appendConvertedChunk?.(output);
               forward(controller, encoder.encode(output));
+              if (bufferedProjectedFailure) {
+                abortStreamFailure(
+                  controller,
+                  bufferedProjectedFailure.internalFailure,
+                  bufferedProjectedFailure.publicMessage
+                );
+                return;
+              }
             }
 
             if (shouldInjectClaudeEmptyResponseOnFlush(claudeEmptyResponseLifecycle)) {
@@ -2502,6 +2558,26 @@ export function createSSEStream(options: StreamOptions = {}) {
                 reqLogger?.appendConvertedChunk?.(finishOutput);
                 forward(controller, encoder.encode(finishOutput));
                 clientPayloadCollector.push(syntheticFinishChunk);
+              }
+              // #12151: upstream never reported usage — emit the estimate as a
+              // canonical OpenAI trailing usage-only chunk (empty choices) before
+              // [DONE], so metered clients still see token counts. When the
+              // upstream DID send usage (trailing or in-band), it was forwarded
+              // already and passthroughForwardedUsage guards this off.
+              if (shouldEmitDoneTerminator && !passthroughForwardedUsage && hasValidUsage(usage)) {
+                const usageOnlyChunk = {
+                  id: passthroughLastChatId ?? passthroughResponsesId ?? `chatcmpl-${Date.now()}`,
+                  object: "chat.completion.chunk",
+                  created: Math.floor(Date.now() / 1000),
+                  model,
+                  choices: [],
+                  usage: timing.withTps(filterUsageForFormat(usage, sourceFormat || FORMATS.OPENAI)),
+                };
+                const usageOutput = `data: ${JSON.stringify(usageOnlyChunk)}\n\n`;
+                reqLogger?.appendConvertedChunk?.(usageOutput);
+                forward(controller, encoder.encode(usageOutput));
+                clientPayloadCollector.push(usageOnlyChunk);
+                passthroughForwardedUsage = true;
               }
               await emitFinalSseMetadata(controller, usage);
               doneSent = true;
@@ -2636,6 +2712,7 @@ export function createSSEStream(options: StreamOptions = {}) {
           if (buffer.trim()) {
             const parsed = parseSSELine(buffer.trim());
             if (parsed && !parsed.done) {
+              if (emitTranslatedFailureAndAbort(controller, parsed)) return;
               providerPayloadCollector.push(parsed);
               // Extract usage from remaining buffer — if the usage-bearing event
               // (e.g. response.completed) is the last SSE line, it ends up here
@@ -2700,58 +2777,9 @@ export function createSSEStream(options: StreamOptions = {}) {
               // terminal signal for the client.
             }
 
-            let failureHandled = false;
-            if (onFailure) {
-              try {
-                timing.markInterrupted();
-                failureHandled =
-                  onFailure({
-                    status: err.status,
-                    message: err.message,
-                    code: err.code,
-                    type: err.type,
-                  }) === true;
-              } catch (e) {
-                console.debug(`[STREAM] onFailure callback error (${model || "unknown"}):`, e);
-              }
-            }
-
             const errorBody = buildErrorBody(err.status, err.message);
-            if (onComplete) {
-              try {
-                onComplete({
-                  status: err.status,
-                  usage: state?.usage,
-                  responseBody: errorBody,
-                  ttft: timing.ttftMs(),
-                  itlMs: timing.avgItlMs(),
-                  interrupted: timing.interrupted,
-                  error: err.message,
-                  errorCode: err.code,
-                  providerPayload: providerPayloadCollector.build(
-                    providerPayloadCollector.getSummary(),
-                    { includeEvents: false }
-                  ),
-                  clientPayload: clientPayloadCollector.build(errorBody, {
-                    includeEvents: false,
-                  }),
-                });
-                failureHandled = true;
-              } catch (e) {
-                console.debug(
-                  `[STREAM] onComplete callback error in error path (${model || "unknown"}):`,
-                  e
-                );
-              }
-            }
-
-            clearIdleTimer();
-            if (!failureHandled) {
-              clearPendingRequestFromStream();
-            }
-            controller.error(
-              markPendingRequestCleared(new Error(err.message || "Upstream failure"))
-            );
+            const publicErrorMessage = errorBody.error.message;
+            abortStreamFailure(controller, err, publicErrorMessage, { notifyComplete: true });
             return;
           }
 

@@ -1,5 +1,5 @@
 # ── Multi-stage Dockerfile for Native Bun Runtime (web-latest-bun) ───────────
-FROM oven/bun:1.3.14-slim AS base
+FROM oven/bun:1.4.0-slim AS base
 WORKDIR /app
 
 RUN apt-get update \
@@ -31,10 +31,8 @@ COPY scripts/dev/sync-env.mjs ./scripts/dev/sync-env.mjs
 # Fast Bun native package install
 RUN bun install --include=optional --quiet
 
-# Fetch tls-client-node native binary if script exists
-RUN if [ -f "node_modules/tls-client-node/scripts/postinstall.js" ] && [ ! -d "node_modules/tls-client-node/bin" ]; then \
-      bun node_modules/tls-client-node/scripts/postinstall.js || true; \
-    fi
+# Fail the build if wreq-js cannot resolve its current platform binding.
+RUN bun -e "const wreq = require('wreq-js'); if (typeof wreq.createTransport !== 'function') process.exit(1)"
 
 # Smoke check native database driver used by Bun (bun:sqlite)
 RUN bun -e "import { Database } from 'bun:sqlite'; const db = new Database(':memory:'); db.query('SELECT 1 AS ok').get(); db.close(); console.log('bun:sqlite smoke: OK');"
@@ -58,7 +56,7 @@ ENV NODE_ENV=production
 RUN bun run --quiet build
 
 # ── Runner Base stage (100% Bun Native Production Runtime) ──────────────────
-FROM oven/bun:1.3.14-slim AS runner-base
+FROM oven/bun:1.4.0-slim AS runner-base
 
 LABEL org.opencontainers.image.title="omniroute" \
   org.opencontainers.image.description="Unified AI proxy — route any LLM through one endpoint (Bun Native)" \

@@ -11,6 +11,7 @@ import type {
 import { normalizeComboRecord } from "@/lib/combos/steps";
 import { validateComboInvariant } from "@/lib/combos/invariants";
 import { getDbInstance } from "../core";
+import { deleteLKGPRowsByComboName } from "../settings/lkgp";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -41,10 +42,15 @@ function getComboId(value: unknown): string | null {
   return typeof row.id === "string" && row.id.trim().length > 0 ? row.id : null;
 }
 
+/**
+ * Enforces the SQLite row's primary key id on the parsed JSON record.
+ * The database row.id column is always authoritative over any stale id
+ * persisted inside the data JSON blob (e.g. from duplication or import).
+ */
 function withRowId(payload: string, row: JsonRecord): JsonRecord {
   const parsed = withSortOrder(payload, getSortOrder(row));
   const comboId = getComboId(row);
-  if (comboId && typeof parsed.id !== "string") {
+  if (comboId) {
     parsed.id = comboId;
   }
   return parsed;
@@ -344,8 +350,27 @@ export async function reorderCombos(comboIds: string[]): Promise<ComboReorderRes
 
 export async function deleteCombo(id: string) {
   const db = getDbInstance();
-  const result = db.prepare("DELETE FROM combos WHERE id = ?").run(id);
-  if (result.changes === 0) return false;
+  const deleteTransaction = db.transaction(() => {
+    const combo = db.prepare("SELECT name FROM combos WHERE id = ?").get(id) as
+      { name?: string } | undefined;
+    const result = db.prepare("DELETE FROM combos WHERE id = ?").run(id);
+    if (result.changes === 0) return { deleted: false, lkgpKeys: [] as string[] };
+    return {
+      deleted: true,
+      lkgpKeys: combo?.name ? deleteLKGPRowsByComboName(combo.name) : ([] as string[]),
+    };
+  });
+
+  const { deleted, lkgpKeys } = deleteTransaction();
+  if (!deleted) return false;
+
+  if (lkgpKeys.length > 0) {
+    const { invalidateCachedLKGP } = await import("../readCache");
+    for (const key of lkgpKeys) {
+      invalidateCachedLKGP(key);
+    }
+  }
+
   return true;
 }
 

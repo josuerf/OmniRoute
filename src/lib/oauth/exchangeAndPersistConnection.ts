@@ -31,7 +31,10 @@ import {
 } from "@/models";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { syncToCloud } from "@/lib/cloudSync";
-import { antigravityDegradedProjectState } from "@/lib/oauth/antigravityProjectGate";
+import {
+  antigravityDegradedProjectState,
+  antigravityPersistStatus,
+} from "@/lib/oauth/antigravityProjectGate";
 import { runWithProxyContextOrDirect } from "@omniroute/open-sse/utils/proxyFetch.ts";
 
 export interface ExchangeAndPersistConnectionInput {
@@ -123,8 +126,7 @@ export async function exchangeAndPersistConnection(
       connection = await updateProviderConnection(matchId, {
         ...tokenData,
         expiresAt,
-        testStatus: degradedProject?.testStatus ?? "active",
-        ...(degradedProject ?? {}),
+        ...antigravityPersistStatus(degradedProject),
         isActive: true,
       });
     }

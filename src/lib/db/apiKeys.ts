@@ -78,6 +78,13 @@ interface CacheEntry<TValue> {
   value: TValue;
 }
 
+interface CreateApiKeyOptions {
+  modelAccessMode?: ModelAccessMode;
+  allowedModels?: string[];
+  allowedCombos?: string[];
+  allowedConnections?: string[];
+}
+
 export type { AccessSchedule, RateLimitRule } from "./apiKeys/types";
 
 interface ApiKeyMetadata {
@@ -437,7 +444,7 @@ function getPreparedStatements(db: ApiKeysDbLike): ApiKeysStatements {
       "SELECT id, name, machine_id, model_access_mode, allowed_models, blocked_models, allowed_combos, allowed_connections, allowed_quotas, no_log, auto_resolve, is_active, access_schedule, max_requests_per_day, max_requests_per_minute, throttle_delay_ms, max_sessions, revoked_at, expires_at, ip_allowlist, scopes, rate_limits, is_banned, key_hash, allowed_endpoints, stream_default_mode, cache_default_mode, disable_non_public_models, allow_usage_command, usage_limit_enabled, daily_usage_limit_usd, weekly_usage_limit_usd, chaos_mode_enabled, compression_enabled, proxy_id FROM api_keys WHERE key = ? OR key_hash = ?"
     );
     _stmtInsertKey = db.prepare(
-      "INSERT INTO api_keys (id, name, key, machine_id, allowed_models, allowed_combos, allowed_connections, no_log, created_at, key_prefix, key_hash, scopes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO api_keys (id, name, key, machine_id, model_access_mode, allowed_models, allowed_combos, allowed_connections, no_log, created_at, key_prefix, key_hash, scopes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
     _stmtDeleteKey = db.prepare("DELETE FROM api_keys WHERE id = ?");
   }
@@ -660,12 +667,19 @@ export async function createApiKey(
   name: string,
   machineId: string,
   scopes: string[] = [],
-  options: { allowedConnections?: string[] } = {}
+  options: CreateApiKeyOptions = {}
 ) {
   if (!machineId) {
     throw new Error("machineId is required");
   }
   const allowedConnections = options.allowedConnections ?? [];
+  const modelAccess = normalizeApiKeyPermissionsUpdate({
+    modelAccessMode: options.modelAccessMode,
+    allowedModels: options.allowedModels,
+  });
+  const modelAccessMode = modelAccess.modelAccessMode ?? "all";
+  const allowedModels = modelAccess.allowedModels ?? [];
+  const allowedCombos = options.allowedCombos ?? [ALL_COMBOS_ACCESS_RULE];
   assertExclusiveLeaseKeyPolicy(scopes, allowedConnections);
 
   const db = getDbInstance() as ApiKeysDbLike;
@@ -679,9 +693,9 @@ export async function createApiKey(
     name: name,
     key: result.key,
     machineId: machineId,
-    modelAccessMode: "all" as const,
-    allowedModels: [], // Empty array means all models allowed
-    allowedCombos: [ALL_COMBOS_ACCESS_RULE], // Explicit wildcard means all combos allowed
+    modelAccessMode,
+    allowedModels,
+    allowedCombos,
     allowedConnections,
     noLog: false,
     allowUsageCommand: false,
@@ -695,7 +709,8 @@ export async function createApiKey(
     apiKey.name,
     apiKey.key,
     apiKey.machineId,
-    "[]",
+    apiKey.modelAccessMode,
+    JSON.stringify(apiKey.allowedModels),
     JSON.stringify(apiKey.allowedCombos),
     JSON.stringify(allowedConnections),
     0,

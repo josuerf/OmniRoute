@@ -421,29 +421,67 @@ function prependBufferedChunks(
   chunks: Uint8Array[],
   reader: ReadableStreamDefaultReader<Uint8Array>
 ): ReadableStream<Uint8Array> {
+  let bufferedIndex = 0;
+  let readInFlight = false;
+  let cancelRequested = false;
+  let readerReleased = false;
+
+  const releaseReader = () => {
+    if (readerReleased) return;
+    readerReleased = true;
+    reader.releaseLock();
+  };
+
+  const cancelReader = (reason: unknown) => {
+    if (cancelRequested) return;
+    cancelRequested = true;
+
+    try {
+      // The provider controls this promise and may never settle. Cancellation
+      // of the replay stream must remain bounded, so cleanup is deliberately
+      // fire-and-forget while the in-flight read releases the lock in `pull`.
+      void reader.cancel(reason).catch(() => {});
+    } catch {
+      // A synchronous cancellation failure is cleanup-only; the downstream
+      // stream has already been cancelled by its consumer.
+    }
+
+    if (!readInFlight) releaseReader();
+  };
+
   return new ReadableStream<Uint8Array>({
-    async start(controller) {
+    async pull(controller) {
+      if (cancelRequested) return;
+
+      // Replay exactly one readiness chunk per demand. Reading the source
+      // eagerly here would let a subsequent source error clear this queue
+      // before the consumer has observed the buffered prefix.
+      if (bufferedIndex < chunks.length) {
+        controller.enqueue(chunks[bufferedIndex]);
+        bufferedIndex += 1;
+        return;
+      }
+
+      readInFlight = true;
       try {
-        for (const chunk of chunks) {
-          controller.enqueue(chunk);
+        const { done, value } = await reader.read();
+        if (cancelRequested) return;
+        if (done) {
+          releaseReader();
+          controller.close();
+        } else if (value) {
+          controller.enqueue(value);
         }
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) controller.enqueue(value);
-        }
-
-        controller.close();
       } catch (error) {
-        controller.error(error);
+        releaseReader();
+        if (!cancelRequested) controller.error(error);
       } finally {
-        reader.releaseLock();
+        readInFlight = false;
+        if (cancelRequested) releaseReader();
       }
     },
-    async cancel(reason) {
-      await reader.cancel(reason).catch(() => {});
-      reader.releaseLock();
+    cancel(reason) {
+      cancelReader(reason);
     },
   });
 }
@@ -471,6 +509,9 @@ export async function ensureStreamReadiness(
   response: Response,
   options: {
     timeoutMs: number;
+    /** Hard ceiling for liveness-extended deadlines. When omitted, no hard ceiling
+     *  is applied beyond `timeoutMs`. */
+    maxTimeoutMs?: number;
     provider?: string | null;
     model?: string | null;
     log?: StreamReadinessLogger | null;
@@ -489,7 +530,14 @@ export async function ensureStreamReadiness(
   };
   const startedAt = Date.now();
   const effectiveTimeoutMs = Math.max(0, Math.floor(options.timeoutMs));
-  const deadline = startedAt + effectiveTimeoutMs;
+  // Hard ceiling: the deadline may extend on liveness signals (bytes arriving),
+  // but never past this absolute maximum.  When maxTimeoutMs is omitted the
+  // initial timeoutMs itself acts as the ceiling (no extension).
+  const maxDeadline =
+    options.maxTimeoutMs != null
+      ? startedAt + Math.max(effectiveTimeoutMs, Math.floor(options.maxTimeoutMs))
+      : startedAt + effectiveTimeoutMs;
+  let deadline = startedAt + effectiveTimeoutMs;
   let handedOffReader = false;
 
   const buildReadyResponse = () =>
@@ -500,7 +548,7 @@ export async function ensureStreamReadiness(
     });
 
   const timeoutReason = () =>
-    `Stream produced no non-ping SSE event within ${effectiveTimeoutMs}ms`;
+    `Stream produced no non-ping SSE event within ${deadline - startedAt}ms (max=${maxDeadline - startedAt}ms)`;
 
   try {
     while (true) {
@@ -592,6 +640,22 @@ export async function ensureStreamReadiness(
       if (!readResult.value) continue;
       chunks.push(readResult.value);
       const decodedChunk = decoder.decode(readResult.value, { stream: true });
+
+      // Liveness extension: bytes arrived → connection is alive, not dead.
+      // Reset the deadline so slow-but-alive upstreams (reasoning warm-ups,
+      // keepalive-only phases) are not aborted.  The hard ceiling (maxDeadline)
+      // prevents unbounded waits and preserves the operator's fast-fail intent
+      // for truly dead connections.
+      const now = Date.now();
+      if (deadline < maxDeadline) {
+        deadline = Math.min(now + effectiveTimeoutMs, maxDeadline);
+        if (now - startedAt > effectiveTimeoutMs) {
+          options.log?.debug?.(
+            "STREAM",
+            `readiness deadline extended to ${deadline - startedAt}ms (liveness signal) (${options.provider || "provider"}/${options.model || "unknown"})`
+          );
+        }
+      }
 
       if (appendStreamReadinessSignal(readinessState, decodedChunk)) {
         options.log?.debug?.(

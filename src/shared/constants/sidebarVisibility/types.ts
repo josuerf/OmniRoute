@@ -30,6 +30,7 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "acp-agents",
   "cloud-agents",
   "conductor",
+  "orchestration",
   "agent-bridge",
   "traffic-inspector",
   "discovery",
@@ -89,6 +90,7 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "leaderboard",
   "profile",
   "tokens",
+  "gamification-admin",
   // Other Features — flat
   "media",
   // Other Features > Batch

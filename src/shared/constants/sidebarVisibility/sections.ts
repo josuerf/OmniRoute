@@ -253,6 +253,13 @@ const TOOLS_GROUP: SidebarItemGroup = {
       subtitleFallback: "CLI-agent fleet",
     },
     {
+      id: "orchestration",
+      href: "/dashboard/orchestration",
+      i18nKey: "orchestration",
+      subtitleKey: "orchestrationSubtitle",
+      icon: "account_tree",
+    },
+    {
       id: "agent-bridge",
       href: "/dashboard/tools/agent-bridge",
       i18nKey: "agentBridge",
@@ -641,6 +648,13 @@ const GAMIFICATION_GROUP: SidebarItemGroup = {
       i18nKey: "tokens",
       subtitleKey: "tokensSubtitle",
       icon: "toll",
+    },
+    {
+      id: "gamification-admin",
+      href: "/dashboard/gamification/admin",
+      i18nKey: "gamificationAdmin",
+      subtitleKey: "gamificationAdminSubtitle",
+      icon: "admin_panel_settings",
     },
   ],
 };

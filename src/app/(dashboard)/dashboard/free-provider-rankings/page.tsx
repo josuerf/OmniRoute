@@ -8,7 +8,11 @@ import {
   sortRankingsAuthTypeFirst,
   type ProviderAuthType,
 } from "@/lib/freeProviderRankingsAuthType";
-import { formatUsageReliability, usageToneClass } from "@/lib/freeProviderRankingsUsage";
+import {
+  formatUsageReliability,
+  sortRankingsByReliability,
+  usageToneClass,
+} from "@/lib/freeProviderRankingsUsage";
 // Type-only: `freeProviderRankings` wires DB modules at import time, so a
 // client component must never take a runtime value from it. The page used to
 // keep its own copy of this shape, which had already drifted past the API.
@@ -60,6 +64,7 @@ export default function FreeProviderRankingsPage() {
   const [availableOnly, setAvailableOnly] = useState(false);
   const [typeFilter, setTypeFilter] = useState<ProviderAuthType | "">("");
   const [groupByType, setGroupByType] = useState(false);
+  const [sortByReliability, setSortByReliability] = useState(false);
 
   const fetchRankings = useCallback(
     async (category?: string, opts?: { configuredOnly?: boolean; availableOnly?: boolean }) => {
@@ -88,15 +93,20 @@ export default function FreeProviderRankingsPage() {
   );
 
   useEffect(() => {
-    fetchRankings(filter || undefined, { configuredOnly, availableOnly });
+    void (async () => {
+      await fetchRankings(filter || undefined, { configuredOnly, availableOnly });
+    })();
   }, [filter, configuredOnly, availableOnly, fetchRankings]);
 
   // Client-side Type filter + "group by type" sort (#6915) — purely derived
   // from the already-fetched `rankings`, never trigger a refetch.
   const displayedRankings = useMemo(() => {
     const filtered = filterRankingsByAuthType(rankings, typeFilter);
-    return groupByType ? sortRankingsAuthTypeFirst(filtered) : filtered;
-  }, [rankings, typeFilter, groupByType]);
+    // Reliability first, then grouping: the type sort compares categories only,
+    // so a stable sort keeps the reliability order inside each group.
+    const ordered = sortByReliability ? sortRankingsByReliability(filtered) : filtered;
+    return groupByType ? sortRankingsAuthTypeFirst(ordered) : ordered;
+  }, [rankings, typeFilter, groupByType, sortByReliability]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -179,6 +189,18 @@ export default function FreeProviderRankingsPage() {
           }`}
         >
           {t("sortTypeFirst")}
+        </button>
+        <button
+          onClick={() => setSortByReliability((v) => !v)}
+          aria-pressed={sortByReliability}
+          title={t("sortByReliabilityHelp")}
+          className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+            sortByReliability
+              ? "bg-emerald-500 border-emerald-500 text-white"
+              : "border-border text-text-muted hover:text-text-main hover:border-emerald-500/50"
+          }`}
+        >
+          {t("sortByReliability")}
         </button>
       </div>
       <p className="text-xs text-text-muted">{t("typeLegend")}</p>

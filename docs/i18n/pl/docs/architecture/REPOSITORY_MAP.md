@@ -202,7 +202,6 @@ src/
 | `playground/`                            | Współdzielone helpery Playground Studio: `codeExport.ts` (generator curl/Python/TS), `promptImprover.ts` (builder meta-promptów), `streamMetrics.ts` (czyste TTFT/TPS), `types.ts` (tabela cen) — zob. `docs/frameworks/PLAYGROUND_STUDIO.md`                                                                           |
 | `webhookDispatcher.ts`                   | Dostarczanie webhooków HMAC — zob. `docs/frameworks/WEBHOOKS.md`                                                                                                                                                                                                                                                        |
 | `cloudflaredTunnel.ts`, `ngrokTunnel.ts` | Managery tuneli — zob. `docs/ops/TUNNELS_GUIDE.md`                                                                                                                                                                                                                                                                      |
-| `oneproxySync.ts`, `oneproxyRotator.ts`  | Marketplace darmowych proxy 1proxy — zob. `docs/ops/PROXY_GUIDE.md`                                                                                                                                                                                                                                                     |
 | `cloudSync.ts`, `initCloudSync.ts`       | Opcjonalna synchronizacja stanu w chmurze                                                                                                                                                                                                                                                                               |
 | `localDb.ts`                             | Barrel re-exportów modułów db (bez logiki — tylko re-eksporty)                                                                                                                                                                                                                                                          |
 | `cacheLayer.ts`, `idempotencyLayer.ts`   | Cache żądań + idempotencja                                                                                                                                                                                                                                                                                              |
@@ -245,7 +244,7 @@ src/
 | -------------------------------- | ------------------------------------------------------------------------- |
 | `constants/providers.ts`         | **329 wpisów providerów** z walidacją Zod (źródło prawdy)                 |
 | `constants/cliTools.ts`          | Rejestr zewnętrznych narzędzi CLI                                         |
-| `constants/routingStrategies.ts` | **19 publicznych strategii routingu** z priorytetami                       |
+| `constants/routingStrategies.ts` | **19 publicznych strategii routingu** z priorytetami                      |
 | `constants/publicApiRoutes.ts`   | Trasy wymagające auth Bearer (vs management)                              |
 | `constants/upstreamHeaders.ts`   | Denylist nagłówków dla żądań upstream                                     |
 | `validation/schemas.ts`          | ~80 schematów Zod (jedno źródło prawdy dla kontraktów API)                |
@@ -449,7 +448,7 @@ open-sse/
 | Podkatalog            | Cel                                                                                                                                                                                                  |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docs/archive/`       | Zarchiwizowane/historyczne docs (np. `RFC-AUTO-ASSESSMENT-DRAFT.md` — zastąpione przez EVALS)                                                                                                        |
-| `docs/i18n/`          | Zlokalizowane tłumaczenia docs (43 locale)                                                                                                                                                           |
+| `docs/i18n/`          | Zlokalizowane tłumaczenia docs (41 locale)                                                                                                                                                           |
 | `docs/screenshots/`   | Zasoby graficzne do przewodników                                                                                                                                                                     |
 | `_tasks/superpowers/` | Plany/specyfikacje z superpowers (`writing-plans`/`brainstorming`) + research — izolowane, osobno wersjonowane repo, w .gitignore głównego drzewa. Zob. CLAUDE.md → "Planning & Research Artifacts". |
 
@@ -483,7 +482,7 @@ Dostarczane szablony konfiguracji plus zacommitowane bazowe linie quality-gate
 
 | Ścieżka                                       | Cel                                                                                    |
 | --------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `config/i18n.json`                            | Lista locale + metadane (kanoniczne źródło liczby 43 locale)                           |
+| `config/i18n.json`                            | Lista locale + metadane (kanoniczne źródło liczby 42 locale)                           |
 | `config/i18n-schema.json`                     | Schemat JSON walidujący `i18n.json`                                                    |
 | `config/payloadRules.json`                    | Reguły sanityzacji payloadów upstream                                                  |
 | `config/quality/quality-baseline.json`        | Bazowa linia ratchet multi-metryk (`scripts/quality/check-quality-ratchet.mjs`)        |

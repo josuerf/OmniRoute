@@ -86,6 +86,7 @@ export function baselineToMergedEntries(budgets: typeof FREE_MODEL_BUDGETS): Mer
     poolKey: b.poolKey ?? null,
     tos: b.tos,
     trainsOnPrompts: b.trainsOnPrompts,
+    eligibilityGate: b.eligibilityGate,
     enabled: true,
     origin: "baseline" as const,
   }));
@@ -159,6 +160,30 @@ export function getRadarCatalog(deps: GetRadarCatalogDeps = {}): RadarCatalogRes
       fetchedAt: cache.fetchedAt,
     },
   };
+}
+
+/** Injectable deps for `getCatalogWithoutOverlay`, same shape as the catalog resolver's. */
+export interface GetCatalogWithoutOverlayDeps {
+  baseline?: MergedEntry[];
+  getLocalState?: () => RadarLocalMergeState;
+}
+
+/**
+ * The catalog with no feed applied: the shipped baseline seen through the
+ * operator's own local Radar state (renames, disabled models, tombstones).
+ *
+ * This is the correct fallback when a cached feed exists but is too old to
+ * serve. Recomputing from the raw baseline instead would drop that state, and
+ * the totals honour it — `computeFreeModelTotals` treats `enabled: false` as
+ * absent, and `applyFeed` skips tombstoned entries — so models the operator
+ * removed would silently reappear in the published numbers.
+ */
+export function getCatalogWithoutOverlay(deps: GetCatalogWithoutOverlayDeps = {}): MergedEntry[] {
+  const { baseline: baselineInput, getLocalState: getLocalStateFn = getRadarLocalMergeState } =
+    deps;
+  const baseline = baselineInput ?? baselineToMergedEntries(FREE_MODEL_BUDGETS);
+  const { localOverrides, tombstones } = getLocalStateFn();
+  return applyFeed({ baseline, feed: [], localOverrides, tombstones });
 }
 
 // ---------------------------------------------------------------------------

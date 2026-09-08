@@ -44,11 +44,17 @@ const radarDb = await import("../../src/lib/db/radar.ts");
 const { GET } = await import("../../src/app/api/free-tier/summary/route.ts");
 const { computeFreeModelTotals } = await import("../../open-sse/config/freeModelCatalog.ts");
 const { FREE_CATALOG_CURATED_AT } = await import("../../open-sse/config/freeModelCatalog.data.ts");
+const { FREE_MODEL_BUDGETS } = await import("../../open-sse/config/freeModelCatalog.data.ts");
 
-const GEN_AT = "2026-08-20T12:00:00.000Z";
-const FETCHED_AT = "2026-08-25T06:00:00.000Z";
+// Anchored on the shipped catalog's curation date so the suite cannot rot the
+// next time the catalog is curated: a fixed literal would silently become older
+// than the baseline and change what the route is expected to serve.
+const GEN_AT = `${FREE_CATALOG_CURATED_AT}T12:00:00.000Z`;
+const STALE_GEN_AT = "2026-01-02T12:00:00.000Z";
+const FETCHED_AT = `${FREE_CATALOG_CURATED_AT}T18:00:00.000Z`;
 const OVERLAY_TOKENS = 1_234_567;
 const DISABLED_TOKENS = 9_999_999;
+const GATED_TOKENS = 4_242_000;
 
 async function authCookieHeader(): Promise<string> {
   const secret = new TextEncoder().encode(process.env.JWT_SECRET);
@@ -108,6 +114,34 @@ function feedPayload(tier: "community" | "live") {
       poolCount: 0,
     },
   };
+}
+
+function seedGatedCache() {
+  const payload = feedPayload("community");
+  payload.models.push({
+    provider: "test-radar",
+    modelId: "overlay-gated-model",
+    displayName: "Overlay Gated Model",
+    familyId: null,
+    freeType: "recurring-daily",
+    budget: { kind: "shared_pool", poolId: "overlay-gated", tokensPerMonth: GATED_TOKENS },
+    limits: { rpm: null, rpd: null, tpm: null, tpd: null },
+    contextWindow: null,
+    capabilities: { tools: false, vision: false, thinking: false },
+    trainsOnPrompts: null,
+    tosRisk: "ok",
+    setup: null,
+    enabled: true,
+    eligibilityGate: "regional-identity",
+  } as (typeof payload.models)[number]);
+  radarDb.setRadarCache({
+    version: "2026.08.25.1",
+    generatedAt: GEN_AT,
+    tier: "community",
+    payload: JSON.stringify(payload),
+    signature: "test-signature-not-verified-on-read",
+    fetchedAt: FETCHED_AT,
+  });
 }
 
 function resetState() {
@@ -223,12 +257,10 @@ test("a pre-migration cache row serves the overlay with an UNKNOWN date, not the
 
   const body = await getBody(false);
 
-  assert.equal(body.catalogSource, "radar-overlay");
-  assert.equal(
-    body.catalogUpdatedAt,
-    null,
-    "unknown must stay unknown — fetchedAt would re-create the confusion generated_at exists to end"
-  );
+  // Freshness guard: unknown build date is stale, so the baseline answers.
+  // Unknown must still not be papered over by fetchedAt.
+  assert.equal(body.catalogSource, "baseline");
+  assert.equal(body.catalogUpdatedAt, FREE_CATALOG_CURATED_AT);
 });
 
 // --- live tier: paid content stays behind this instance's sessions ----------
@@ -279,4 +311,107 @@ test("corrupt cache => baseline fallback with the baseline contract", async () =
   assert.equal(body.catalogSource, "baseline");
   assert.equal(body.catalogUpdatedAt, FREE_CATALOG_CURATED_AT);
   assert.equal(body.steadyRecurringTokens, computeFreeModelTotals().steadyRecurringTokens);
+});
+
+// --- freshness guard: never answer from a feed built before the shipped catalog ---
+
+test("overlay older than the shipped catalog => the baseline answers", async () => {
+  resetState();
+  setFeatureFlagOverride("RADAR_ENABLED", "true");
+  seedCache("community", { generatedAt: STALE_GEN_AT });
+
+  const body = await getBody();
+
+  assert.equal(body.catalogSource, "baseline");
+  assert.equal(body.catalogUpdatedAt, FREE_CATALOG_CURATED_AT);
+});
+
+test("overlay with an unknown build date => the baseline answers", async () => {
+  resetState();
+  setFeatureFlagOverride("RADAR_ENABLED", "true");
+  seedCache("community", { generatedAt: null });
+
+  const body = await getBody();
+
+  assert.equal(body.catalogSource, "baseline");
+  assert.equal(body.catalogUpdatedAt, FREE_CATALOG_CURATED_AT);
+});
+
+test("overlay built on the curation day itself => the overlay answers", async () => {
+  resetState();
+  setFeatureFlagOverride("RADAR_ENABLED", "true");
+  seedCache("community", { generatedAt: `${FREE_CATALOG_CURATED_AT}T00:30:00.000Z` });
+
+  const body = await getBody();
+
+  assert.equal(body.catalogSource, "radar-overlay");
+});
+
+test("overlay newer than the shipped catalog still answers", async () => {
+  resetState();
+  setFeatureFlagOverride("RADAR_ENABLED", "true");
+  seedCache("community");
+
+  const body = await getBody();
+
+  assert.equal(body.catalogSource, "radar-overlay");
+  assert.equal(body.catalogUpdatedAt, GEN_AT);
+});
+
+// --- the stale fallback keeps the operator's own decisions ---
+
+test("stale overlay => a tombstoned model stays out of the totals", async () => {
+  resetState();
+  setFeatureFlagOverride("RADAR_ENABLED", "true");
+  seedCache("community", { generatedAt: STALE_GEN_AT });
+
+  const target = FREE_MODEL_BUDGETS[0];
+  const withoutTombstone = await getBody();
+  radarDb.setRadarModelTombstone(target.provider, target.modelId, true);
+  const withTombstone = await getBody();
+
+  assert.equal(withTombstone.catalogSource, "baseline");
+  assert.ok(
+    (withTombstone.modelCount as number) < (withoutTombstone.modelCount as number),
+    "a tombstoned model must never come back into the totals when the feed is withheld"
+  );
+});
+
+test("stale overlay => a locally disabled model stays out of the totals", async () => {
+  resetState();
+  setFeatureFlagOverride("RADAR_ENABLED", "true");
+  seedCache("community", { generatedAt: STALE_GEN_AT });
+
+  const baselineBody = await getBody();
+  const target = FREE_MODEL_BUDGETS[0];
+  radarDb.setRadarLocalModelOverride(target.provider, target.modelId, { enabled: false });
+  const disabledBody = await getBody();
+
+  assert.equal(disabledBody.catalogSource, "baseline");
+  assert.ok(
+    (disabledBody.modelCount as number) < (baselineBody.modelCount as number),
+    "a locally disabled model must not be counted when the feed is withheld"
+  );
+});
+
+// --- eligibility-gated entries from the feed stay out of the headline --------
+
+test("a gated overlay entry lands in gatedRecurringTokens, never in the steady headline", async () => {
+  resetState();
+  setFeatureFlagOverride("RADAR_ENABLED", "true");
+  seedGatedCache();
+
+  const body = await getBody(false);
+
+  assert.equal(body.catalogSource, "radar-overlay");
+  assert.equal(
+    body.gatedRecurringTokens,
+    (computeFreeModelTotals().gatedRecurringTokens as number) + GATED_TOKENS,
+    "the feed-only gated pool joins the gated bucket on top of the baseline's own"
+  );
+  assert.equal(
+    body.steadyRecurringTokens,
+    (computeFreeModelTotals().steadyRecurringTokens as number) + OVERLAY_TOKENS,
+    "the gated pool must not move the steady headline"
+  );
 });

@@ -10,7 +10,7 @@
  *  - batch activate / deactivate / retest / delete (with MAX_BULK_IDS chunking)
  *  - single-connection handlers: delete, update status, proxy toggles,
  *    rate-limit, claude extra-usage, codex limit, cpa mode,
- *    retest, token refresh, swap priority
+ *    retest, clear-cooldown, token refresh, swap priority
  *  - selection state: selectedIds, handleToggleSelectOne/All, batchDeleteConfirmOpen
  *  - batch-test runner (runBatchTest / handleBatchTestAll / handleBatchRetest)
  *  - health/pagination filters (healthFilter, page)
@@ -155,6 +155,8 @@ export interface UseProviderConnectionsReturn {
   providerNode: any;
   loading: boolean;
   retestingId: string | null;
+  /** Connection id whose cooldown-clear PUT is in flight (drives button spinners). */
+  clearingCooldownId: string | null;
   batchTesting: boolean;
   batchTestResults: BatchTestResults;
   selectedIds: Set<string>;
@@ -208,6 +210,14 @@ export interface UseProviderConnectionsReturn {
     perKeyProxyEnabled: boolean
   ) => Promise<void>;
   handleRetestConnection: (connectionId: string) => Promise<void>;
+  /**
+   * Manually lifts a persisted 429 cooldown: PUTs `rateLimitedUntil: null`
+   * (plus backoff reset server-side) so the connection rejoins routing
+   * immediately. For the "quota already refreshed upstream but OmniRoute
+   * still benches the key" case — the cooldown timer is OmniRoute's own
+   * lesson, not upstream truth.
+   */
+  handleClearCooldown: (connectionId: string) => Promise<void>;
   handleRefreshToken: (connectionId: string) => Promise<void>;
   handleSwapPriority: (conn1: any, conn2: any) => Promise<void>;
   handleReorderByAvailability: () => Promise<void>;
@@ -238,7 +248,7 @@ export interface UseProviderConnectionsReturn {
 export function useProviderConnections(
   providerId: string,
   isCompatible: boolean,
-  isSearchProvider: boolean
+  _isSearchProvider: boolean
 ): UseProviderConnectionsReturn {
   const t = useTranslations("providers");
   const notify = useNotificationStore();
@@ -253,6 +263,7 @@ export function useProviderConnections(
 
   // ── test state ──────────────────────────────────────────────────────────
   const [retestingId, setRetestingId] = useState<string | null>(null);
+  const [clearingCooldownId, setClearingCooldownId] = useState<string | null>(null);
   const [batchTesting, setBatchTesting] = useState(false);
   const [batchTestResults, setBatchTestResults] = useState<BatchTestResults>(null);
 
@@ -674,6 +685,43 @@ export function useProviderConnections(
     }
   };
 
+  // Manually lift a persisted 429 cooldown. Complements the automatic paths
+  // (Test-button success / Edit-modal key re-validation): those only clear the
+  // bench as a side effect of a successful upstream round-trip, so a user whose
+  // quota already refreshed upstream still waits out OmniRoute's local timer.
+  // PUT /api/providers/[id] applies updateProviderConnectionDefaults, which
+  // resets backoffLevel → 0 alongside rateLimitedUntil → null.
+  const handleClearCooldown = async (connectionId: string) => {
+    if (!connectionId || clearingCooldownId) return;
+    setClearingCooldownId(connectionId);
+    try {
+      const res = await fetch(`/api/providers/${connectionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rateLimitedUntil: null }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        notify.error(data.error || t("failedClearConnectionCooldown"));
+        return;
+      }
+      // Optimistically drop the cooldown locally so the row leaves the cooling
+      // panel immediately; fetchConnections() reconciles with server truth.
+      setConnections((prev: any[]) =>
+        prev.map((c) =>
+          c.id === connectionId ? { ...c, rateLimitedUntil: null, backoffLevel: 0 } : c
+        )
+      );
+      notify.success(t("connectionCooldownCleared"));
+      await fetchConnections();
+    } catch (error) {
+      console.error("Error clearing cooldown:", error);
+      notify.error(t("failedClearConnectionCooldown"));
+    } finally {
+      setClearingCooldownId(null);
+    }
+  };
+
   const handleRefreshToken = async (connectionId: string) => {
     if (refreshingId) return;
     setRefreshingId(connectionId);
@@ -796,7 +844,8 @@ export function useProviderConnections(
         setSelectedIds(new Set());
         await fetchConnections();
         notify.success(t("batchDeleteSuccess", { count }));
-        if (onAfter) await onAfter();
+        // ConfirmModal's onClick forwards a MouseEvent; only a real callback runs.
+        if (typeof onAfter === "function") await onAfter();
       } else {
         const data = await res.json();
         notify.error(data.error || providerText(t, "batchDeleteFailed", "Batch delete failed"));
@@ -1072,6 +1121,8 @@ export function useProviderConnections(
     handleToggleProxyEnabled,
     handleTogglePerKeyProxyEnabled,
     handleRetestConnection,
+    handleClearCooldown,
+    clearingCooldownId,
     handleRefreshToken,
     handleSwapPriority,
     handleReorderByAvailability,

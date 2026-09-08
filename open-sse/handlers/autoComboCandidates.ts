@@ -30,6 +30,7 @@ import { buildErrorBody } from "@omniroute/open-sse/utils/error.ts";
 import { getCircuitBreaker } from "@/shared/utils/circuitBreaker";
 import { isModelLocked } from "@omniroute/open-sse/services/accountFallback.ts";
 import { parseModel } from "@omniroute/open-sse/services/model.ts";
+import type { StrictZeroCostExclusionReason } from "@omniroute/open-sse/services/autoCombo/strictZeroCostFilter.ts";
 import { getProviderConnectionById } from "@/lib/db/providers";
 import { getExcludedConnectionIds } from "@/lib/db/autoCandidateOverrides";
 
@@ -51,6 +52,13 @@ export interface AutoComboCandidateView {
   breakerState: string;
   connectionCooldown: boolean;
   modelLocked: boolean;
+  /**
+   * Why STRICT_ZERO_COST would exclude this candidate from dispatch, or null
+   * when it would not — and null as well when the policy is off, which is the
+   * default. Reported, never enforced: this listing shows the candidate either
+   * way, the routing path is what acts on it.
+   */
+  freeAccessExclusion: StrictZeroCostExclusionReason | null;
 }
 
 export interface AutoComboCandidatesResult {
@@ -69,6 +77,7 @@ async function decorateCandidate(candidate: {
   connectionId: string;
   model: string;
   modelStr: string;
+  freeAccessExclusion?: StrictZeroCostExclusionReason | null;
 }): Promise<AutoComboCandidateView> {
   const breaker = getCircuitBreaker(candidate.provider);
   const breakerStatus = breaker.getStatus();
@@ -111,6 +120,7 @@ async function decorateCandidate(candidate: {
     breakerState: String(breakerStatus.state),
     connectionCooldown,
     modelLocked,
+    freeAccessExclusion: candidate.freeAccessExclusion ?? null,
   };
 }
 
@@ -160,6 +170,7 @@ export async function getAutoComboCandidates(
     connectionId: string | null;
     allowedConnectionIds?: string[];
     model: string;
+    freeAccessExclusion?: StrictZeroCostExclusionReason | null;
   }> = Array.isArray(virtualCombo?.models) ? virtualCombo.models : [];
   // Routing keeps one logical provider/model candidate, but the management API
   // remains account-oriented so operators can inspect and toggle each fallback.
@@ -178,6 +189,7 @@ export async function getAutoComboCandidates(
         connectionId: candidate.connectionId,
         model: candidate.model,
         modelStr: candidate.model,
+        freeAccessExclusion: candidate.freeAccessExclusion,
       });
       return { ...decorated, excluded: excludedConnectionIds.has(candidate.connectionId) };
     })

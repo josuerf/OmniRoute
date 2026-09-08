@@ -282,6 +282,7 @@ export async function registerQuotaFetchers(): Promise<void> {
     { registerQwenTokenPlanQuotaFetcher },
     { registerCrofUsageFetcher },
     { registerDeepseekQuotaFetcher },
+    { registerMoonshotQuotaFetcher, registerMoonshotFetchersForNodes },
     { registerOpenrouterQuotaFetcher },
     { registerOpencodeQuotaFetcher },
     { registerGrokWebQuotaFetcher },
@@ -292,6 +293,7 @@ export async function registerQuotaFetchers(): Promise<void> {
     import("@omniroute/open-sse/services/qwenTokenPlanQuotaFetcher"),
     import("@omniroute/open-sse/services/crofUsageFetcher"),
     import("@omniroute/open-sse/services/deepseekQuotaFetcher"),
+    import("@omniroute/open-sse/services/moonshotQuotaFetcher"),
     import("@omniroute/open-sse/services/openrouterQuotaFetcher"),
     import("@omniroute/open-sse/services/opencodeQuotaFetcher"),
     import("@omniroute/open-sse/services/grokQuotaFetcher"),
@@ -303,6 +305,20 @@ export async function registerQuotaFetchers(): Promise<void> {
   registerQwenTokenPlanQuotaFetcher();
   registerCrofUsageFetcher();
   registerDeepseekQuotaFetcher();
+  registerMoonshotQuotaFetcher();
+  try {
+    const { getProviderNodes } = await import("@/lib/db/providers");
+    const nodes = await getProviderNodes();
+    registerMoonshotFetchersForNodes(
+      (Array.isArray(nodes) ? nodes : []).map((node) => ({
+        id: typeof node.id === "string" ? node.id : null,
+        prefix: typeof node.prefix === "string" ? node.prefix : null,
+        baseUrl: typeof node.baseUrl === "string" ? node.baseUrl : null,
+      })),
+    );
+  } catch (error) {
+    console.warn("[STARTUP] Moonshot custom-node fetcher scan skipped:", error);
+  }
   registerOpenrouterQuotaFetcher();
   registerOpencodeQuotaFetcher();
   registerGrokWebQuotaFetcher();
@@ -319,7 +335,7 @@ export async function registerNodejs(): Promise<void> {
   process.title = renameProcessTitle(process.title);
 
   // Initialize proxy fetch patch FIRST (before any HTTP requests)
-  await import("@omniroute/open-sse/index.ts");
+  await import("@omniroute/open-sse/utils/proxyFetch.ts");
   console.log("[STARTUP] Global fetch proxy patch initialized");
 
   // Register quota fetchers early so combo routing can use real quota-aware

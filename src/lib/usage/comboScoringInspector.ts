@@ -91,6 +91,7 @@ const FACTOR_KEYS: ComboScoringInspectorFactorKey[] = [
   "resetWindowAffinity",
   "connectionDensity",
   "quality",
+  "reliability",
 ];
 
 function roundNumber(value: number, digits = 4): number {

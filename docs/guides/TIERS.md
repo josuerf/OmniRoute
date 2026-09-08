@@ -6,7 +6,7 @@ lastUpdated: 2026-06-28
 
 # OmniRoute Tiers — User Guide
 
-OmniRoute organizes the 207+ supported providers into 3 economic tiers. Each
+OmniRoute organizes the 352 supported providers into 3 economic tiers. Each
 request travels through them in order until one returns successfully — you
 get the cheapest viable response without ever writing fallback code.
 
@@ -69,7 +69,7 @@ rate limits — circuit breaker recovers them on backoff.
 Dashboard → **Tiers** → assign your providers. Defaults (from `tierDefaults.json`) are
 sensible; edit when you have specific subscriptions to prioritize or providers to exclude.
 
-Auto-Combo's 15-factor scoring also considers tier. See
+Auto-Combo's 16-factor scoring also considers tier. See
 [`docs/routing/AUTO-COMBO.md`](../routing/AUTO-COMBO.md).
 
 ## Telemetry

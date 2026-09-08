@@ -7,7 +7,7 @@ import {
   FREE_MODEL_BUDGETS,
 } from "@omniroute/open-sse/config/freeModelCatalog.data.ts";
 import type { MergedEntry } from "@/lib/radar/applyFeed";
-import { getRadarCatalog } from "@/lib/radar";
+import { getCatalogWithoutOverlay, getRadarCatalog } from "@/lib/radar";
 import { sumUsageTokensThisMonth } from "@/lib/db/usageSummary";
 import { isAuthenticated } from "@/shared/utils/apiAuth";
 import { listNoCredentialProviders } from "@/shared/utils/providerCredentialRequirement";
@@ -46,6 +46,7 @@ function toBudgetEntry(entry: MergedEntry): FreeModelBudget & { enabled?: boolea
     poolKey: entry.poolKey,
     tos: entry.tos,
     trainsOnPrompts: entry.trainsOnPrompts,
+    eligibilityGate: entry.eligibilityGate,
     hardStopGuaranteed: HARD_STOP_BY_KEY.get(`${entry.provider}:${entry.modelId}`),
     enabled: entry.enabled,
   };
@@ -69,11 +70,30 @@ export async function GET(req: Request): Promise<Response> {
   // live feed is supporter-key content, so it only reaches callers this
   // instance has authenticated — never anonymous visitors, or an exposed
   // instance would re-publish the paid feed for free.
-  const serveOverlay = meta !== null && (meta.tier !== "live" || (await isAuthenticated(req)));
+  // A feed built before the catalog this release ships is not an overlay, it is a
+  // regression: the totals would be recomputed from data older than the baseline
+  // the operator installed. An unknown build date — a cache row written before the
+  // column existed — counts as older: unknown never outranks known.
+  const overlayIsFresh =
+    meta !== null &&
+    meta.generatedAt !== null &&
+    meta.generatedAt.slice(0, 10) >= FREE_CATALOG_CURATED_AT;
+
+  const serveOverlay = overlayIsFresh && (meta.tier !== "live" || (await isAuthenticated(req)));
+
+  // Withheld only because it is stale: drop the feed, keep the operator's own
+  // local state. Falling back to the raw baseline here would resurrect models the
+  // operator disabled or tombstoned.
+  const overlayWithheldAsStale = meta !== null && !overlayIsFresh;
 
   const totals = serveOverlay
     ? computeFreeModelTotals({ excludeTosAvoid, entries: entries.map(toBudgetEntry) })
-    : computeFreeModelTotals({ excludeTosAvoid });
+    : overlayWithheldAsStale
+      ? computeFreeModelTotals({
+          excludeTosAvoid,
+          entries: getCatalogWithoutOverlay().map(toBudgetEntry),
+        })
+      : computeFreeModelTotals({ excludeTosAvoid });
 
   const usedThisMonth = sumUsageTokensThisMonth();
   const body = {

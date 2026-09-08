@@ -16,15 +16,12 @@ import { setQuotaCache } from "@/domain/quotaCache";
 import { buildClaudeExtraUsageConnectionUpdate } from "@/lib/providers/claudeExtraUsage";
 import { clearRecoveredProviderState } from "@/sse/services/auth";
 import { getMachineId } from "@/shared/utils/machine";
-import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
+import { supportsProviderQuota } from "@/shared/utils/providerQuotaVisibility";
 import { mergeProviderLimitsCacheEntry, toProviderLimitsCacheEntry } from "./providerLimitsCache";
-import { getExecutor } from "@omniroute/open-sse/executors/index.ts";
+import { getCredentialRefreshExecutor } from "@omniroute/open-sse/executors/credential.ts";
 import { getUsageForProvider } from "@omniroute/open-sse/services/usage.ts";
 import { cooldownUntilMs } from "@omniroute/open-sse/services/accountFallback.ts";
-import {
-  rotationGroupFor,
-  serializeRefresh,
-} from "@omniroute/open-sse/services/refreshSerializer.ts";
+import { rotationGroupFor } from "@omniroute/open-sse/services/refreshSerializer.ts";
 import {
   extractCodeAssistOnboardTierId,
   extractCodeAssistSubscriptionTier,
@@ -42,28 +39,14 @@ import {
   sanitizeUsageQuotasForProvider,
 } from "./providerLimits/quotaNormalize";
 import { syncInChunksWithSpacing } from "./providerLimits/chunkedSpacingSync";
+import {
+  refreshAndUpdateCredentialsWithResolver,
+  type CredentialRefreshOptions,
+  type ProviderConnectionLike,
+} from "./providerLimits/credentialRefresh";
+export { shouldAttemptRotatingRefresh } from "./providerLimits/credentialRefresh";
 type JsonRecord = Record<string, unknown>;
 type SyncSource = "manual" | "scheduled";
-
-interface ProviderConnectionLike {
-  id: string;
-  provider: string;
-  authType?: string;
-  accessToken?: string;
-  refreshToken?: string;
-  expiresAt?: string;
-  tokenExpiresAt?: string;
-  providerSpecificData?: JsonRecord;
-  testStatus?: string;
-  isActive?: boolean;
-  lastError?: string | null;
-  lastErrorAt?: string | null;
-  lastErrorType?: string | null;
-  lastErrorSource?: string | null;
-  errorCode?: string | number | null;
-  rateLimitedUntil?: string | null;
-  backoffLevel?: number;
-}
 
 const PROVIDER_LIMITS_APIKEY_PROVIDERS = new Set([
   "glm",
@@ -106,6 +89,8 @@ const PROVIDER_LIMITS_APIKEY_PROVIDERS = new Set([
   "qwen-cloud-token-plan",
   // AgentRouter (New-API) console System Access Token + New-Api-User id (providerSpecificData)
   "agentrouter",
+  // OpenRouter API key → /key limits + /credits account balance
+  "openrouter",
 ]);
 const DEFAULT_PROVIDER_LIMITS_SYNC_INTERVAL_MINUTES = 70;
 const PROVIDER_LIMITS_AUTO_SYNC_SETTING_KEY = "provider_limits_auto_sync_last_run";
@@ -189,19 +174,14 @@ function shouldRefreshProviderLimitsCache(
 }
 
 export function isSupportedUsageConnection(connection: ProviderConnectionLike | null): boolean {
-  if (
-    !connection ||
-    !connection.provider ||
-    !USAGE_SUPPORTED_PROVIDERS.includes(connection.provider)
-  ) {
-    return false;
-  }
+  if (!connection?.provider) return false;
 
-  if (connection.authType === "oauth") return true;
-  return (
-    (connection.authType === "apikey" || connection.authType === "api_key") &&
-    PROVIDER_LIMITS_APIKEY_PROVIDERS.has(connection.provider)
-  );
+  if (connection.authType === "oauth") {
+    return supportsProviderQuota(connection.provider, connection);
+  }
+  if (connection.authType !== "apikey" && connection.authType !== "api_key") return false;
+  if (PROVIDER_LIMITS_APIKEY_PROVIDERS.has(connection.provider)) return true;
+  return supportsProviderQuota(connection.provider, connection);
 }
 
 function withStatus(error: Error, status: number): Error & { status: number } {
@@ -218,122 +198,11 @@ async function syncToCloudIfEnabled() {
   }
 }
 
-/**
- * Whether the quota path may refresh this provider's token. Exported for testing.
- *
- * Rotating-refresh providers (Codex/OpenAI share one Auth0 client_id, etc.) mint a
- * single-use refresh_token on every refresh. The BULK quota-sync path runs many
- * connections concurrently; refreshing sibling accounts in parallel makes Auth0
- * revoke the whole token family (openai/codex#9648) and kills every account but
- * the last (#3019). So the bulk path never refreshes rotating providers
- * (`allowRotatingRefresh` falsy). The on-demand, per-connection path opts in and
- * is made safe by `serializeRefresh` (one token mint at a time per rotation group,
- * so even N concurrent per-account requests can never refresh siblings in
- * parallel). Non-rotating providers are always eligible.
- */
-export function shouldAttemptRotatingRefresh(
-  provider: string,
-  allowRotatingRefresh: boolean | undefined
-): boolean {
-  if (rotationGroupFor(provider) === null) return true;
-  return allowRotatingRefresh === true;
-}
-
 export async function refreshAndUpdateCredentials(
   connection: ProviderConnectionLike,
-  opts: { allowRotatingRefresh?: boolean; force?: boolean } = {}
+  opts: CredentialRefreshOptions = {}
 ) {
-  if (!shouldAttemptRotatingRefresh(connection.provider, opts.allowRotatingRefresh)) {
-    return { connection, refreshed: false };
-  }
-  const executor = await getExecutor(connection.provider);
-  const credentials = {
-    connectionId: connection.id,
-    accessToken: connection.accessToken,
-    refreshToken: connection.refreshToken,
-    expiresAt: connection.tokenExpiresAt || connection.expiresAt || null,
-    providerSpecificData: connection.providerSpecificData,
-    copilotToken: connection.providerSpecificData?.copilotToken,
-    copilotTokenExpiresAt: connection.providerSpecificData?.copilotTokenExpiresAt,
-  };
-
-  // `force` is used ONLY on the reactive 401 recovery path (a usage fetch came
-  // back unauthorized) — it bypasses the proactive `needsRefresh` heuristic so
-  // imported accounts (expiresAt=null, where needsRefresh is always false) can
-  // still re-mint. The mint stays serialized per rotation group; this never
-  // refreshes proactively from the bulk path (#3019 guard above is unchanged).
-  if (!opts.force && !executor.needsRefresh(credentials)) {
-    return { connection, refreshed: false };
-  }
-
-  // Serialize the actual token mint per rotation group so two sibling accounts
-  // never hit Auth0 concurrently (passthrough for non-rotating providers).
-  const refreshResult = (await serializeRefresh(connection.provider, () =>
-    executor.refreshCredentials(credentials, console)
-  )) as
-    | (JsonRecord & {
-        accessToken?: string;
-        refreshToken?: string;
-        expiresIn?: number;
-        expiresAt?: string;
-        copilotToken?: string;
-        copilotTokenExpiresAt?: string;
-      })
-    | null;
-
-  if (!refreshResult) {
-    // Refresh failed but we still have an accessToken — fall back to the
-    // existing token for ANY OAuth provider (graceful degradation) instead of
-    // hard-failing. Previously this was qualified to `provider === "github"`,
-    // which left every other provider stuck on a transient refresh failure even
-    // when a usable access token was still on hand.
-    if (connection.accessToken) {
-      return { connection, refreshed: false };
-    }
-    throw withStatus(
-      new Error("Failed to refresh credentials. Please re-authorize the connection."),
-      401
-    );
-  }
-
-  const updateData: JsonRecord = {
-    updatedAt: new Date().toISOString(),
-  };
-
-  if (refreshResult.accessToken) {
-    updateData.accessToken = refreshResult.accessToken;
-  }
-  if (refreshResult.refreshToken) {
-    updateData.refreshToken = refreshResult.refreshToken;
-  }
-  if (refreshResult.expiresIn) {
-    const expiresAt = new Date(Date.now() + refreshResult.expiresIn * 1000).toISOString();
-    updateData.expiresAt = expiresAt;
-    updateData.tokenExpiresAt = expiresAt;
-  } else if (refreshResult.expiresAt) {
-    updateData.expiresAt = refreshResult.expiresAt;
-    updateData.tokenExpiresAt = refreshResult.expiresAt;
-  }
-  if (refreshResult.copilotToken || refreshResult.copilotTokenExpiresAt) {
-    updateData.providerSpecificData = {
-      ...(connection.providerSpecificData || {}),
-      copilotToken: refreshResult.copilotToken,
-      copilotTokenExpiresAt: refreshResult.copilotTokenExpiresAt,
-    };
-  }
-
-  await updateProviderConnection(connection.id, updateData);
-
-  return {
-    connection: {
-      ...connection,
-      ...updateData,
-      providerSpecificData:
-        (updateData.providerSpecificData as JsonRecord | undefined) ||
-        connection.providerSpecificData,
-    },
-    refreshed: true,
-  };
+  return refreshAndUpdateCredentialsWithResolver(connection, getCredentialRefreshExecutor, opts);
 }
 
 function isUsageAuthError(message: unknown): boolean {
@@ -520,7 +389,6 @@ export function shouldClearErrorStateOnValidProbe(
  * — keeps the connection locked, matching the kimi-coding partial-refresh
  * semantics.
  */
-
 
 /**
  * Is an explicit cooldown still in the future?

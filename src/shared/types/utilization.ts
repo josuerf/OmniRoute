@@ -282,7 +282,8 @@ export type ComboScoringInspectorFactorKey =
   | "sessionAvailability"
   | "resetWindowAffinity"
   | "connectionDensity"
-  | "quality";
+  | "quality"
+  | "reliability";
 
 export type ComboScoringInspectorSource =
   "combo_health" | "combo_forecast" | "combo_autopilot" | "runtime" | "default";

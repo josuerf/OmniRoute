@@ -45,11 +45,47 @@ interface RadarCatalogTableProps {
   onError: (message: string) => void;
 }
 
+/**
+ * Compact a plain count. Locale-independent on purpose: `toLocaleString()` would
+ * make the rendering — and any test asserting on it — depend on the machine's
+ * locale.
+ */
+export function compactCount(value: number): string {
+  // The feed is JSON off the network, so the declared `number` is a hope, not a
+  // guarantee: a string, a NaN or an Infinity would otherwise render as
+  // "InfinityM" or "NaN/min" in the operator's table.
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return "?";
+  if (numeric >= 1_000_000) return `${(numeric / 1_000_000).toFixed(1)}M`;
+  if (numeric >= 1_000) return `${(numeric / 1_000).toFixed(0)}K`;
+  return String(numeric);
+}
+
 function formatTokens(value: number): string {
+  // A monthly budget of zero means the pool is rate-limited rather than
+  // token-limited. That reading is specific to budgets — see `formatLimits`.
   if (value === 0) return "rate-only";
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
-  return String(value);
+  return compactCount(value);
+}
+
+/**
+ * Render the rate limits the feed reported, and nothing else. Each of the four
+ * values is independently nullable, so an absent one is omitted rather than
+ * printed as zero — "no reported limit" and "a limit of zero" are opposite
+ * facts, and the second one is worth noticing. An entry with no limits at all,
+ * or with four nulls, reads "—".
+ *
+ * Deliberately not built on `formatTokens`: that one maps 0 to "rate-only",
+ * which would render a zero ceiling as "rate-only/min".
+ */
+export function formatLimits(entry: Pick<RadarMergedEntry, "limits">): string {
+  const { rpm, rpd, tpm, tpd } = entry.limits ?? {};
+  const parts: string[] = [];
+  if (rpm != null) parts.push(`${compactCount(rpm)}/min`);
+  if (rpd != null) parts.push(`${compactCount(rpd)}/day`);
+  if (tpm != null) parts.push(`${compactCount(tpm)} tok/min`);
+  if (tpd != null) parts.push(`${compactCount(tpd)} tok/day`);
+  return parts.length ? parts.join(" · ") : "—";
 }
 
 function budgetLabel(entry: RadarMergedEntry): string {
@@ -95,7 +131,9 @@ export function RadarCatalogTable({ entries, refreshCatalog, onError }: RadarCat
   }, [onError, t]);
 
   useEffect(() => {
-    void loadState();
+    void (async () => {
+      await loadState();
+    })();
   }, [loadState]);
 
   const stateByKey = useMemo(
@@ -182,6 +220,7 @@ export function RadarCatalogTable({ entries, refreshCatalog, onError }: RadarCat
                 <th className="pb-3 font-medium">{t("colProvider")}</th>
                 <th className="pb-3 font-medium">{t("colModel")}</th>
                 <th className="pb-3 font-medium">{t("colQuota")}</th>
+                <th className="pb-3 font-medium">{t("colLimits")}</th>
                 <th className="pb-3 font-medium">{t("colContext")}</th>
                 <th className="pb-3 font-medium">{t("colCapabilities")}</th>
                 <th className="pb-3 font-medium">{t("colTos")}</th>
@@ -243,6 +282,7 @@ export function RadarCatalogTable({ entries, refreshCatalog, onError }: RadarCat
                       )}
                     </td>
                     <td className="py-3 text-sm">{budgetLabel(entry)}</td>
+                    <td className="py-3 text-sm text-text-muted">{formatLimits(entry)}</td>
                     <td className="py-3 text-sm text-text-muted">
                       {entry.contextWindow ? `${(entry.contextWindow / 1000).toFixed(0)}K` : "—"}
                     </td>
@@ -279,6 +319,14 @@ export function RadarCatalogTable({ entries, refreshCatalog, onError }: RadarCat
                       >
                         {entry.tos}
                       </span>
+                      {entry.trainsOnPrompts === true && (
+                        <span
+                          className="ml-1 text-xs px-2 py-1 rounded bg-orange-500/10 text-orange-400"
+                          title={t("trainsOnPromptsHelp")}
+                        >
+                          {t("trainsOnPrompts")}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 pl-3">
                       {editingKey === key ? (

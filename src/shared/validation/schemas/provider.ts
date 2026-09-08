@@ -22,16 +22,36 @@ import {
   isReservedProviderPrefix,
   reservedProviderPrefixMessage,
 } from "@/shared/constants/reservedProviderPrefixes";
-
+import {
+  isValidIanaTimeZone,
+  isValidResetHour,
+} from "@omniroute/open-sse/services/dailyQuotaReset.ts";
 import {
   upstreamHeadersRecordSchema,
   modelCompatPerProtocolSchema,
   customHeadersSchema,
 } from "./misc.ts";
+import { isValidProviderIconUrl } from "@/shared/validation/iconUrl";
 
 export { validateProviderSpecificData };
 
-import { isValidProviderIconUrl } from "@/shared/validation/iconUrl";
+const dailyQuotaResetTimezoneSchema = z
+  .string()
+  .trim()
+  .optional()
+  .or(z.literal(""))
+  .refine((value) => !value || isValidIanaTimeZone(value), {
+    message: "Unknown IANA timezone",
+  });
+
+const dailyQuotaResetHourSchema = z
+  .number()
+  .int()
+  .optional()
+  .nullable()
+  .refine((value) => value == null || isValidResetHour(value), {
+    message: "Hour must be 0-23",
+  });
 
 // ──── Provider Schemas ────
 
@@ -337,6 +357,8 @@ export const createProviderNodeSchema = z
     // isValidProviderIconUrl (2000 chars for http(s), 256 KiB for data:image).
     iconUrl: providerNodeIconUrlSchema,
     customHeaders: customHeadersSchema,
+    dailyQuotaResetTimezone: dailyQuotaResetTimezoneSchema,
+    dailyQuotaResetHour: dailyQuotaResetHourSchema,
   })
   .superRefine((value, ctx) => {
     const nodeType = value.type || "openai-compatible";
@@ -419,6 +441,8 @@ export const updateProviderNodeSchema = z
     // clears a previously stored custom icon.
     iconUrl: providerNodeIconUrlSchema,
     customHeaders: customHeadersSchema,
+    dailyQuotaResetTimezone: dailyQuotaResetTimezoneSchema,
+    dailyQuotaResetHour: dailyQuotaResetHourSchema,
   })
   .superRefine((value, ctx) => {
     // Reserved-prefix guard (tokenrouter bug) — same rationale as the guard in
@@ -530,6 +554,7 @@ export const updateProviderConnectionSchema = z
     rateLimitOverrides: z
       .object({
         rpm: rateLimitOverrideNumber(1_000_000).optional(),
+        rpd: rateLimitOverrideNumber(10_000_000).optional(),
         tpm: rateLimitOverrideNumber(100_000_000).optional(),
         tpd: rateLimitOverrideNumber(10_000_000_000).optional(),
         minTime: rateLimitOverrideNumber(60_000).optional(),

@@ -48,7 +48,7 @@ The manifest contains:
 - JSON-safe model metadata such as context length, vision/reasoning flags, and
   unsupported params
 - capability tags including `apikey`, `oauth`, `custom-executor`,
-  `passthrough-models`, `responses`, `sidecar-candidate`, and `usage-fetch`
+  `passthrough-models`, `responses`, `sidecar-candidate`, `usage-fetch`, and `usage-supported`
 
 The manifest intentionally excludes:
 
@@ -74,6 +74,7 @@ re-reading the TypeScript sources.
 | `custom-executor`    | Runs a non-default executor, so it stays on the TypeScript path.  |
 | `sidecar-candidate`  | Mirrors `sidecar.eligible` — safe to consider for sidecar import. |
 | `usage-fetch`        | Has a wired usage or quota fetcher (`getUsageForProvider`).       |
+| `usage-supported`    | The usage API accepts this provider (`isSupportedUsageConnection`). |
 
 `usage-fetch` is discovery only. It reports that OmniRoute knows how to read usage for the
 provider; it does not activate fetching, change quota semantics, or imply that the
@@ -85,6 +86,16 @@ That list is keyed by the strings the usage dispatcher accepts, so it mixes cano
 with aliases and is slightly longer than the number of tagged providers: entries that are
 not chat providers in the manifest registry (for example the `firecrawl` search provider
 and the `amazon-q` ACP provider) have no manifest entry to tag.
+
+`usage-supported` answers whether the server and Dashboard usage routes accept a connection
+for the provider. It mirrors `isSupportedUsageConnection()` (`src/lib/usage/providerLimits.ts`)
+and `supportsProviderQuota()` (`src/shared/utils/providerQuotaVisibility.ts`), both gated by
+`USAGE_SUPPORTED_PROVIDERS` (`open-sse/services/usage/supportedProviders.ts`). Unlike
+`usage-fetch`, it is emitted on the provider id alone — the runtime guard does
+`USAGE_SUPPORTED_PROVIDERS.includes(providerId)` with no alias resolution, so the manifest
+keeps the same rule. The two tags have different perimeters: 3 providers carry only
+`usage-fetch` (`opencode`, `opencode-zen`, `xai`) and 1 carries only
+`usage-supported` (`xiaomi-mimo-token-plan`), so one does not imply the other.
 
 ## Sidecar Use
 

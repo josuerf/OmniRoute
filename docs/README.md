@@ -30,6 +30,7 @@ Simple guides for using OmniRoute — no technical background needed.
 - [USER_GUIDE.md](guides/USER_GUIDE.md) — daily usage of the dashboard and API.
 - [THINKING_BUDGET.md](guides/THINKING_BUDGET.md) — thinking/reasoning budget modes (passthrough vs auto-strip).
 - [FEATURES.md](guides/FEATURES.md) — dashboard feature gallery.
+- [CHAOS-MODE.md](guides/CHAOS-MODE.md) — multi-model parallel/collaborative execution (setup, permissions, API).
 - [TIERS.md](guides/TIERS.md) — OmniRoute tiers explained (user guide).
 - [USAGE_QUOTA_GUIDE.md](guides/USAGE_QUOTA_GUIDE.md) — usage, quota & spend tracking.
 - [COST_TRACKING.md](guides/COST_TRACKING.md) — cost and spend tracking.
@@ -40,6 +41,7 @@ Simple guides for using OmniRoute — no technical background needed.
 - [PWA_GUIDE.md](guides/PWA_GUIDE.md) — installing the dashboard as a PWA.
 - [REMOTE-MODE.md](guides/REMOTE-MODE.md) — exposing OmniRoute remotely + scoped tokens.
 - [CLI-INTEGRATIONS.md](guides/CLI-INTEGRATIONS.md) — master table of `setup-*` CLI integrations.
+- [OPENCODE-V2-PLUGIN.md](guides/OPENCODE-V2-PLUGIN.md) — installing and configuring the OpenCode v2 plugin.
 - [CLAUDE-CODE-CONFIGURATION.md](guides/CLAUDE-CODE-CONFIGURATION.md) — Claude Code CLI with OmniRoute.
 - [CODEX-CLI-CONFIGURATION.md](guides/CODEX-CLI-CONFIGURATION.md) — Codex CLI with OmniRoute.
 - [KIRO_SETUP.md](guides/KIRO_SETUP.md) — Kiro setup.
@@ -78,6 +80,7 @@ Lookup material — API surface, environment variables, CLI flags, provider cata
 
 - [API_REFERENCE.md](reference/API_REFERENCE.md) — REST API endpoints and shapes.
 - [PROVIDER_REFERENCE.md](reference/PROVIDER_REFERENCE.md) — auto-generated provider catalog (do not edit by hand).
+- [REMOVED_PROVIDERS.md](reference/REMOVED_PROVIDERS.md) — providers removed at their operator's request; never reintroduce without written permission.
 - [PROVIDER_PLUGIN_MANIFEST.md](reference/PROVIDER_PLUGIN_MANIFEST.md) — sidecar-safe provider plugin contract for Bifrost and CLIProxyAPI migration.
 - [openapi.yaml](openapi.yaml) — OpenAPI spec for the public API.
 - [ENVIRONMENT.md](reference/ENVIRONMENT.md) — environment variables reference.
@@ -202,7 +205,7 @@ Mermaid sources and exported SVG/PNG diagrams referenced from the docs above. Se
 
 ## i18n/
 
-Translated mirrors of the documentation in 43 locales. See [i18n/README.md](i18n/README.md) for the supported language list.
+Translated mirrors of the documentation in 41 locales (plus the English originals — 42 languages in total). See [i18n/README.md](i18n/README.md) for the supported language list.
 
 ## screenshots/
 

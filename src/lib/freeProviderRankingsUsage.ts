@@ -11,7 +11,34 @@
  * show, the component decides how to word it.
  */
 
-import type { ProviderUsage } from "./freeProviderRankings";
+import type { FreeProviderRanking, ProviderUsage } from "./freeProviderRankings";
+
+/**
+ * Order providers by what they actually served, most reliable first.
+ *
+ * Two tiers, and the split is the point: a provider whose success rate can be
+ * stated comes before one whose sample is too small — or absent — to say
+ * anything. The second tier keeps its incoming order, so "not measured" never
+ * reads as "measured badly"; the underlying rate is already `null` below the
+ * sample floor, and this function honours that rather than substituting a zero.
+ *
+ * Within the measured tier, an equal rate falls back to the ELO order the page
+ * shows by default.
+ */
+export function sortRankingsByReliability(rankings: FreeProviderRanking[]): FreeProviderRanking[] {
+  const rateOf = (ranking: FreeProviderRanking): number | null =>
+    ranking.reliability?.usage?.successRate ?? null;
+
+  return [...rankings].sort((a, b) => {
+    const rateA = rateOf(a);
+    const rateB = rateOf(b);
+    if (rateA === null && rateB === null) return 0;
+    if (rateA === null) return 1;
+    if (rateB === null) return -1;
+    if (rateA !== rateB) return rateB - rateA;
+    return (b.topModel?.score ?? b.averageScore) - (a.topModel?.score ?? a.averageScore);
+  });
+}
 
 export type UsageTone = "good" | "fair" | "poor" | "unknown";
 

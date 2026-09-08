@@ -37,7 +37,12 @@ import {
   orderPoolByRung,
   type LadderOptions,
 } from "./subscriptionLadder";
-import { filterStrictZeroCostCandidates, filterTosAvoidCandidates } from "./strictZeroCostFilter";
+import {
+  classifyStrictZeroCostCandidate,
+  filterStrictZeroCostCandidates,
+  filterTosAvoidCandidates,
+  findBudgetEntry,
+} from "./strictZeroCostFilter";
 import { resolveFreeAccessState } from "./freeAccessQuota";
 import { isModelExcludedByConnection } from "@/domain/connectionModelRules";
 import { resolveProviderAlias } from "../model.ts";
@@ -106,6 +111,13 @@ export interface VirtualAutoComboCandidate {
   resolvedSupportsVision?: boolean;
   resolvedReasoning?: boolean;
   resolvedSupportsThinking?: boolean;
+  /**
+   * Why STRICT_ZERO_COST would exclude this candidate, or null when it would
+   * not. Only populated for the read-only inspector build (`skip`), where the
+   * guard is deliberately not applied — dispatch builds leave it undefined and
+   * do no extra work.
+   */
+  freeAccessExclusion?: import("./strictZeroCostFilter").StrictZeroCostExclusionReason | null;
 }
 
 type VirtualAutoCombo = AutoComboConfig & {
@@ -119,6 +131,9 @@ type VirtualAutoCombo = AutoComboConfig & {
     allowedConnectionIds?: string[];
     weight: number;
     label: string;
+    /** Carried through from the candidate for the read-only inspector; absent
+     * on every dispatch build. */
+    freeAccessExclusion?: import("./strictZeroCostFilter").StrictZeroCostExclusionReason | null;
   }>;
   /** MAX of candidates' context windows — safe to advertise because the
    * auto-combo context pre-filter routes oversized requests to large-window
@@ -314,8 +329,8 @@ const SYNTHETIC_NOAUTH_CONNECTION_ID = RESILIENCE_NOAUTH_CONNECTION_ID;
 // Allowlist of no-auth (keyless) providers permitted to enter the `auto`/`auto-*`
 // candidate pool. Narrowed to the backends verified to answer without any
 // configuration on our reference egress (VPS .15): `opencode` returns 200
-// there, while duckduckgo-web (429/VQD rate limit), theoldllm
-// (403 Vercel egress block), chipotle (502), aihorde (401, anon key rejected)
+// there, while duckduckgo-web (429/VQD rate limit),
+// chipotle (502), aihorde (401, anon key rejected)
 // and the others are unreliable. The excluded providers stay fully usable via
 // direct `<alias>/<model>` calls — they are just kept OUT of auto-routing until
 // re-verified. Re-add an id here to bring it back into every auto/* pool.
@@ -749,16 +764,41 @@ export async function prepareVirtualAutoComboInputs(
     // per-candidate: `resolveFreeAccessState` here is a raw pass-through of the real
     // per-(provider,connectionId) resolver; the filter itself decides which connection(s)
     // on each candidate to check and rewrites `allowedConnectionIds` to the SAFE subset.
-    const strictFilteredPool = filterStrictZeroCostCandidates(pool, {
-      enabled: settings.freeAccessPolicy === "strict",
-      resolveFreeAccessState,
+    const strictZeroCostThresholds = {
       // 1 percentage point of headroom, not 0: `freeAccessQuota.ts` reports
       // remaining allowance as a percentage, and a raw ">0" comparison would
       // let a reading of e.g. 0.3% (rounding noise, not real headroom) pass.
       minRemainingAllowance: 1,
       maxStateAgeMs: toNumber(settings.autoRefreshProviderQuotaInterval, 180) * 1000,
+    };
+    const strictZeroCostOn = settings.freeAccessPolicy === "strict";
+    const strictFilteredPool = filterStrictZeroCostCandidates(pool, {
+      // The read-only candidate inspector (#9133) must be able to see what the
+      // guard would exclude, and why — the same opt-out the resilience filter
+      // already honours through `skip`. Dispatch (`skip === false`) is unaffected.
+      enabled: strictZeroCostOn && !skip,
+      resolveFreeAccessState,
+      ...strictZeroCostThresholds,
     });
     if (strictFilteredPool !== pool) pool = strictFilteredPool;
+
+    // Annotate here rather than in the handler: this is where the thresholds and
+    // `resolveFreeAccessState` already live. Doing it downstream would mean a second
+    // copy of both, with nothing to keep them in agreement.
+    if (strictZeroCostOn && skip) {
+      pool = pool.map((candidate) => {
+        const verdict = classifyStrictZeroCostCandidate(
+          candidate,
+          findBudgetEntry(candidate),
+          resolveFreeAccessState,
+          strictZeroCostThresholds
+        );
+        return {
+          ...candidate,
+          freeAccessExclusion: verdict.outcome === "safe" ? null : verdict.outcome,
+        };
+      });
+    }
 
     // Separate, optional ToS guard — independent of economic safety on purpose.
     const tosFilteredPool = filterTosAvoidCandidates(pool, settings.excludeTosAvoid === true);
@@ -1058,6 +1098,9 @@ export async function createVirtualAutoComboFromPrepared(
       : {}),
     weight: snapshotScores.get(candidate.modelStr) ?? 1,
     label: candidate.provider,
+    ...(candidate.freeAccessExclusion === undefined
+      ? {}
+      : { freeAccessExclusion: candidate.freeAccessExclusion }),
   }));
   const autoConfig = {
     candidatePool: providerPool,

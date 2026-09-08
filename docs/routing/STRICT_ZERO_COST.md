@@ -116,13 +116,37 @@ no waiting out the TTL after a 402/403/quota-exhausted response.
 `freeAccessPolicy`: a candidate can be economically `SAFE` and still excluded here for
 contractual reasons, or left in when this guard is off even with `freeAccessPolicy: "strict"` on.
 
-## What passes today
+## Seeing what the guard excludes
 
-Run `npx tsx scripts/ad-hoc/dry-run-strict-zero-cost.ts` against a live instance's
-`GET /v1/auto-combo/{channel}/candidates` output for a real before/after — the script reads each
-candidate's real `connectionId`, so it also proves the connection-safety fix live, not just in
-unit tests. Keyless candidates must arrive with the synthetic no-auth `connectionId`, never a
-real connection. The current built-in keyless auto path is OpenCode Free; exact candidate counts
+`GET /v1/auto-combo/{channel}/candidates` lists every candidate, including the ones this guard
+would keep out of dispatch, and each carries `freeAccessExclusion` — `null` when the guard is
+satisfied, otherwise the reason. The listing reports; it never enforces. Turning the policy off
+leaves the field `null` everywhere and costs nothing.
+
+| `freeAccessExclusion`  | What it means                                                                                                 | What to do about it                                                                                                                 |
+| :--------------------- | :------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------- |
+| `not-in-catalog`       | The provider/model pair is absent from `FREE_MODEL_BUDGETS`.                                                  | Add a curated entry, or accept that new pairs start excluded — that is the design.                                                  |
+| `regime-not-free`      | Catalogued, but its `freeType` is not one that grants free access (a discontinued tier, for instance).        | Nothing to fix. The model costs money.                                                                                              |
+| `no-hard-stop`         | Free regime, but `hardStopGuaranteed` is not `true`, so exceeding the allowance might silently start billing. | Verify the provider's terms and set the flag with the source in a comment — never to grow the catalog.                              |
+| `contradictory-noauth` | A no-auth candidate whose catalog entry is not `keyless`. Fail-closed on inconsistent metadata.               | Fix the catalog entry; the two facts disagree.                                                                                      |
+| `exhausted`            | A fresh reading says the allowance is used up.                                                                | Wait for the reset. This one resolves itself.                                                                                       |
+| `state-unknown`        | No quota reading, or one too old to trust.                                                                    | Go look: the provider may have no usage adapter registered, or the quota fetch is failing.                                          |
+| `no-connection`        | The candidate carries no account to check at all.                                                             | Not a quota problem: the candidate was built without a connection, so nothing was ever looked up. Check how the pool was assembled. |
+
+The last two are the pair worth separating. An exhausted allowance resets on its own; a reading
+that never arrives means the lookup itself is broken, and until now both looked identical from
+outside — the candidate simply vanished.
+
+**One gap remains, and it is deliberate.** `excludeTosAvoid` still removes candidates before the
+listing is built, so a model curated `tos: "avoid"` is absent with no reason given — the same
+invisibility this section just closed for the zero-cost guard. Closing it too means deciding what
+a ToS exclusion should report, which is a separate question from economic safety; this page names
+the gap rather than pretending it is not there.
+
+For an offline before/after, `npx tsx scripts/ad-hoc/dry-run-strict-zero-cost.ts` still works
+against a live instance's candidates output; it reads each candidate's real `connectionId`, so it
+also exercises the connection-safety path. Keyless candidates must arrive with the synthetic
+no-auth `connectionId`, never a real connection. The current built-in keyless auto path is OpenCode Free; exact candidate counts
 still depend on live model discovery and should be measured on the target deployment instead of
 copied from an older run. A `recurring-*` candidate passes only when it has both a registered
 usage adapter and `hardStopGuaranteed: true`; incomplete metadata remains fail-closed.
