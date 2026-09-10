@@ -41,7 +41,7 @@ const DEFAULTS = {
   idempotencyWindowMs: 5000,
   // Mirrors DEFAULT_DATABASE_SETTINGS.cache.modelCatalogCacheTtlMs so the value this
   // endpoint reports matches the one the catalog actually uses.
-  modelCatalogCacheTtlMs: 60_000,
+  modelCatalogCacheTtlMs: 600_000,
 };
 
 export async function GET(request: NextRequest) {

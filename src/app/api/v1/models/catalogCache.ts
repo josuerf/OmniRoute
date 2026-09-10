@@ -129,11 +129,26 @@ export type CatalogCacheOptions = {
  * the event loop so even the "served immediately" stale body only reaches the client
  * once the rebuild finishes. Net effect: ~50 s on essentially every call.
  *
- * Held at 60 s to match the ceiling the settings schema already allows for the override
- * (`settingsSchemas.ts`, `.max(60000)`), so the default can never exceed what an
- * operator is permitted to configure.
+ * 60 s was still short of the arithmetic that matters, because this cache is keyed per
+ * API key (the catalog is filtered per key, so it has to be): every developer polling
+ * with their own key owns a separate entry with its own TTL and pays its own rebuild.
+ * At ~49 s per rebuild a 60 s TTL costs 82 % of a core per key, so two keys saturated
+ * the single-threaded runtime permanently and a team of five kept it there all day —
+ * which is what the gateway was doing while it shed chat requests with 503s (IAF-477).
+ *
+ * At 600 s that is ~8 % of a core per key, so ten actively polling keys stay inside one
+ * core. Freshness is unaffected: every write that feeds the builder moves
+ * `modelCatalogCacheVersion` and `dropCatalogCacheIfStateChanged()` drops the whole
+ * cache the moment it does, so this value only governs how old a catalog may be when
+ * nothing at all has been written. Operators can tune it up to the 1 h ceiling the
+ * settings schema now allows (`settingsSchemas.ts`, `.max(3600000)`) when their catalog
+ * builds slower than the one measured above.
+ *
+ * Keep in sync with `DEFAULT_DATABASE_SETTINGS.cache.modelCatalogCacheTtlMs`
+ * (`src/types/databaseSettings.ts`) — that is the value that actually takes effect, and
+ * `tests/unit/v1-models-catalog-ttl.test.ts` fails if the two drift.
  */
-export const CATALOG_CACHE_TTL_MS_DEFAULT = 60_000;
+export const CATALOG_CACHE_TTL_MS_DEFAULT = 600_000;
 
 /** Cold-path wait bound for a coalesced catalog rebuild (#12627). Override with CATALOG_BUILD_TIMEOUT_MS. */
 export const CATALOG_BUILD_TIMEOUT_MS_DEFAULT = 8_000;

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CacheSettingsTab from "@/app/(dashboard)/dashboard/settings/components/CacheSettingsTab";
 
 // Regression coverage for #8219: CacheSettingsTab's client-side min/max TTL
-// bounds (MIN_TTL_MS=100, MAX_TTL_MS=60000) gate the Save button and surface
+// bounds (MIN_TTL_MS=100, MAX_TTL_MS=3600000) gate the Save button and surface
 // a validation message. This test proves those bounds actually work end to
 // end against the (now-fixed) /api/settings/cache-config route.
 
@@ -46,10 +46,7 @@ async function setInputValue(container: HTMLDivElement, value: string) {
   // event fires but React's commit doesn't flush before the callback
   // resolves), leaving the input showing its pre-dispatch value.
   act(() => {
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value"
-    )?.set;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
     setter?.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
@@ -117,11 +114,11 @@ describe("CacheSettingsTab TTL bounds", () => {
     expect(getSaveButton(container).disabled).toBe(true);
   });
 
-  it("disables Save and shows an error above the maximum bound (60000ms)", async () => {
+  it("disables Save and shows an error above the maximum bound (3600000ms)", async () => {
     const container = await render();
     await waitFor(() => getInput(container).value === "1500", "initial TTL to load");
 
-    await setInputValue(container, "70000");
+    await setInputValue(container, "3700000");
     await waitFor(
       () => container.textContent?.includes("modelCatalogTtlMaximumError") ?? false,
       "maximum bound error to render"

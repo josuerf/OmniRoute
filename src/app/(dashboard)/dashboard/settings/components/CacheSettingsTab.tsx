@@ -13,7 +13,7 @@ interface CacheConfigResponse {
 
 const DEFAULT_TTL_MS = 1500;
 const MIN_TTL_MS = 100;
-const MAX_TTL_MS = 60000;
+const MAX_TTL_MS = 3600000;
 
 export default function CacheSettingsTab() {
   const t = useTranslations("settings");
@@ -34,7 +34,8 @@ export default function CacheSettingsTab() {
       .then((config) => {
         if (!active) return;
         const ms = config.modelCatalogCacheTtlMs ?? DEFAULT_TTL_MS;
-        const str = typeof ms === "number" && Number.isFinite(ms) ? String(ms) : String(DEFAULT_TTL_MS);
+        const str =
+          typeof ms === "number" && Number.isFinite(ms) ? String(ms) : String(DEFAULT_TTL_MS);
         setValue(str);
         setSavedValue(str);
       })

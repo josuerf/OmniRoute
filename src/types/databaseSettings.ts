@@ -109,7 +109,7 @@ export const DEFAULT_DATABASE_SETTINGS: Omit<DatabaseSettings, "location" | "sta
     // effect, since catalog.ts reads it as `dbSettings.cache?.modelCatalogCacheTtlMs
     // ?? CATALOG_CACHE_TTL_MS_DEFAULT` and the `??` never falls through while a
     // default is declared here. Guarded by tests/unit/v1-models-catalog-ttl.test.ts.
-    modelCatalogCacheTtlMs: 60_000,
+    modelCatalogCacheTtlMs: 600_000,
   },
   retention: {
     quotaSnapshots: 7,

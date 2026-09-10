@@ -579,7 +579,7 @@ export const databaseSettingsSchema = z
       promptCacheEnabled: z.boolean(),
       promptCacheStrategy: z.literal("auto").or(z.literal("system-only")).or(z.literal("manual")),
       alwaysPreserveClientCache: z.literal("auto").or(z.literal("always")).or(z.literal("never")),
-      modelCatalogCacheTtlMs: z.number().int().min(500).max(60000),
+      modelCatalogCacheTtlMs: z.number().int().min(500).max(3600000),
     }),
 
     // Retention settings
