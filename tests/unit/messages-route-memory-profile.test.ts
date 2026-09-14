@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
@@ -16,7 +17,13 @@ import {
   withRawSnapshotCleanup,
 } from "../../scripts/perf/messages-route-memory-profile.ts";
 
-const SCRIPT = new URL("../../scripts/perf/messages-route-memory-profile.ts", import.meta.url);
+// fileURLToPath, never URL#pathname: on Windows the pathname keeps a leading slash
+// ("/C:/…"), which spawn cannot resolve — the child then exits before its snapshot
+// cleanup runs and the deletion assertions fail for the wrong reason.
+const SCRIPT = fileURLToPath(
+  new URL("../../scripts/perf/messages-route-memory-profile.ts", import.meta.url)
+);
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 test("JON-562 corpus varies only context bytes and hits the exact token-equivalent size", () => {
   const small = buildClaudeContextPayload(100_000);
@@ -167,7 +174,7 @@ test("JON-562 standalone analyzer deletes an invalid raw snapshot on failure", (
       [
         "--import",
         "tsx/esm",
-        SCRIPT.pathname,
+        SCRIPT,
         "--analyze-snapshot",
         "--snapshot",
         snapshot,
@@ -179,7 +186,7 @@ test("JON-562 standalone analyzer deletes an invalid raw snapshot on failure", (
         "1024",
       ],
       {
-        cwd: new URL("../..", import.meta.url),
+        cwd: REPO_ROOT,
         encoding: "utf8",
         env: buildWorkerEnv(process.env),
         timeout: 10_000,
@@ -202,7 +209,7 @@ test("JON-562 standalone analyzer deletes raw input when required arguments are 
       [
         "--import",
         "tsx/esm",
-        SCRIPT.pathname,
+        SCRIPT,
         "--analyze-snapshot",
         "--snapshot",
         snapshot,
@@ -210,7 +217,7 @@ test("JON-562 standalone analyzer deletes raw input when required arguments are 
         outputDir,
       ],
       {
-        cwd: new URL("../..", import.meta.url),
+        cwd: REPO_ROOT,
         encoding: "utf8",
         env: buildWorkerEnv(process.env),
         timeout: 10_000,
@@ -233,7 +240,7 @@ test("JON-562 standalone analyzer deletes raw input when size validation fails",
       [
         "--import",
         "tsx/esm",
-        SCRIPT.pathname,
+        SCRIPT,
         "--analyze-snapshot",
         "--snapshot",
         snapshot,
@@ -245,7 +252,7 @@ test("JON-562 standalone analyzer deletes raw input when size validation fails",
         "not-a-number",
       ],
       {
-        cwd: new URL("../..", import.meta.url),
+        cwd: REPO_ROOT,
         encoding: "utf8",
         env: buildWorkerEnv(process.env),
         timeout: 10_000,
@@ -270,7 +277,7 @@ test(
           "--expose-gc",
           "--import",
           "tsx/esm",
-          SCRIPT.pathname,
+          SCRIPT,
           "--tokens",
           "100000",
           "--iterations",
@@ -279,7 +286,7 @@ test(
           outputDir,
         ],
         {
-          cwd: new URL("../..", import.meta.url),
+          cwd: REPO_ROOT,
           encoding: "utf8",
           env: buildWorkerEnv(process.env),
           timeout: 85_000,
