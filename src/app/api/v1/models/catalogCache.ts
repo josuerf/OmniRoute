@@ -19,6 +19,7 @@ import { after } from "next/server";
 import { getModelCatalogCacheVersion } from "@/lib/db/readCache";
 import { extractApiKey } from "@/sse/services/auth";
 
+import { catalogPageCacheKey, catalogStringResponse, parseCatalogPage } from "./catalogPagination";
 import { isCodexModelCatalogClient } from "./catalogRequest";
 
 /** Fingerprint an API key for the catalog memo Map. Never store the raw secret. */
@@ -314,7 +315,8 @@ function buildCatalogCacheKey(request: Request, catalogSettings?: CatalogCacheOp
   const configuredOnly = url.searchParams.get("configuredOnly") === "true" ? "1" : "0";
   const hideAuto = catalogSettings?.hideAutoCombos ? "1" : "0";
   const hideNoThink = catalogSettings?.hideNoThinkVariants ? "1" : "0";
-  return `${prefix}|${isCodex}|${fingerprintCatalogAuthKey(apiKey)}|${configuredOnly}|${hideAuto}|${hideNoThink}`;
+  const page = catalogPageCacheKey(parseCatalogPage(request));
+  return `${prefix}|${isCodex}|${fingerprintCatalogAuthKey(apiKey)}|${configuredOnly}|${hideAuto}|${hideNoThink}|${page}`;
 }
 
 // Tracks the model-catalog cache version (src/lib/db/readCache.ts) as of the last
@@ -461,19 +463,21 @@ async function awaitCatalogInFlight(
     }
     const lastGood = catalogLastGood.get(cacheKey);
     if (msg === "catalog_build_timeout" && lastGood) {
-      return new Response(lastGood.body, {
-        status: lastGood.status,
-        headers: mergeCatalogHeaders(corsHeaders, lastGood.headers, diagnosticHeaders, {
+      return catalogStringResponse(
+        lastGood.body,
+        mergeCatalogHeaders(corsHeaders, lastGood.headers, diagnosticHeaders, {
           "x-omniroute-catalog": "last-good",
         }),
-      });
+        lastGood.status
+      );
     }
     throw err;
   }
-  return new Response(payload.body, {
-    status: payload.status,
-    headers: mergeCatalogHeaders(corsHeaders, payload.headers, diagnosticHeaders),
-  });
+  return catalogStringResponse(
+    payload.body,
+    mergeCatalogHeaders(corsHeaders, payload.headers, diagnosticHeaders),
+    payload.status
+  );
 }
 
 /**
@@ -497,10 +501,11 @@ export async function resolveCachedCatalogResponse(
   const cached = catalogCache.get(cacheKey);
 
   if (cached && cached.expiresAt > now) {
-    return new Response(cached.body, {
-      status: cached.status,
-      headers: mergeCatalogHeaders(corsHeaders, cached.headers, diagnosticHeaders),
-    });
+    return catalogStringResponse(
+      cached.body,
+      mergeCatalogHeaders(corsHeaders, cached.headers, diagnosticHeaders),
+      cached.status
+    );
   }
 
   // Stale-while-revalidate: an expired entry is still served immediately as long as
@@ -517,10 +522,11 @@ export async function resolveCachedCatalogResponse(
       buildPayload,
       catalogSettings?.scheduleBackgroundRefresh ?? defaultBackgroundRefreshScheduler
     );
-    return new Response(cached.body, {
-      status: cached.status,
-      headers: mergeCatalogHeaders(corsHeaders, cached.headers, diagnosticHeaders),
-    });
+    return catalogStringResponse(
+      cached.body,
+      mergeCatalogHeaders(corsHeaders, cached.headers, diagnosticHeaders),
+      cached.status
+    );
   }
 
   const currentGeneration = getModelCatalogCacheVersion();
