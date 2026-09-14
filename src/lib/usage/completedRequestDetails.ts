@@ -91,7 +91,6 @@ export function getCompletedDetailsCacheStats(): {
  * Store a detached completed-request preview.
  * @param detail - Completed request detail to detach and cache.
  * @returns `true` only when the entry remains cached after count and byte-budget eviction.
- * @throws If `detail` contains a value that `structuredClone` cannot copy.
  */
 export function storeCompletedDetail(detail: PendingRequestDetail): boolean {
   const inputBytes = estimateRetainedBytes(detail);
@@ -103,7 +102,18 @@ export function storeCompletedDetail(detail: PendingRequestDetail): boolean {
   // `truncatePendingPreview()` uses String#slice. V8 may represent that short preview as a
   // sliced string whose hidden parent is the full multi-megabyte request. A structured clone
   // materializes the visible preview into cache-owned storage and drops the pending graph.
-  const detached = structuredClone(detail);
+  let detached: PendingRequestDetail;
+  try {
+    detached = structuredClone(detail);
+  } catch {
+    // A value structuredClone cannot copy (function, class instance, proxy) must never break
+    // request finalization — finalizePendingDetailAt() still has to splice the pending entry
+    // out and drop it from pendingById. Caching `detail` as-is instead would re-introduce the
+    // sliced-string retention this detach exists to prevent, so drop the entry and report it
+    // as not cached: the dashboard bridge loses one preview, the request completes normally.
+    deleteCompletedDetail(detail.id);
+    return false;
+  }
   const detachedBytes = estimateRetainedBytes(detached);
   totalCompletedDetailBytes -= completedDetailBytes.get(detail.id) ?? 0;
   completedDetails.set(detail.id, detached);
@@ -153,8 +163,7 @@ export function maybeEnrichCompletedDetail(updated: PendingRequestDetail, connec
         const art = readCallArtifact(row.artifact_relpath);
         if (art.state !== "ready" || !art.artifact) continue;
         const pipeline = art.artifact.pipeline as
-          | { providerResponse?: unknown; clientResponse?: unknown }
-          | undefined;
+          { providerResponse?: unknown; clientResponse?: unknown } | undefined;
         // pipeline.* first: it is the translated payload of one specific side.
         // `responseBody` is a single coarse value handed to both sides, so it
         // may only fill a side still empty AFTER the pipeline had its turn --
