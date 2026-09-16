@@ -606,6 +606,72 @@ rate limit is the same signal as an exhausted quota. Honest limits:
 
 ---
 
+## 8. Structural Resource-Pressure Admission Gate
+
+**Scope:** the whole process, at the front door of `POST /v1/chat/completions` and
+`/v1/messages` — a different, earlier gate than the [Request Queue Admission
+Control](#5-request-queue-admission-control-v3849--issue-6593) capacity gate above.
+
+**Purpose:** shed traffic *before* ingesting any request bytes when the process
+itself is under genuine critical memory/CPU-pressure-stall pressure, so a chat body
+never gets to compete for the allocation-heavy parse/translate/dispatch path that
+would push a struggling process into a real OOM.
+
+**Implementation:**
+
+- Sampler + state machine: `open-sse/utils/resourcePressurePolicy.ts`
+  (`createResourcePressureTracker`) — samples V8 heap ratio, cgroup working-set
+  ratio, cgroup `memory.high` ratio, and `/sys/fs/cgroup/memory.pressure` PSI, and
+  classifies each sample as `normal` / `high` / `critical`.
+- Runtime/cache/self-restart: `open-sse/utils/resourcePressure.ts`
+  (`createResourcePressureRuntime`, process singleton via
+  `getAdmissionResourcePressureSeverity()`).
+- Admission gate call site: `src/shared/middleware/chatBodyAdmission.ts` — rejects
+  with 503 `resource_pressure` only when severity is `critical`; `high` never sheds,
+  it only widens `chatBodyAdmission`'s own bounded wait.
+
+**Severity states and thresholds** (`DEFAULT_RESOURCE_PRESSURE_THRESHOLDS`):
+`normal` → `high` at 85% of a tracked ratio (or PSI avg10 ≥ 30), → `critical` at
+92% (or PSI avg10 ≥ 60), each requiring `sustainedSamplesHigh`/`sustainedSamplesCritical`
+consecutive samples (2 by default) before escalating. Recovery back to `normal`
+requires every tracked ratio to clear a separate, more conservative 75% recovery
+threshold (`recoveryRatio`) for `sustainedSamplesRecovery` samples — a wider band on
+the way down than on the way up, by design.
+
+**The critical hold timeout (incident 2026-09-16).** Between `recoveryRatio` (75%)
+and `criticalRatio` (92%) is a band where a raw sample is neither a critical
+reconfirmation nor a full recovery. Once `critical`, staying in that band held the
+state at `critical` indefinitely — and since the gate sheds before any allocation,
+the process stopped allocating, so V8 never ran the GC that would have shrunk the
+heap back down; only a process restart broke the loop. `criticalHoldTimeoutMs`
+(default 3 minutes) is the fix: if no raw sample has been genuinely critical for
+that long, severity drops to `high` — not `normal`, since recovery was never fully
+confirmed. This is the `HALF_OPEN` equivalent the [provider circuit
+breaker](#1-provider-circuit-breaker) already has: `high` does not shed, so if the
+process is still genuinely under pressure, the very next samples re-escalate to
+`critical` in `sustainedSamplesCritical` samples (~2s at the default 1s cadence) —
+a cheap probe, not a risk of masking real pressure.
+
+**Self-restart circuit** (`open-sse/utils/resourcePressure.ts`): opt-in,
+`OMNIROUTE_PRESSURE_SELF_RESTART` (default off) — exits the process with code 1
+after critical pressure has been sustained for `OMNIROUTE_PRESSURE_SELF_RESTART_AFTER_MS`
+(default 2 minutes), so a supervisor (Docker `restart: unless-stopped`, systemd
+`Restart=always`) brings back a clean process instead of serving 503s indefinitely.
+Advances via an unref'd interval driver even with zero incoming traffic, since a
+process shedding every request would otherwise never sample again to notice its own
+recovery. See `docs/reference/ENVIRONMENT.md` for both variables.
+
+**Retry-After ramp and shed telemetry** (`src/shared/middleware/chatAdmissionResponses.ts`,
+`src/shared/middleware/chatBodyAdmission.ts`): the `resource_pressure` 503's
+`Retry-After` ramps from a 2s floor to a 15s ceiling as the tracked critical state
+persists, instead of a fixed 2s that invites a retry storm for as long as the
+process stays critical. The shed event (`ChatAdmissionShedEvent`, emitted to the
+`chat-admission` logger) additionally carries `pressureReason`, `heapUsedMb`,
+`cgroupPct`, and `criticalForMs` for this shed reason only, so a `resource_pressure`
+storm no longer requires cross-referencing multiple log modules to diagnose.
+
+---
+
 ## Other Resilience Features
 
 - **19 routing strategies** (priority, weighted, round-robin, context-relay, fill-first, p2c, random, least-used, cost-optimized, reset-aware, reset-window, headroom, strict-random, auto, lkgp, context-optimized, cache-optimized, fusion, pipeline) — see [AUTO-COMBO.md](../routing/AUTO-COMBO.md).

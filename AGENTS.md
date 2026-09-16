@@ -227,6 +227,24 @@ Examples:
 Model lockout lives in `open-sse/services/accountFallback.ts` and lets the same
 connection continue serving other models.
 
+### Structural Resource-Pressure Admission Gate
+
+**Scope**: the whole process, at the admission front door — a distinct mechanism
+from the 3-layer diagram above (those three route AROUND a bad provider/connection/
+model; this one decides whether to accept a request into the process at all).
+
+**Purpose**: shed traffic before ingesting any request bytes when the process's own
+V8 heap / cgroup / PSI pressure is genuinely critical, so a chat body never competes
+for the allocation-heavy parse/translate/dispatch path that would push a struggling
+process into a real OOM.
+
+Implementation: `open-sse/utils/resourcePressurePolicy.ts` (severity state machine),
+`open-sse/utils/resourcePressure.ts` (sampler runtime + opt-in self-restart circuit),
+gate call site in `src/shared/middleware/chatBodyAdmission.ts`. Full detail —
+severity thresholds, the `criticalHoldTimeoutMs` hysteresis fix for the
+2026-09-16 incident, the self-restart env vars, and the shed-event telemetry — is in
+[docs/architecture/RESILIENCE_GUIDE.md § 8](docs/architecture/RESILIENCE_GUIDE.md#8-structural-resource-pressure-admission-gate).
+
 ### Debugging Guidance
 
 - If all keys for a provider are skipped, inspect both provider breaker state and each
@@ -239,6 +257,9 @@ connection continue serving other models.
 - If a state should self-recover, it should have a future timestamp/reset timeout and a
   read path that refreshes expired state. Permanent statuses require manual credential
   or config changes.
+- Every request 503ing with `code: "resource_pressure"` and `activeHeavy: 0` in the
+  `chat-admission` shed log is the structural resource-pressure gate above, not a
+  capacity/routing issue — check `GET /api/monitoring/health` → `chatAdmission.pressureSeverity`.
 
 ---
 
