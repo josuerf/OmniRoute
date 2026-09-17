@@ -33,7 +33,7 @@ import { BypassProviderQuotaToggle } from "./components/BypassProviderQuotaToggl
 import { ApiKeyCompressionToggle } from "./components/ApiKeyCompressionToggle";
 import { AllowedCombosSection } from "./components/AllowedCombosSection";
 import ProviderModelPermissionList from "./components/ProviderModelPermissionList";
-import ReasoningRoutingRules from "@/shared/components/ReasoningRoutingRules";
+import RoutingEntryLink from "@/shared/components/routing/RoutingEntryLink";
 import { ALL_COMBOS_ACCESS_RULE } from "@/shared/constants/comboAccess";
 
 // Constants for validation
@@ -948,8 +948,11 @@ export default function ApiManagerPageClient() {
   }, [modelsByProvider, debouncedSearchModel]);
 
   if (loading) {
+    // The skeleton cards are aria-hidden, so without this status wrapper the page
+    // has no accessible content at all until /api/keys settles (#12066).
     return (
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-8" role="status" aria-live="polite" aria-busy="true">
+        <span className="sr-only">{tc("loading")}</span>
         <CardSkeleton />
         <CardSkeleton />
       </div>
@@ -1009,6 +1012,8 @@ export default function ApiManagerPageClient() {
           {t("createKey")}
         </Button>
       </div>
+
+      <RoutingEntryLink />
 
       {/* Filter Bar — shown when there are keys */}
       {keys.length > 0 && (
@@ -2165,7 +2170,7 @@ const PermissionsModal = memo(function PermissionsModal({
           </div>
         )}
 
-        {apiKey?.id && <ReasoningRoutingRules apiKeyId={apiKey.id} />}
+        {apiKey?.id && <RoutingEntryLink apiKeyId={apiKey.id} />}
 
         {/* Access Mode Toggle */}
         <div className="flex gap-2 p-1 bg-surface rounded-lg">

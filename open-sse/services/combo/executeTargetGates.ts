@@ -25,6 +25,8 @@ import {
   resolvePersistedConnectionCooldownSkipReason,
 } from "./comboPredicates.ts";
 import { resolveQuotaExhaustionCutoffForTarget } from "./quotaExhaustionCutoff.ts";
+import { protectedPriorityStopStatus } from "./protectedPriorityStopStatus.ts";
+import type { ProtectedPriorityStopCause } from "./protectedPriorityStopStatus.ts";
 import type { AttemptLoopDeps, AttemptLoopState, GateDecision } from "./attemptLoopTypes.ts";
 import type { ResolvedComboTarget } from "./types.ts";
 
@@ -58,11 +60,11 @@ export async function evaluateExecuteTargetGates(opts: {
   const protectedPriorityTarget =
     deps.strategy === "priority" && target.fallbackOnlyOnQuotaExhaustion === true;
 
-  const stopProtectedPriorityTarget = (message: string) => {
+  const stopProtectedPriorityTarget = (message: string, cause?: ProtectedPriorityStopCause) => {
     state.observeFailure(false, target.executionKey);
     deps.clearStaleLKGP(deps.combo.name, target.executionKey, deps.combo.id, deps.log, "COMBO");
     return protectedPriorityTarget
-      ? { ok: false as const, response: errorResponse(503, message) }
+      ? { ok: false as const, response: errorResponse(protectedPriorityStopStatus(cause), message) }
       : null;
   };
 
@@ -93,7 +95,10 @@ export async function evaluateExecuteTargetGates(opts: {
     bumpFallback();
     return {
       kind: "skip",
-      result: stopProtectedPriorityTarget(`Provider ${provider} circuit breaker is open`),
+      result: stopProtectedPriorityTarget(
+        `Provider ${provider} circuit breaker is open`,
+        "circuit_open"
+      ),
     };
   }
 
@@ -129,8 +134,9 @@ export async function evaluateExecuteTargetGates(opts: {
         ...target,
         allowRateLimitedConnection: true,
         modelAbortSignal: abortSignal,
+        fallbackAttempts: i,
       }
-    : { ...target, modelAbortSignal: abortSignal };
+    : { ...target, modelAbortSignal: abortSignal, fallbackAttempts: i };
 
   if (target.connectionId && !allowRateLimitedConnection) {
     const persistedSkip = await resolvePersistedConnectionCooldownSkipReason(
@@ -141,6 +147,15 @@ export async function evaluateExecuteTargetGates(opts: {
     if (persistedSkip) {
       // Lift-as-is: combo.ts skips without observeFailure / stopProtectedPriorityTarget.
       deps.log.info("COMBO", persistedSkip);
+      // #12659: this branch used to be untraced, so an ALL_TARGETS_SKIPPED
+      // caused purely by persisted cooldowns surfaced as an opaque
+      // `attempted=0, excluded=[]` diagnostics body.
+      recordComboDecision(deps.traceInvocationId, {
+        step: target.executionKey,
+        target: modelStr,
+        decision: "skipped_before_dispatch",
+        reason: "persisted_cooldown",
+      });
       deps.clearStaleLKGP(deps.combo.name, target.executionKey, deps.combo.id, deps.log, "COMBO");
       bumpFallback();
       return { kind: "skip", result: null };

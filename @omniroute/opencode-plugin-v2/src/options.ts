@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { isHttpUrl } from "./shared/models-map.js";
+
 const apiFormatSchema = z
   .object({
     allowAnthropic: z.boolean().optional(),
@@ -28,7 +30,10 @@ const pluginOptionsSchema = z
       .regex(/^[A-Za-z0-9._-]+$/, "providerId may only contain letters, digits, '.', '_' and '-'")
       .refine((v) => v !== "." && v !== "..", "providerId cannot be a path segment")
       .default("omniroute"),
-    baseURL: z.string().url(),
+    baseURL: z
+      .string()
+      .trim()
+      .refine(isHttpUrl, "baseURL must be an http(s) URL, for example http://localhost:20128"),
     apiKey: z.string().optional(),
     displayName: z.string().optional(),
     managementReadToken: z.string().optional(),
@@ -55,6 +60,21 @@ const pluginOptionsSchema = z
   .strict();
 
 export type PluginOptions = z.infer<typeof pluginOptionsSchema>;
+
+/** Environment source for the management token (option wins over this). */
+export const MANAGEMENT_TOKEN_ENV_VAR = "OMNIROUTE_MANAGEMENT_API_KEY";
+
+/**
+ * Resolve the management token: a non-empty option wins, then a non-empty
+ * environment value, else absent. Empty counts as absent on both inputs, the
+ * same rule the inference key follows; no trimming, the token is opaque.
+ */
+export function resolveManagementReadToken(optionValue: string | undefined): string | undefined {
+  if (optionValue !== undefined && optionValue.length > 0) return optionValue;
+  const fromEnv = process.env[MANAGEMENT_TOKEN_ENV_VAR];
+  if (fromEnv !== undefined && fromEnv.length > 0) return fromEnv;
+  return undefined;
+}
 
 /** Per-endpoint timeout defaults (v1 parity). `timeoutMs` is the global fallback. */
 export const DEFAULT_TIMEOUT_MS = 10_000 as const;

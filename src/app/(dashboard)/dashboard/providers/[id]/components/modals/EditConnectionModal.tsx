@@ -57,6 +57,7 @@ import { assignEditApiKeyProviderSpecificData } from "./connectionProviderSpecif
 import { isM365TierCapableProvider, normalizeM365TierValue, type M365TierValue } from "./m365Tier";
 import ProviderTierField from "./ProviderTierField";
 import AgentrouterConsoleFields from "./AgentrouterConsoleFields";
+import { getVertexCredentialCopy } from "./vertexCredentialCopy";
 import QuotaScrapingFields, { EMPTY_QUOTA_SCRAPING_FIELDS } from "./QuotaScrapingFields";
 import GlmTeamQuotaFields, { EMPTY_GLM_TEAM_QUOTA_FIELDS } from "./GlmTeamQuotaFields";
 import ProviderRegionField, { getProviderRegionConfig } from "./AlibabaProviderRegionField";
@@ -245,27 +246,25 @@ export default function EditConnectionModal({
   const isCcCompatible = isClaudeCodeCompatibleProvider(provider);
   const isCompatible =
     isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider);
+  const vertexCopy = isVertex ? getVertexCredentialCopy(t) : null;
   const apiCredentialLabel = webSessionCredential
     ? getWebSessionCredentialLabel(t, webSessionCredential, apiKeyOptional)
     : isAwsPolly
       ? providerText(t, "awsPollySecretAccessKeyLabel", "AWS Secret Access Key")
-      : apiKeyOptional
-        ? t("apiKeyOptionalLabel")
-        : t("apiKeyLabel");
+      : (vertexCopy?.label ?? (apiKeyOptional ? t("apiKeyOptionalLabel") : t("apiKeyLabel")));
   const apiCredentialPlaceholder = isWebSessionCredential
     ? webSessionCredential.placeholder
-    : isVertex
-      ? t("vertexServiceAccountPlaceholder")
-      : t("enterNewApiKey");
+    : (vertexCopy?.placeholder ?? t("enterNewApiKey"));
   const apiCredentialHint = isWebSessionCredential
     ? getWebSessionCredentialHint(t, webSessionCredential, providerDisplayName, true)
-    : isLocalSelfHostedProvider
-      ? t("localProviderApiKeyOptionalHint", {
-          provider: localProviderMetadata?.name || provider || "",
-        })
-      : apiKeyOptional
-        ? t("apiKeyOptionalHint")
-        : t("leaveBlankKeepCurrentApiKey");
+    : (vertexCopy?.hint ??
+      (isLocalSelfHostedProvider
+        ? t("localProviderApiKeyOptionalHint", {
+            provider: localProviderMetadata?.name || provider || "",
+          })
+        : apiKeyOptional
+          ? t("apiKeyOptionalHint")
+          : t("leaveBlankKeepCurrentApiKey")));
   // Modal-open form initialization from the loaded connection — applied as a
   // render-phase adjustment guarded by the previously initialized connection
   // (react.dev "adjusting state when a prop changes") instead of the former
@@ -379,16 +378,13 @@ export default function EditConnectionModal({
         quotaPerUnit: existingQuotaPerUnit,
         glmOrganizationId: existingGlmOrganizationId,
         glmProjectId: existingGlmProjectId,
-        // Console-session credentials are stripped from API responses
-        // (sanitizeProviderSpecificDataForResponse), so there is nothing to
-        // round-trip: start empty and let "blank keeps the stored value" hold —
-        // the quota-scraping assign skips empty fields and the PUT merge
-        // preserves keys the payload does not carry.
+        // Console-session credentials stripped in responses; blank preserves stored values.
         ollamaCloudUsageCookie: "",
         alibabaConsoleCookie: "",
         qwenCloudCookie: "",
         qwenCloudSecToken: "",
         alibabaConsoleSecToken: "",
+        volcConsoleCookie: "",
         ccCompatibleContext1m: ccRequestDefaults.context1m,
         ccCompatibleRedactThinking: ccRequestDefaults.redactThinking,
         ccCompatibleSummarizeThinking: ccRequestDefaults.summarizeThinking,

@@ -28,6 +28,7 @@ import { providerAllowsOptionalApiKey } from "@/shared/constants/providers";
 import { shouldUseApiKeyConnectionTest } from "./webSessionTestDispatch";
 import { testCodexAppServerConnection, makeDiagnosis } from "./codexAppServerHealth";
 import { recoverKeyHealth } from "@omniroute/open-sse/services/apiKeyRotator.ts";
+import { lockModelIfPerModelQuota } from "@omniroute/open-sse/services/accountFallback.ts";
 import { shouldClearErrorStateOnValidProbe } from "@/lib/usage/providerLimits";
 import { isConnectionUnavailableToAuxiliaryActivity } from "@/lib/exclusiveLeaseIsolation";
 import { buildApiKeyConnectionTestResult } from "./apiKeyTestResult";
@@ -236,6 +237,16 @@ function isTokenExpired(connection: any) {
   }
   const buffer = 5 * 60 * 1000; // 5 minutes
   return expiresAt <= Date.now() + buffer;
+}
+
+// #12958: GitLab's own `direct_access` 403 JSON body (e.g. `{"error":"insufficient_scope"}`)
+// is safe operator-facing diagnostic text — it is not a stack trace and does not echo the
+// token — but is capped and stripped of control characters defensively before it reaches
+// the stored/surfaced error message, per docs/security/ERROR_SANITIZATION.md.
+function sanitizeUpstreamBodyText(bodyText: string): string {
+  const collapsed = bodyText.replace(/[\r\n\t\u0000-\u001f]+/g, " ").trim();
+  const MAX_LENGTH = 300;
+  return collapsed.length > MAX_LENGTH ? `${collapsed.slice(0, MAX_LENGTH)}…` : collapsed;
 }
 
 /**
@@ -643,9 +654,14 @@ export async function testOAuthConnection(
       };
     }
 
+    // #12958: `res.text()` can only be read once — capture it here in the outer
+    // function scope so the generic bodyText selection below (which used to call
+    // `res.text()` a second time and silently get "" back, discarding the real
+    // GitLab error) can reuse the same string instead of re-reading a drained body.
+    let gitlabDuoDirectAccessBodyText: string | null = null;
     if (connection.provider === "gitlab-duo") {
-      const gitlabText = await res.text();
-      if (shouldFallbackToPublicCodeSuggestions(res.status, gitlabText)) {
+      gitlabDuoDirectAccessBodyText = await res.text();
+      if (shouldFallbackToPublicCodeSuggestions(res.status, gitlabDuoDirectAccessBodyText)) {
         const fallbackOk = await probeGitLabDuoPublicFallback(connection, accessToken, timeoutMs);
         if (fallbackOk) {
           return {
@@ -787,14 +803,26 @@ export async function testOAuthConnection(
     // revoked token. (The body is unread here for non-gitlab providers; the guard keeps
     // it safe if it was already consumed.) antigravity/agy read any failure body so a
     // geo-blocked egress location is labeled with an actionable message instead of a
-    // generic "API returned 400".
+    // generic "API returned 400". gitlab-duo already consumed the body above (`res.text()`
+    // is single-read) — reuse it instead of re-reading a drained stream (#12958).
     const bodyText =
-      res.status === 401 ||
-      res.status === 403 ||
-      connection.provider === "antigravity" ||
-      connection.provider === "agy"
-        ? await res.text().catch(() => "")
-        : "";
+      connection.provider === "gitlab-duo"
+        ? (gitlabDuoDirectAccessBodyText ?? "")
+        : res.status === 401 ||
+            res.status === 403 ||
+            connection.provider === "antigravity" ||
+            connection.provider === "agy"
+          ? await res.text().catch(() => "")
+          : "";
+    // #12958: surface the real upstream body for a gitlab-duo 403 that also fails the
+    // public-fallback probe, instead of a generic "Access denied" — the operator needs
+    // to tell an entitlement/scope failure apart from an instance-config or revoked-token
+    // one. Trimmed/truncated per docs/security/ERROR_SANITIZATION.md (no stack traces are
+    // involved; this is GitLab's own JSON error body, capped defensively).
+    const gitlabDuoAccessDeniedMessage =
+      connection.provider === "gitlab-duo" && res.status === 403
+        ? `Access denied: ${sanitizeUpstreamBodyText(bodyText)}`
+        : "Access denied";
     const error = isGeoBlockedError(bodyText)
       ? "Egress location blocked by Google (User location is not supported). The Cloud Code API is not offered from this server's proxy exit region — route antigravity/agy through a proxy in a supported region (e.g. US/EU) or use a different provider. This is NOT an account problem."
       : isAccountDeactivatedMessage(bodyText)
@@ -802,7 +830,7 @@ export async function testOAuthConnection(
         : res.status === 401
           ? "Token invalid or revoked"
           : res.status === 403
-            ? "Access denied"
+            ? gitlabDuoAccessDeniedMessage
             : `API returned ${res.status}`;
 
     return {
@@ -967,6 +995,17 @@ export async function testSingleConnection(connectionId: string, validationModel
   const publicRuntime = projectProviderRuntimeForPublicResponse(runtime);
 
   const latencyMs = Date.now() - startTime;
+
+  // A representative-model 402 on an openai-compatible / per-model-quota
+  // gateway must lock only that model. The connection stays selectable for
+  // sibling upstreams that still return 200.
+  const connectionPsd = (connection.providerSpecificData as Record<string, unknown> | null) || {};
+  const configuredModelId =
+    typeof connectionPsd.validationModelId === "string" ? connectionPsd.validationModelId : "";
+  const probedModelId = validationModelId || configuredModelId;
+  if (result.valid && result.statusCode === 402 && probedModelId) {
+    lockModelIfPerModelQuota(provider, connectionId, probedModelId, "credits", 60 * 60 * 1000);
+  }
 
   // Unsupported validation capability is neutral: the probe established that
   // this provider cannot be verified through the generic test surface, not

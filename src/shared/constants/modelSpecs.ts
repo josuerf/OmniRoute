@@ -48,7 +48,17 @@ export interface ModelSpec {
   // operator strip-by-default a thinks-by-default model (measured: gemini-flash-lite
   // burns ~277 reasoning tokens on a plain request; `reasoning_effort:"none"` → 0)
   // without patching every client. See open-sse/services/defaultReasoningEffort.ts.
-  defaultReasoningEffort?: "none" | "low" | "medium" | "high";
+  //
+  // `"auto"` (#13448) is the per-model opt-in into adaptive reasoning effort: the
+  // literal value is injected here exactly like any other level, then
+  // chatCore/adaptiveEffortWiring.ts's wireAdaptiveEffort() recognizes it as an
+  // opt-in marker (never forwarded upstream verbatim) and resolves it to a
+  // concrete low/medium/high from the turn's request-shape signals. Without
+  // "auto" in this union, no operator could configure the per-model opt-in
+  // through the typed catalog at all -- open-sse/services/adaptiveEffort.ts's
+  // priority #3 and the wiring's modelDefaultAuto branch were unreachable
+  // except by a test constructing the body literal directly.
+  defaultReasoningEffort?: "none" | "low" | "medium" | "high" | "auto";
 }
 
 const BEDROCK_CLAUDE_ALIASES = (...modelIds: string[]) => [
@@ -118,6 +128,12 @@ const GEMINI_36_FLASH_MODEL_SPEC = {
 } satisfies ModelSpec;
 
 export const MODEL_SPECS: Record<string, ModelSpec> = {
+  // Public model limits; the Codex registry supplies its smaller OAuth window.
+  // https://developers.openai.com/api/docs/models/gpt-6-astra
+  "gpt-6-astra": {
+    ...GPT_5_6_MODEL_SPEC,
+    aliases: ["openai/gpt-6-astra"],
+  },
   "gpt-5.6": {
     ...GPT_5_6_MODEL_SPEC,
     aliases: ["openai/gpt-5.6"],
@@ -181,9 +197,56 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsTools: true,
     supportsVision: true,
   },
-  // ── Gemini 3.7 Flash (current Antigravity/AGY live tiers) ─────────
-  // The tier suffix configures the thinking budget passed to the upstream
-  // gemini-3.7-flash-tiered backend (high: 24.5k, medium: 8k, low: 1k).
+  // Output limit published at https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash.
+  // Thinking budgets follow the 3.7 Flash high/medium/low/tiered split.
+  "gemini-3.8-flash-high": {
+    maxOutputTokens: 65536,
+    contextWindow: 1048576,
+    defaultThinkingBudget: 24576,
+    thinkingBudgetCap: 24576,
+    supportsThinking: true,
+    supportsTools: true,
+    supportsVision: true,
+  },
+  "gemini-3.8-flash-medium": {
+    maxOutputTokens: 65536,
+    contextWindow: 1048576,
+    defaultThinkingBudget: 8192,
+    thinkingBudgetCap: 24576,
+    supportsThinking: true,
+    supportsTools: true,
+    supportsVision: true,
+  },
+  "gemini-3.8-flash-low": {
+    maxOutputTokens: 65536,
+    contextWindow: 1048576,
+    defaultThinkingBudget: 1024,
+    thinkingBudgetCap: 24576,
+    supportsThinking: true,
+    supportsTools: true,
+    supportsVision: true,
+  },
+  "gemini-3.8-flash": {
+    maxOutputTokens: 65536,
+    contextWindow: 1048576,
+    defaultThinkingBudget: 8192,
+    thinkingBudgetCap: 24576,
+    supportsThinking: true,
+    supportsTools: true,
+    supportsVision: true,
+    aliases: ["gemini-3.8-flash-tiered"],
+  },
+  "gemini-3.8-flash-tiered": {
+    maxOutputTokens: 65536,
+    contextWindow: 1048576,
+    defaultThinkingBudget: 8192,
+    thinkingBudgetCap: 24576,
+    supportsThinking: true,
+    supportsTools: true,
+    supportsVision: true,
+  },
+
+  // Gemini 3.7 Flash tiers: high 24.5k, medium 8k, low 1k thinking tokens.
   "gemini-3.7-flash-high": {
     maxOutputTokens: 65536,
     contextWindow: 1048576,
@@ -680,12 +743,16 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
   // ── MiniMax M3 (1M context, 512K max output) ─────────────────────
   // max output verified against MiniMax docs / OpenRouter / Artificial
   // Analysis (Nov 2025 launch): 1,048,576-token context, up to 512K output.
+  // Adaptive-thinking-only: MiniMax rejects manual budget_tokens /
+  // thinking.type:"enabled" with 400 (2013) — "invalid thinking.type:
+  // \"enabled\" (allowed: adaptive, disabled)" (#12132).
   "minimax-m3": {
     maxOutputTokens: 512000,
     contextWindow: 1048576,
     thinkingBudgetCap: 32768,
     supportsThinking: true,
     supportsTools: true,
+    adaptiveThinkingOnly: true,
     aliases: ["MiniMax-M3", "MiniMaxAI/MiniMax-M3"],
   },
 

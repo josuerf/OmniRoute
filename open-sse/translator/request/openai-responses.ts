@@ -79,6 +79,35 @@ function appendReasoningContent(current: unknown, next: string): string {
   return existing ? `${existing}\n\n${next}` : next;
 }
 
+function normalizeRoleBasedToolCalls(toolCalls: unknown): JsonRecord[] {
+  if (!Array.isArray(toolCalls)) return [];
+
+  return (
+    toolCalls
+      .map((toolCallValue) => {
+        const toolCall = toRecord(toolCallValue);
+        const fn = toRecord(toolCall.function);
+        const name = toString(fn.name).trim();
+        const id = toString(toolCall.id).trim();
+        if (!name || !id) return null;
+        return {
+          id,
+          type: "function",
+          function: {
+            name,
+            arguments:
+              typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
+          },
+        };
+      })
+      // The mapped element is the tool-call object or null, which is NOT a
+      // Record<string, unknown> as far as the predicate rule is concerned (TS2677:
+      // the predicate type must be assignable to the parameter type). Narrow by the
+      // element's own type; the literal satisfies JsonRecord at the return.
+      .filter((toolCall): toolCall is NonNullable<typeof toolCall> => toolCall !== null)
+  );
+}
+
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
  */
@@ -227,7 +256,7 @@ export function openaiResponsesToOpenAIRequest(
     const itemType = toString(item.type) || (item.role ? "message" : "");
 
     if (itemType === "message") {
-      const role = toString(item.role);
+      const role = toString(item.role) === "agent_message" ? "assistant" : toString(item.role);
 
       if (role !== "assistant") {
         if (currentAssistantMsg) {
@@ -250,6 +279,15 @@ export function openaiResponsesToOpenAIRequest(
           messages.push(toolResult);
         }
         pendingToolResults = [];
+      }
+
+      if (toString(item.role) === "tool") {
+        messages.push({
+          role: "tool",
+          tool_call_id: toString(item.tool_call_id),
+          content: toolOutputContentToString(item.content),
+        });
+        continue;
       }
 
       // Convert content: input_text -> text, output_text -> text
@@ -288,7 +326,17 @@ export function openaiResponsesToOpenAIRequest(
         : item.content;
 
       if (role === "assistant") {
-        if (!currentAssistantMsg) {
+        const roleBasedToolCalls = normalizeRoleBasedToolCalls(item.tool_calls);
+        if (roleBasedToolCalls.length > 0) {
+          if (currentAssistantMsg) {
+            messages.push(currentAssistantMsg);
+          }
+          currentAssistantMsg = {
+            role,
+            content,
+            tool_calls: roleBasedToolCalls,
+          };
+        } else if (!currentAssistantMsg) {
           currentAssistantMsg = { role, content };
         } else if (currentAssistantMsg.content == null && content != null) {
           currentAssistantMsg.content = content;
@@ -481,6 +529,13 @@ export function openaiResponsesToOpenAIRequest(
 
     if (itemType === "additional_tools") {
       // Already consumed by collectResponsesTools() before message conversion.
+      continue;
+    }
+
+    // Defense in depth for Responses/subagent fallback: agent_message is
+    // Responses-only. Normalization should already have rewritten or dropped it;
+    // never throw a 5xx-looking unsupported-feature error if a shape slips through.
+    if (itemType === "agent_message" || toString(item.role) === "agent_message") {
       continue;
     }
 
@@ -709,6 +764,12 @@ export function openaiResponsesToOpenAIRequest(
       result.tool_choice = { type: "function", function: { name: tc.name } };
     } else if (tcType === "local_shell") {
       result.tool_choice = { type: "function", function: { name: "shell" } };
+    } else if (tcType === "custom" && tc.name !== undefined) {
+      // #13122: forced custom/freeform tool_choice (Codex CLI's wire_api="responses"
+      // sends this to force functions__exec-style tools). Custom tools are already
+      // normalized into a Chat { input: string } function schema above, so forcing that
+      // same declared name via Chat's tool_choice selects it correctly.
+      result.tool_choice = { type: "function", function: { name: tc.name } };
     } else if (tcType === "allowed_tools") {
       const mode = toString(tc.mode);
       if (mode !== "auto" && mode !== "required") {
@@ -773,7 +834,10 @@ export function openaiResponsesToOpenAIRequest(
   // ("When using tool_choice, tools must be set"). Contradictory choices like "required"
   // or forced functions are preserved so the upstream error remains visible.
   const finalChatTools = Array.isArray(result.tools) ? result.tools : [];
-  if (finalChatTools.length === 0 && (result.tool_choice === "auto" || result.tool_choice === "none")) {
+  if (
+    finalChatTools.length === 0 &&
+    (result.tool_choice === "auto" || result.tool_choice === "none")
+  ) {
     delete result.tool_choice;
   }
 
