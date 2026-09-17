@@ -181,10 +181,7 @@ describe("resource pressure policy", () => {
     // page cache on top of 1.62 GiB anon, tripping cgroup_ratio critical at
     // 95% while the real working set was 33% and memory.events stayed zero.
     const tracker = createResourcePressureTracker(fastThresholds);
-    const cgroup = (
-      currentBytes: number,
-      fileBytes: number | null
-    ): ResourceSignals["cgroup"] => ({
+    const cgroup = (currentBytes: number, fileBytes: number | null): ResourceSignals["cgroup"] => ({
       currentBytes,
       maxBytes: 5 * 1024 ** 3,
       highBytes: null,
@@ -227,6 +224,67 @@ describe("resource pressure policy", () => {
     assert.equal(state.severity, "critical", "recovery needs sustained samples");
     state = tracker.observe(cgroup(4_662_461_440, 3_232_225_280));
     assert.equal(state.severity, "normal", "workingset below recovery ratio releases the latch");
+  });
+
+  it("escapes the critical dead zone once criticalHoldTimeoutMs elapses without a genuine reconfirmation", () => {
+    // Incident 2026-09-16: cgroup ratio sat at 75-87% (above recoveryRatio=0.75,
+    // below criticalRatio=0.92) for ~10 minutes. Neither the raw.severity===severity
+    // branch (never critical again) nor isRecovered() (never <=75%) ever fired, so
+    // severity was stuck "critical", shedding every request indefinitely.
+    const thresholds = { ...fastThresholds, criticalHoldTimeoutMs: 5_000 };
+    const tracker = createResourcePressureTracker(thresholds);
+    const cgroup = (currentBytes: number, observedAtMs: number): ResourceSignals => ({
+      ...baseSignals({ observedAtMs }),
+      cgroup: {
+        currentBytes,
+        maxBytes: 1_000_000,
+        highBytes: null,
+        fileBytes: 0,
+        events: { low: 0, high: 0, max: 0, oom: 0, oom_kill: 0 },
+      },
+    });
+
+    // Genuine critical: two samples >= criticalRatio (0.9 under fastThresholds).
+    tracker.observe(cgroup(950_000, 1_000));
+    let state = tracker.observe(cgroup(950_000, 2_000));
+    assert.equal(state.severity, "critical");
+
+    // Dead zone: between recoveryRatio (0.7) and highRatio (0.8) -- raw is
+    // "normal" (ratioLevel returns null below highRatio), never recovered.
+    state = tracker.observe(cgroup(750_000, 3_000));
+    assert.equal(state.severity, "critical", "still inside the timeout window");
+    state = tracker.observe(cgroup(750_000, 6_999));
+    assert.equal(state.severity, "critical", "1ms short of the timeout");
+
+    // The timeout is measured from the last genuine critical reconfirmation
+    // (observedAtMs=2_000), not from entry into critical.
+    state = tracker.observe(cgroup(750_000, 7_000));
+    assert.equal(state.severity, "high", "dead zone escaped after criticalHoldTimeoutMs");
+    assert.equal(state.reason, "none", "raw normal sample carries no elevated reason");
+  });
+
+  it("does not escape the dead zone while critical keeps being genuinely reconfirmed", () => {
+    const thresholds = { ...fastThresholds, criticalHoldTimeoutMs: 5_000 };
+    const tracker = createResourcePressureTracker(thresholds);
+    const cgroup = (currentBytes: number, observedAtMs: number): ResourceSignals => ({
+      ...baseSignals({ observedAtMs }),
+      cgroup: {
+        currentBytes,
+        maxBytes: 1_000_000,
+        highBytes: null,
+        fileBytes: 0,
+        events: { low: 0, high: 0, max: 0, oom: 0, oom_kill: 0 },
+      },
+    });
+
+    tracker.observe(cgroup(950_000, 1_000));
+    tracker.observe(cgroup(950_000, 2_000));
+    // Sustained genuine critical well past criticalHoldTimeoutMs: every sample
+    // refreshes lastTransitionAtMs via the raw.severity === severity branch.
+    for (let t = 3_000; t <= 20_000; t += 1_000) {
+      const state = tracker.observe(cgroup(950_000, t));
+      assert.equal(state.severity, "critical", `still genuinely critical at t=${t}`);
+    }
   });
 
   it("handles workingset boundary conditions", () => {

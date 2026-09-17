@@ -38,7 +38,9 @@ import {
   type IngestBudgetAcquireResult,
 } from "./ingestByteAdmission";
 import {
+  getAdmissionResourcePressureSeverity,
   getResourcePressureObservation,
+  type PressureReason,
   type PressureSeverity,
 } from "@omniroute/open-sse/utils/resourcePressure.ts";
 
@@ -217,8 +219,8 @@ export type ChatAdmissionShedReason =
   | "inflight_bytes_budget"
   | "resource_pressure";
 
-/** Read cached pressure severity; sampling failures must not cause false sheds. */
-export function defaultPressureSeverity(): PressureSeverity {
+/** Cached pressure for diagnostics only; request decisions use the freshness-aware async seam. */
+function cachedPressureSeverityForDiagnostics(): PressureSeverity {
   try {
     return getResourcePressureObservation().state.severity;
   } catch {
@@ -226,10 +228,52 @@ export function defaultPressureSeverity(): PressureSeverity {
   }
 }
 
+/** Extra telemetry attached to a `resource_pressure` shed only (#503-fanout follow-up). */
+export interface ResourcePressureShedDetail {
+  pressureReason: PressureReason;
+  heapUsedMb: number | null;
+  cgroupPct: number | null;
+  criticalForMs: number;
+}
+
+/**
+ * Best-effort snapshot of *why* the process is currently critical, for the
+ * shed event and the Retry-After ramp. Reads the same global observation
+ * `cachedPressureSeverityForDiagnostics` uses; returns `undefined` whenever
+ * the global runtime disagrees (e.g. a test-injected controller) or is no
+ * longer critical by the time this runs — never throws, never blocks.
+ */
+export function describeResourcePressureShedDetail(): ResourcePressureShedDetail | undefined {
+  try {
+    const { signals, state } = getResourcePressureObservation();
+    if (state.severity !== "critical") return undefined;
+    const heapUsedMb = signals ? signals.v8.heapUsedBytes / (1024 * 1024) : null;
+    const cgroupPct =
+      signals?.cgroup.currentBytes != null && signals.cgroup.maxBytes
+        ? (signals.cgroup.currentBytes / signals.cgroup.maxBytes) * 100
+        : null;
+    return {
+      pressureReason: state.reason,
+      heapUsedMb: heapUsedMb != null ? Math.round(heapUsedMb) : null,
+      cgroupPct: cgroupPct != null ? Math.round(cgroupPct * 10) / 10 : null,
+      // Both timestamps come from the same clock the tracker samples with
+      // (state.observedAtMs is the last sample's timestamp) -- mixing in the
+      // wall-clock Date.now() here would desync from a test's fake clock and
+      // produce a nonsensical elapsed value.
+      criticalForMs: Math.max(0, state.observedAtMs - state.lastTransitionAtMs),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * One structural-shed observation, emitted to the shed sink at warn level.
  * `lane` is the opaque fairness key — the HMAC fingerprint produced by
  * `resolveSessionId` (or "anonymous"/"default"), never a raw credential.
+ * The `pressureReason`/`heapUsedMb`/`cgroupPct`/`criticalForMs` fields are
+ * populated only for `reason: "resource_pressure"` sheds (see
+ * `describeResourcePressureShedDetail`); every other shed reason omits them.
  */
 export interface ChatAdmissionShedEvent {
   reason: ChatAdmissionShedReason;
@@ -237,6 +281,10 @@ export interface ChatAdmissionShedEvent {
   waiting: number;
   queuedBytes: number;
   lane: string;
+  pressureReason?: PressureReason;
+  heapUsedMb?: number | null;
+  cgroupPct?: number | null;
+  criticalForMs?: number;
 }
 
 export type ChatAdmissionShedSink = (event: ChatAdmissionShedEvent) => void;
@@ -394,7 +442,11 @@ export class ChatAdmissionController {
    * exercise the same single path. `lane` is the opaque fairness key (HMAC
    * fingerprint), never a raw credential.
    */
-  recordShed(reason: ChatAdmissionShedReason, lane = "default"): void {
+  recordShed(
+    reason: ChatAdmissionShedReason,
+    lane = "default",
+    pressureDetail?: ResourcePressureShedDetail
+  ): void {
     this.#shedTotal += 1;
     this.#shedsByReason.set(reason, (this.#shedsByReason.get(reason) ?? 0) + 1);
     this.#onShed({
@@ -403,6 +455,7 @@ export class ChatAdmissionController {
       waiting: this.waitingCount,
       queuedBytes: this.#queuedBytes,
       lane,
+      ...pressureDetail,
     });
   }
 
@@ -773,7 +826,7 @@ export const perConnectionAdmissionController = new PerConnectionAdmissionContro
     budget: {
       maxInflightBytes: productionIngestBudget.bytes,
       budgetSource: productionIngestBudget.source,
-      checkPressureSeverity: defaultPressureSeverity,
+      checkPressureSeverity: cachedPressureSeverityForDiagnostics,
     },
   }
 );
@@ -1005,9 +1058,21 @@ export async function admitChatRequest(
   // #503-fanout: shed before spending any bytes on ingestion when the process
   // is under genuine critical resource pressure. No-op for every controller a
   // test constructs directly (default severity is always "normal").
-  if (controller.pressureSeverity() === "critical") {
-    controller.recordShed("resource_pressure", sessionId);
-    return { admit: false, response: resourcePressureRejectionResponse() };
+  let pressureSeverity: PressureSeverity;
+  try {
+    pressureSeverity = options.controller
+      ? controller.pressureSeverity()
+      : await getAdmissionResourcePressureSeverity();
+  } catch {
+    pressureSeverity = "normal";
+  }
+  if (pressureSeverity === "critical") {
+    const pressureDetail = describeResourcePressureShedDetail();
+    controller.recordShed("resource_pressure", sessionId, pressureDetail);
+    return {
+      admit: false,
+      response: resourcePressureRejectionResponse(pressureDetail?.criticalForMs ?? 0),
+    };
   }
 
   if (contentLength !== null && contentLength > hardMaxBytes) {
@@ -1039,9 +1104,8 @@ export async function admitChatRequest(
     // every controller a test constructs directly, so this resolves
     // synchronously true there — only the production singleton (built with a
     // real host-derived budget) is ever actually gated by it.
-    const severity = controller.pressureSeverity();
     const budgetWaitMs =
-      severity === "high" ? queueMs : Math.min(queueMs, INGEST_NORMAL_MAX_WAIT_MS);
+      pressureSeverity === "high" ? queueMs : Math.min(queueMs, INGEST_NORMAL_MAX_WAIT_MS);
     const budgetResult = await controller.acquireBudgetWithin(
       bytes,
       budgetWaitMs,

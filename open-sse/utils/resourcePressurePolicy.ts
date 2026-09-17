@@ -68,6 +68,7 @@ export type ResourcePressureThresholds = {
   sustainedSamplesCritical: number;
   sustainedSamplesRecovery: number;
   heapAbsoluteThresholdMb: number | null;
+  criticalHoldTimeoutMs: number;
 };
 
 export const DEFAULT_RESOURCE_PRESSURE_THRESHOLDS: ResourcePressureThresholds = {
@@ -99,6 +100,18 @@ export const DEFAULT_RESOURCE_PRESSURE_THRESHOLDS: ResourcePressureThresholds = 
   // redundant delay on top of an already-conservative bar.
   sustainedSamplesRecovery: 1,
   heapAbsoluteThresholdMb: null,
+  // Incident 2026-09-16: cgroup ratio sat at 75-87% (above recoveryRatio,
+  // below criticalRatio) for ~10 minutes straight. That band is a dead zone
+  // for the state machine below -- raw is never "critical" again (below
+  // criticalRatio) and isRecovered() never clears (above recoveryRatio), so
+  // severity stayed "critical" with no way out, shedding every request and
+  // starving the process of the allocation pressure that would let V8 GC
+  // shrink the heap. This is the HALF_OPEN equivalent the provider circuit
+  // breaker already has: after this long without a genuine critical
+  // reconfirmation, drop to "high" (still elevated, does not shed -- see
+  // chatBodyAdmission.ts) and let a real relapse re-escalate in
+  // sustainedSamplesCritical samples (~2s), a cheap probe.
+  criticalHoldTimeoutMs: 180_000,
 };
 
 type RawLevel = { severity: PressureSeverity; reason: PressureReason };
@@ -147,6 +160,9 @@ export function resolveResourcePressureThresholds(
     (!Number.isFinite(resolved.heapAbsoluteThresholdMb) || resolved.heapAbsoluteThresholdMb <= 0)
   ) {
     throw new RangeError("heapAbsoluteThresholdMb must be positive and finite or null");
+  }
+  if (!Number.isFinite(resolved.criticalHoldTimeoutMs) || resolved.criticalHoldTimeoutMs <= 0) {
+    throw new RangeError("criticalHoldTimeoutMs must be positive and finite");
   }
   return resolved;
 }
@@ -289,6 +305,13 @@ export function createResourcePressureTracker(
   let state = initialState();
   let pending: RawLevel | null = null;
   let previousOom: OomCounters | null = null;
+  // Last time a raw sample was genuinely "critical" (or an OOM event fired),
+  // independent of the ResourcePressureState transition bookkeeping below.
+  // lastTransitionAtMs only moves on a severity/reason *change*, so repeated
+  // reconfirmations of the same critical reason never advance it -- using it
+  // to gate the dead-zone escape would let the escape fire even shortly after
+  // a genuine critical reconfirmation, as long as the reason stayed the same.
+  let lastCriticalRawAtMs = 0;
 
   return {
     observe(signals) {
@@ -307,6 +330,7 @@ export function createResourcePressureTracker(
       const raw = oomEvent
         ? ({ severity: "critical", reason: "oom_event" } as const)
         : classifyAdaptiveResourcePressure(signals, thresholds);
+      if (raw.severity === "critical") lastCriticalRawAtMs = signals.observedAtMs;
       let { severity, reason, elevatedStreak, recoveryStreak } = state;
 
       if (oomEvent) {
@@ -365,6 +389,16 @@ export function createResourcePressureTracker(
         pending = null;
         elevatedStreak = 0;
         recoveryStreak = 0;
+        // Dead-zone escape (see criticalHoldTimeoutMs comment above): raw is
+        // neither a critical reconfirmation nor a full recovery, and no raw
+        // sample has been genuinely critical for too long.
+        if (
+          severity === "critical" &&
+          signals.observedAtMs - lastCriticalRawAtMs >= thresholds.criticalHoldTimeoutMs
+        ) {
+          severity = "high";
+          reason = raw.severity === "high" ? raw.reason : "none";
+        }
       }
 
       const transitioned = severity !== state.severity || reason !== state.reason;

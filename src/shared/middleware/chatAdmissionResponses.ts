@@ -14,6 +14,21 @@ const JSON_HEADERS = { ...CORS_HEADERS, "Content-Type": "application/json" };
 const BYTE_STAGE_RETRY_AFTER_FLOOR_SECONDS = 2;
 const STRUCTURAL_RETRY_AFTER_FLOOR_SECONDS = 1;
 
+/**
+ * `Retry-After` ramp for `resource_pressure` 503s. A fixed 2s floor is a fair
+ * probe cost right when pressure first goes critical, but with the process
+ * shedding every request (no bytes ingested, so `activeHeavy` stays 0 — see
+ * chatBodyAdmission.ts), a fixed 2s invites a retry storm for as long as the
+ * critical state persists (73 sheds in one minute during the 2026-09-16
+ * incident). Ramp linearly from the floor to a ceiling as `criticalForMs`
+ * (time since the resource-pressure tracker last saw a genuinely critical
+ * sample — see resourcePressurePolicy.ts) grows, capping at
+ * RESOURCE_PRESSURE_RETRY_AFTER_RAMP_MS.
+ */
+const RESOURCE_PRESSURE_RETRY_AFTER_FLOOR_SECONDS = 2;
+const RESOURCE_PRESSURE_RETRY_AFTER_CEILING_SECONDS = 15;
+const RESOURCE_PRESSURE_RETRY_AFTER_RAMP_MS = 30_000;
+
 function retryAfterHeader(floorSeconds: number, hintSeconds: number | undefined): string {
   const hint = Number.isFinite(hintSeconds) ? Math.ceil(hintSeconds as number) : 0;
   return String(Math.max(floorSeconds, hint));
@@ -63,7 +78,18 @@ export function bodyExceedsBudgetResponse(maxInflightBytes: number): Response {
   );
 }
 
-export function resourcePressureRejectionResponse(): Response {
+export function resourcePressureRetryAfterSeconds(criticalForMs: number): number {
+  const clamped = Math.max(0, criticalForMs);
+  const ramp = Math.min(1, clamped / RESOURCE_PRESSURE_RETRY_AFTER_RAMP_MS);
+  return Math.round(
+    RESOURCE_PRESSURE_RETRY_AFTER_FLOOR_SECONDS +
+      ramp *
+        (RESOURCE_PRESSURE_RETRY_AFTER_CEILING_SECONDS -
+          RESOURCE_PRESSURE_RETRY_AFTER_FLOOR_SECONDS)
+  );
+}
+
+export function resourcePressureRejectionResponse(criticalForMs = 0): Response {
   return new Response(
     JSON.stringify(
       buildErrorBody(
@@ -73,7 +99,13 @@ export function resourcePressureRejectionResponse(): Response {
         { type: "server_error", code: "resource_pressure" }
       )
     ),
-    { status: 503, headers: { ...JSON_HEADERS, "Retry-After": "2" } }
+    {
+      status: 503,
+      headers: {
+        ...JSON_HEADERS,
+        "Retry-After": String(resourcePressureRetryAfterSeconds(criticalForMs)),
+      },
+    }
   );
 }
 
