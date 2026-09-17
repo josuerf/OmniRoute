@@ -609,6 +609,31 @@ false` and a generous `maxInflightBytes` mean the auto-derived budget is already
 See the [environment-variable reference](../reference/ENVIRONMENT.md#4-security--authentication)
 for the authoritative admission settings.
 
+#### `reason: "resource_pressure"` is a different gate than the capacity reasons above
+
+Everything above this point (`queue_timeout`, `queued_bytes_budget`,
+`inflight_bytes_budget`, `structure_limit`) is **capacity** shedding: too many
+heavyweight requests competing for a bounded budget, and always retryable once a
+slot frees up. `code: "resource_pressure"` is a **different, earlier** gate — see
+[RESILIENCE_GUIDE.md § 8](../architecture/RESILIENCE_GUIDE.md#8-structural-resource-pressure-admission-gate)
+— that rejects **before any byte is even read** because the process's own V8
+heap/cgroup/PSI sampler is `critical`, independent of how many requests are
+in flight (`activeHeavy` can be `0`).
+
+**Symptoms:** every request 503s with `code: "resource_pressure"`, `activeHeavy: 0`
+in the structured `chat-admission` shed log, and the storm does not resolve on its
+own even after traffic drops — because the gate rejects before ingestion, the
+process never allocates enough to trigger the GC that would clear the pressure.
+`Retry-After` on this code ramps from 2s to 15s the longer the critical state
+persists (added after the 2026-09-16 incident's fixed-2s retry storm).
+
+**Fix:** do not just retry — check `GET /api/monitoring/health` →
+`chatAdmission.pressureSeverity`. If it is stuck `critical` for several minutes
+with `activeHeavy: 0`, this is the dead-zone/self-heal scenario the resilience
+guide documents, not a capacity problem; either wait for `criticalHoldTimeoutMs`
+(default 3 min) to drop it to `high`, enable `OMNIROUTE_PRESSURE_SELF_RESTART` so a
+supervised process restarts itself, or restart the process manually.
+
 ---
 
 ## Optional RAG / LLM failure taxonomy (16 problems)
