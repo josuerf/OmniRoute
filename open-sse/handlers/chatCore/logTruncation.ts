@@ -9,9 +9,38 @@ import { estimateSizeFast } from "../../utils/estimateSize.ts";
 
 export const MEMORY_EXTRACTION_TEXT_LIMIT = 64 * 1024;
 
+/**
+ * V8 returns a SlicedString — a pointer into the parent, not a copy — for any
+ * slice at least this long (`SlicedString::kMinLength`). Shorter slices are
+ * already materialized, so flattening them would be pure overhead.
+ */
+const V8_SLICED_STRING_MIN_LENGTH = 13;
+
+/**
+ * Force V8 to materialize `value` as a flat string that owns its bytes.
+ *
+ * Truncating with `slice()` does NOT release the original: the resulting
+ * SlicedString — or the ConsString produced by concatenating two of them —
+ * holds a pointer to the parent and keeps the *whole* parent alive. A 64 KB
+ * preview of an 8 MB body therefore retains all 8 MB.
+ *
+ * This is what defeated the completed-detail byte budget: `Buffer.byteLength()`
+ * reports the logical length (64 KB), never the retained bytes (8 MB), so a
+ * 16 MB cap could authorize gigabytes of real retention. Flattening here makes
+ * those budgets measure what they claim to measure.
+ *
+ * The round-trip goes through utf16le, which copies code units verbatim — lone
+ * surrogates survive intact, whereas a utf8 round-trip would rewrite them to
+ * U+FFFD and silently corrupt the logged payload.
+ */
+function flattenString(value: string): string {
+  if (value.length < V8_SLICED_STRING_MIN_LENGTH) return value;
+  return Buffer.from(value, "utf16le").toString("utf16le");
+}
+
 export function capMemoryExtractionText(value: string): string {
   if (value.length <= MEMORY_EXTRACTION_TEXT_LIMIT) return value;
-  return value.slice(-MEMORY_EXTRACTION_TEXT_LIMIT);
+  return flattenString(value.slice(-MEMORY_EXTRACTION_TEXT_LIMIT));
 }
 
 export function truncateChatLogText(value: string): string {
@@ -19,7 +48,7 @@ export function truncateChatLogText(value: string): string {
   if (value.length <= limit) return value;
   const head = value.slice(0, Math.floor(limit / 2));
   const tail = value.slice(-Math.ceil(limit / 2));
-  return `${head}\n[...truncated ${value.length - limit} chars...]\n${tail}`;
+  return flattenString(`${head}\n[...truncated ${value.length - limit} chars...]\n${tail}`);
 }
 
 export function cloneBoundedChatLogPayload(value: unknown, depth = 0): unknown {
