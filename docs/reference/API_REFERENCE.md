@@ -745,12 +745,59 @@ handler additionally checks a `self:*` scope on the calling key.
 
 | Method | Path                            | Description                                                                                                                                            |
 | ------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/v1/me/status`             | The calling key's own usage/quota status (`self:usage`; `accountQuotas` requires `self:account-quota`)                                                 |
+| GET    | `/api/v1/me/status`             | The calling key's own usage/quota status (`self:usage`; `accountQuotas` and `poolQuotas` require `self:account-quota`)                                 |
 | POST   | `/api/v1/me/connections/claude` | Exchange a Claude OAuth authorization code and atomically link the resulting connection into the calling key's own `allowedConnections` (`self:usage`) |
 
 **Auth:** Bearer API key. `POST /api/v1/me/connections/claude` requires the
 `self:usage` scope (`hasSelfUsageScope`, `src/shared/constants/selfServiceScopes.ts`);
 401 if the Bearer token is missing/invalid, 403 if the key lacks the scope.
+
+### `poolQuotas` — the calling key's own fair share
+
+When the key holds an allocation in one or more quota-sharing pools, `GET /api/v1/me/status`
+returns its **own** slice of each pool alongside `accountQuotas`. `accountQuotas` is the ceiling
+of the shared upstream account; `poolQuotas` is the part of that ceiling allotted to this key by
+the Quota Sharing Engine (`docs/routing/QUOTA_SHARE.md`). Without it a key holder could see the
+account filling up but not whether their own share was the cause.
+
+```jsonc
+"poolQuotas": [
+  {
+    "poolId": "…",
+    "connectionId": "…",
+    "provider": "claude",
+    "weight": 40,                 // percent of the pool allotted to this key
+    "policy": "hard",
+    "cap": { "value": 60, "unit": "percent" },  // absolute cap, when configured
+    "dimensions": [
+      {
+        "unit": "percent",
+        "window": "5h",
+        "limit": 200,             // pool ceiling, already scaled by member-account count
+        "consumedTotal": 30,      // whole-pool consumption; identifies no one
+        "fairShare": 80,          // limit × (weight / 100)
+        "consumed": 10,           // this key only
+        "remaining": 70,
+        "deficit": 0,
+        "borrowing": false,
+      },
+    ],
+  },
+]
+```
+
+`poolQuota` (singular) mirrors the entry when there is exactly one pool, the same way
+`accountQuota` mirrors `accountQuotas`. A key in no pool gets neither field, which is distinct
+from a pool that reported nothing.
+
+`borrowing: true` means the key went past its own `fairShare` because the pool sits below the
+saturation threshold and the engine is in generous mode (`src/lib/quota/fairShare.ts`). The share
+is only a firm ceiling once the pool saturates, so a caller must not read `remaining` as a
+guaranteed allowance.
+
+The per-key rows of the **other** keys in the pool are never returned here. Whole-pool
+consumption is aggregate and identifies nobody; the full `perKey` breakdown stays behind
+`GET /api/quota/pools/{id}/usage`, which requires management auth.
 
 **`POST /api/v1/me/connections/claude` request body:**
 

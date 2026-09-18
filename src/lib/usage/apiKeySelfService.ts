@@ -41,6 +41,76 @@ type FetchAndPersistProviderLimitsFn = (
   source: "manual"
 ) => Promise<{ usage: JsonRecord }>;
 
+/**
+ * Fatia do rateio (quota sharing) de UMA chave num pool. É o recorte próprio do
+ * `PoolUsageSnapshot`: o agregado do pool mais a linha `perKey` do próprio chamador.
+ * O `perKey` das demais chaves nunca sai daqui (IAF-491).
+ */
+interface PoolQuotaDimension {
+  unit: string;
+  window: string;
+  /** Teto do pool na janela, já escalado pelo número de contas-membro. */
+  limit: number;
+  /** Consumo somado de todas as chaves do pool. Não identifica ninguém. */
+  consumedTotal: number;
+  /** A parte desta chave: limit × (weight / 100). */
+  fairShare: number;
+  consumed: number;
+  /** `fairShare - consumed`, piso em 0. */
+  remaining: number;
+  deficit: number;
+  /**
+   * `true` quando a chave passou da própria fatia porque o pool está abaixo do
+   * limiar de saturação (modo generoso do fair share). Nesse estado a fatia não
+   * é um teto firme, e é isso que o dono da chave precisa saber.
+   */
+  borrowing: boolean;
+}
+
+interface PoolQuotaStatus {
+  poolId: string;
+  connectionId?: string;
+  provider?: string;
+  /** Peso da allocation desta chave, em porcentagem. */
+  weight?: number;
+  policy?: string;
+  /** Cap absoluto personalizado da allocation, quando configurado. */
+  cap?: { value: number; unit?: string };
+  dimensions: PoolQuotaDimension[];
+}
+
+interface PoolAllocationLike {
+  apiKeyId: string;
+  weight?: number;
+  policy?: string;
+  capValue?: number;
+  capUnit?: string;
+}
+
+interface PoolLike {
+  id: string;
+  connectionId?: string;
+  connectionIds?: string[];
+}
+
+interface PoolUsageStoreLike {
+  poolUsageWithDimensions: (
+    poolId: string,
+    planDimensions: Array<{ unit: string; window: string; limit: number }>
+  ) => Promise<unknown>;
+}
+
+type ListAllocationsForApiKeyFn = (
+  apiKeyId: string
+) => Array<{ poolId: string; allocation: PoolAllocationLike }>;
+type GetPoolFn = (poolId: string) => PoolLike | null;
+type ResolveConnectionProviderFn = (connectionId: string) => Promise<string>;
+type ResolvePlanFn = (
+  connectionId: string,
+  provider: string
+) => { dimensions: Array<{ unit: string; window: string; limit: number }> };
+type GetQuotaStoreFn = () => Promise<PoolUsageStoreLike>;
+
 interface ApiKeySelfServiceDeps {
   now?: () => number;
   getCostSummary?: GetCostSummaryFn;
@@ -49,6 +119,11 @@ interface ApiKeySelfServiceDeps {
   getProviderConnectionById?: GetProviderConnectionByIdFn;
   getProviderConnections?: GetProviderConnectionsFn;
   fetchAndPersistProviderLimits?: FetchAndPersistProviderLimitsFn;
+  listAllocationsForApiKey?: ListAllocationsForApiKeyFn;
+  getPool?: GetPoolFn;
+  resolveConnectionProvider?: ResolveConnectionProviderFn;
+  resolvePlan?: ResolvePlanFn;
+  getQuotaStore?: GetQuotaStoreFn;
 }
 
 interface TokenTotals {
@@ -65,6 +140,10 @@ interface AccountQuotaConnection {
   provider: string;
   lookupFailed?: boolean;
   providerSpecificData?: unknown;
+}
+
+function isRecord(value: unknown): value is JsonRecord {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -211,7 +290,7 @@ function normalizePlan(value: unknown): unknown {
 
 function isSupportedProvider(
   provider: string,
-  connection?: { provider?: string; providerSpecificData?: unknown },
+  connection?: { provider?: string; providerSpecificData?: unknown }
 ): boolean {
   return supportsProviderQuota(provider, connection);
 }
@@ -359,6 +438,112 @@ async function resolveAccountQuotas(metadata: ApiKeySelfServiceMetadata, deps: R
   );
 }
 
+/**
+ * Recorta do `PoolUsageSnapshot` apenas o que pertence a esta chave, mais o agregado do
+ * pool. A linha `perKey` das outras chaves fica de fora por construção: nada aqui copia o
+ * array, só a entrada cujo `apiKeyId` é o do chamador (IAF-491).
+ */
+function toPoolQuotaDimensions(snapshot: unknown, apiKeyId: string): PoolQuotaDimension[] {
+  const dimensions =
+    isRecord(snapshot) && Array.isArray(snapshot.dimensions) ? snapshot.dimensions : [];
+
+  const result: PoolQuotaDimension[] = [];
+  for (const raw of dimensions) {
+    if (!isRecord(raw)) continue;
+    const perKey = Array.isArray(raw.perKey) ? raw.perKey : [];
+    const mine = perKey.find((entry) => isRecord(entry) && entry.apiKeyId === apiKeyId);
+    if (!isRecord(mine)) continue;
+
+    const fairShare = toNumber(mine.fairShare);
+    const consumed = toNumber(mine.consumed);
+    result.push({
+      unit: typeof raw.unit === "string" ? raw.unit : "",
+      window: typeof raw.window === "string" ? raw.window : "",
+      limit: toNumber(raw.limit),
+      consumedTotal: toNumber(raw.consumedTotal),
+      fairShare: roundNumber(fairShare),
+      consumed: roundNumber(consumed),
+      remaining: roundNumber(Math.max(0, fairShare - consumed)),
+      deficit: roundNumber(toNumber(mine.deficit)),
+      borrowing: mine.borrowing === true,
+    });
+  }
+  return result;
+}
+
+/**
+ * A fatia de rateio da própria chave, em cada pool de que ela participa.
+ *
+ * Fica atrás do mesmo scope de `accountQuotas` (`self:account-quota`): é o complemento
+ * dele, o teto da conta compartilhada mais a parte que cabe a esta chave. Uma chave fora
+ * de qualquer pool devolve `undefined`, e a seção some da resposta em vez de virar lista
+ * vazia, para que "não participa de rateio" não se confunda com "rateio sem dados".
+ *
+ * Falha de um pool não derruba a consulta inteira: o pool problemático é omitido e os
+ * demais respondem. O status de uso é uma tela de leitura, e meia resposta é melhor que
+ * um 500.
+ */
+async function resolvePoolQuotas(
+  metadata: ApiKeySelfServiceMetadata,
+  deps: RequiredDeps
+): Promise<PoolQuotaStatus[] | undefined> {
+  if (!hasSelfAccountQuotaScope(metadata.scopes)) return undefined;
+
+  let allocations: Array<{ poolId: string; allocation: PoolAllocationLike }>;
+  try {
+    allocations = deps.listAllocationsForApiKey(metadata.id) ?? [];
+  } catch {
+    return undefined;
+  }
+  if (!allocations.length) return undefined;
+
+  const store = await deps.getQuotaStore();
+  const resolved = await Promise.all(
+    allocations.map(async ({ poolId, allocation }) => {
+      try {
+        const pool = deps.getPool(poolId);
+        if (!pool) return null;
+
+        const connectionId = pool.connectionId ?? pool.connectionIds?.[0];
+        if (!connectionId) return null;
+
+        const provider = await deps.resolveConnectionProvider(connectionId);
+        const plan = deps.resolvePlan(connectionId, provider);
+        if (!plan?.dimensions?.length) return null;
+
+        // Mesma escala da rota de management: um pool com N contas do mesmo tipo tem
+        // orçamento de perAccountLimit × N por dimensão, e é contra esse teto que o
+        // enforce compara. Sem isso a fatia sairia N vezes menor do que a real.
+        const accountCount = pool.connectionIds?.length || 1;
+        const effectiveDimensions = plan.dimensions.map((dim) => ({
+          ...dim,
+          limit: dim.limit * accountCount,
+        }));
+
+        const snapshot = await store.poolUsageWithDimensions(poolId, effectiveDimensions);
+        const dimensions = toPoolQuotaDimensions(snapshot, metadata.id);
+        if (!dimensions.length) return null;
+
+        const status: PoolQuotaStatus = { poolId, connectionId, provider, dimensions };
+        if (typeof allocation.weight === "number") status.weight = allocation.weight;
+        if (typeof allocation.policy === "string") status.policy = allocation.policy;
+        if (typeof allocation.capValue === "number") {
+          status.cap = {
+            value: allocation.capValue,
+            ...(allocation.capUnit !== undefined && { unit: allocation.capUnit }),
+          };
+        }
+        return status;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const pools = resolved.filter((entry): entry is PoolQuotaStatus => entry !== null);
+  return pools.length ? pools : undefined;
+}
+
 type RequiredDeps = Required<ApiKeySelfServiceDeps>;
 
 async function normalizeDeps(deps: ApiKeySelfServiceDeps): Promise<RequiredDeps> {
@@ -372,6 +557,13 @@ async function normalizeDeps(deps: ApiKeySelfServiceDeps): Promise<RequiredDeps>
   const providerLimits = deps.fetchAndPersistProviderLimits
     ? null
     : await import("@/lib/usage/providerLimits");
+  const quotaPools =
+    deps.listAllocationsForApiKey && deps.getPool ? null : await import("@/lib/db/quotaPools");
+  const planResolver = deps.resolvePlan ? null : await import("@/lib/quota/planResolver");
+  const connectionProvider = deps.resolveConnectionProvider
+    ? null
+    : await import("@/lib/quota/connectionProvider");
+  const quotaStore = deps.getQuotaStore ? null : await import("@/lib/quota/QuotaStore");
 
   return {
     now: deps.now ?? Date.now,
@@ -382,6 +574,15 @@ async function normalizeDeps(deps: ApiKeySelfServiceDeps): Promise<RequiredDeps>
     getProviderConnections: deps.getProviderConnections ?? localDb!.getProviderConnections,
     fetchAndPersistProviderLimits:
       deps.fetchAndPersistProviderLimits ?? providerLimits!.fetchAndPersistProviderLimits,
+    listAllocationsForApiKey:
+      deps.listAllocationsForApiKey ??
+      (quotaPools!.listAllocationsForApiKey as ListAllocationsForApiKeyFn),
+    getPool: deps.getPool ?? (quotaPools!.getPool as GetPoolFn),
+    resolveConnectionProvider:
+      deps.resolveConnectionProvider ??
+      (connectionProvider!.resolveConnectionProvider as ResolveConnectionProviderFn),
+    resolvePlan: deps.resolvePlan ?? (planResolver!.resolvePlan as ResolvePlanFn),
+    getQuotaStore: deps.getQuotaStore ?? (quotaStore!.getQuotaStore as GetQuotaStoreFn),
   };
 }
 
@@ -406,6 +607,8 @@ export async function buildApiKeySelfServiceStatus(
   );
   const accountQuotas = await resolveAccountQuotas(metadata, resolvedDeps);
   const accountQuota = accountQuotas && accountQuotas.length === 1 ? accountQuotas[0] : undefined;
+  const poolQuotas = await resolvePoolQuotas(metadata, resolvedDeps);
+  const poolQuota = poolQuotas && poolQuotas.length === 1 ? poolQuotas[0] : undefined;
 
   return {
     apiKey: {
@@ -421,5 +624,7 @@ export async function buildApiKeySelfServiceStatus(
     },
     ...(accountQuotas !== undefined && { accountQuotas }),
     ...(accountQuota !== undefined && { accountQuota }),
+    ...(poolQuotas !== undefined && { poolQuotas }),
+    ...(poolQuota !== undefined && { poolQuota }),
   };
 }
