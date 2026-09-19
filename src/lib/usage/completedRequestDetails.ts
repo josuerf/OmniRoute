@@ -1,4 +1,5 @@
 import { getDbInstance } from "../db/core";
+import { estimateRetainedBytes } from "./retainedBytes";
 import type { PendingRequestDetail } from "./usageHistory";
 
 const COMPLETED_DETAIL_TTL_MS = 120_000;
@@ -14,25 +15,6 @@ const completedDetails = new Map<string, PendingRequestDetail>();
 const completedDetailTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const completedDetailBytes = new Map<string, number>();
 let totalCompletedDetailBytes = 0;
-
-function estimateRetainedBytes(value: unknown, seen = new WeakSet<object>()): number {
-  if (value === null || value === undefined) return 0;
-  if (typeof value === "string") return Buffer.byteLength(value, "utf8");
-  if (typeof value === "number" || typeof value === "bigint") return 8;
-  if (typeof value === "boolean") return 4;
-  if (typeof value !== "object" || seen.has(value)) return 0;
-  seen.add(value);
-
-  if (Array.isArray(value)) {
-    return 32 + value.reduce((total, entry) => total + estimateRetainedBytes(entry, seen), 0);
-  }
-
-  let bytes = 64;
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    bytes += Buffer.byteLength(key, "utf8") + estimateRetainedBytes(entry, seen);
-  }
-  return bytes;
-}
 
 function deleteCompletedDetail(id: string) {
   completedDetails.delete(id);

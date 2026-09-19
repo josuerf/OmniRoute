@@ -10,6 +10,7 @@
 import { getDbInstance } from "../db/core";
 import { resolveProviderId } from "@/shared/constants/providers";
 import { protectPayloadForLog } from "../logPayloads";
+import { estimateRetainedBytes } from "./retainedBytes";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/errorSanitization.ts";
 import {
   resolveOrphanedUsageAccountIdentity,
@@ -205,6 +206,23 @@ const pendingIdByCorrelation = pendingState.pendingIdByCorrelation;
 const DEFAULT_MAX_PENDING_REQUEST_AGE_MS = 60 * 60 * 1000;
 const MAX_PENDING_DETAILS = 5000;
 const PENDING_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+/**
+ * IAF-492: the pending store had an age cap and a COUNT cap, never a size cap.
+ * One detail carries up to four truncated payload previews plus the live
+ * streamChunks arrays the request logger writes straight into it (bounded at
+ * 128 KiB per stream by `appendBoundedChunk`), so MAX_PENDING_DETAILS alone
+ * admits gigabytes. 64 MiB keeps thousands of ordinary in-flight entries while
+ * bounding the structure well under the container limit. Like the completed
+ * cache's budget, it accounts estimated payload bytes, not process memory.
+ */
+export const MAX_PENDING_DETAILS_BYTES = 64 * 1024 * 1024;
+/**
+ * The reaper only runs every PENDING_SWEEP_INTERVAL_MS. Re-checking the budget
+ * every N inserts keeps a burst from parking gigabytes for five minutes, while
+ * amortizing the full-store estimate that the check costs.
+ */
+const PENDING_BYTE_BUDGET_CHECK_EVERY = 64;
+let _pendingInsertsSinceByteCheck = 0;
 let _pendingSweepTimer: ReturnType<typeof setInterval> | null = null;
 
 export function getMaxPendingRequestAgeMs(
@@ -227,50 +245,140 @@ function ensurePendingSweepTimer(): void {
   (_pendingSweepTimer as { unref?: () => void })?.unref?.();
 }
 
+/** One pending detail plus the store coordinates needed to remove it. */
+type PendingDetailEntry = {
+  detail: PendingRequestDetail;
+  connectionId: string;
+  modelKey: string;
+};
+
 /**
- * Evicts orphaned pending-request details older than `maxAgeMs` and enforces a hard size
- * cap. Mirrors the normal removal path (decrement counters + cleanup detail buckets) so the
- * dashboard's pending counts self-heal. Exported for deterministic testing.
+ * Walk the pending STORE (`pendingRequests.details`), never the `pendingById`
+ * index. IAF-492: every attempt of one client request reuses the first
+ * attempt's id (see pendingIdByCorrelation), so a second attempt overwrites the
+ * id-keyed view while its own bucket still holds the first detail. Anything
+ * iterating the index therefore cannot see — and never reclaims — that first
+ * detail. `pendingById` is a strict subset of the store (only connection-bound
+ * details are ever indexed), so the store is the only complete view.
+ * @returns Every live pending detail with its connection and model key.
+ */
+function listPendingDetails(): PendingDetailEntry[] {
+  const entries: PendingDetailEntry[] = [];
+  for (const connectionId of Object.keys(pendingRequests.details)) {
+    const byModel = pendingRequests.details[connectionId];
+    if (!byModel) continue;
+    for (const modelKey of Object.keys(byModel)) {
+      for (const detail of byModel[modelKey] ?? []) {
+        entries.push({ detail, connectionId, modelKey });
+      }
+    }
+  }
+  return entries;
+}
+
+/**
+ * Read the estimated payload bytes currently held by the pending-detail store.
+ * @returns The store's estimated payload-byte total.
+ */
+export function getPendingDetailsByteSize(): number {
+  let total = 0;
+  for (const { detail } of listPendingDetails()) total += estimateRetainedBytes(detail);
+  return total;
+}
+
+function removePendingDetail({ detail, connectionId, modelKey }: PendingDetailEntry): void {
+  // Drop the index entry ONLY when it still points at this exact detail. Two
+  // attempts of one client request share an id, so deleting blindly by id would
+  // evict the LIVE attempt while reclaiming its orphaned predecessor.
+  if (pendingById.get(detail.id) === detail) pendingById.delete(detail.id);
+  if (!isSafeKey(modelKey)) return;
+  const bucket = pendingRequests.details[connectionId]?.[modelKey];
+  if (bucket) {
+    const index = bucket.indexOf(detail);
+    if (index >= 0) bucket.splice(index, 1);
+  }
+  cleanupPendingDetails(connectionId, modelKey);
+  decrementPendingCounters(modelKey, connectionId);
+}
+
+function oldestFirst(a: PendingDetailEntry, b: PendingDetailEntry): number {
+  return a.detail.startedAt - b.detail.startedAt;
+}
+
+/**
+ * Drop the oldest pending details until the store fits the estimated byte
+ * budget. The entry cap says nothing about how heavy each entry is: one detail
+ * carries up to four payload previews plus the live streamChunks arrays.
+ * @param maxBytes - Estimated payload-byte budget for the whole store.
+ * @returns number of entries removed.
+ */
+function evictPendingBeyondByteBudget(maxBytes: number): number {
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) return 0;
+  const sized = listPendingDetails()
+    .map((entry) => ({ entry, bytes: estimateRetainedBytes(entry.detail) }))
+    .sort((a, b) => oldestFirst(a.entry, b.entry));
+  let total = sized.reduce((sum, item) => sum + item.bytes, 0);
+  let removed = 0;
+  for (const item of sized) {
+    if (total <= maxBytes) break;
+    removePendingDetail(item.entry);
+    total -= item.bytes;
+    removed += 1;
+  }
+  _pendingInsertsSinceByteCheck = 0;
+  return removed;
+}
+
+/**
+ * Re-check the byte budget every PENDING_BYTE_BUDGET_CHECK_EVERY inserts. The
+ * reaper only runs every PENDING_SWEEP_INTERVAL_MS, so without this a burst
+ * could park an oversized store for five minutes.
+ */
+function enforcePendingByteBudgetPeriodically(): void {
+  _pendingInsertsSinceByteCheck += 1;
+  if (_pendingInsertsSinceByteCheck < PENDING_BYTE_BUDGET_CHECK_EVERY) return;
+  evictPendingBeyondByteBudget(MAX_PENDING_DETAILS_BYTES);
+}
+
+/**
+ * Evicts pending-request details that are orphaned by age, beyond the entry cap,
+ * or beyond the estimated byte budget. Mirrors the normal removal path
+ * (decrement counters + cleanup detail buckets) so the dashboard's pending
+ * counts self-heal. Exported for deterministic testing.
+ * @param now - Clock reading used for the age comparison.
+ * @param maxAgeMs - Age beyond which an entry counts as orphaned.
+ * @param maxBytes - Estimated payload-byte budget for the whole store.
  * @returns number of entries removed.
  */
 export function sweepStalePendingRequests(
   now: number = Date.now(),
-  maxAgeMs: number = getMaxPendingRequestAgeMs()
+  maxAgeMs: number = getMaxPendingRequestAgeMs(),
+  maxBytes: number = MAX_PENDING_DETAILS_BYTES
 ): number {
   let removed = 0;
 
-  const remove = (detail: PendingRequestDetail): void => {
-    const modelKey = detail.provider ? `${detail.model} (${detail.provider})` : detail.model;
-    pendingById.delete(detail.id);
-    if (detail.connectionId && isSafeKey(modelKey)) {
-      const bucket = pendingRequests.details[detail.connectionId]?.[modelKey];
-      if (bucket) {
-        const index = bucket.findIndex((entry) => entry.id === detail.id);
-        if (index >= 0) bucket.splice(index, 1);
-      }
-      cleanupPendingDetails(detail.connectionId, modelKey);
-      decrementPendingCounters(modelKey, detail.connectionId);
-    }
+  const remove = (entry: PendingDetailEntry): void => {
+    removePendingDetail(entry);
     removed++;
   };
 
-  for (const detail of pendingById.values()) {
-    if (now - detail.startedAt > maxAgeMs) remove(detail);
+  for (const entry of listPendingDetails()) {
+    if (now - entry.detail.startedAt > maxAgeMs) remove(entry);
   }
 
   // Hard backstop: if entries are still piling up faster than they age out, drop the oldest
   // beyond the cap.
-  if (pendingById.size > MAX_PENDING_DETAILS) {
-    const overflow = pendingById.size - MAX_PENDING_DETAILS;
-    const oldest = [...pendingById.values()]
-      .sort((a, b) => a.startedAt - b.startedAt)
-      .slice(0, overflow);
-    for (const detail of oldest) remove(detail);
+  const survivors = listPendingDetails();
+  if (survivors.length > MAX_PENDING_DETAILS) {
+    const overflow = survivors.length - MAX_PENDING_DETAILS;
+    for (const entry of [...survivors].sort(oldestFirst).slice(0, overflow)) remove(entry);
   }
+
+  removed += evictPendingBeyondByteBudget(maxBytes);
 
   // pendingIdByCorrelation entries are correlation ids, never reused across
   // separate client requests, so nothing else ever removes them — same
-  // age/cap sweep as pendingById above, or the map grows unboundedly.
+  // age/cap sweep as the pending store above, or the map grows unboundedly.
   for (const [correlationId, entry] of pendingIdByCorrelation) {
     if (now - entry.touchedAt > maxAgeMs) pendingIdByCorrelation.delete(correlationId);
   }
@@ -372,6 +480,7 @@ export function trackPendingRequest(
           touchedAt: now,
         });
       }
+      enforcePendingByteBudgetPeriodically();
       return newDetail.id;
     } else if (!started && nextCount >= 0) {
       if (pendingRequests.details[connectionId]?.[modelKey]?.length) {
