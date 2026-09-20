@@ -631,31 +631,15 @@ would push a struggling process into a real OOM.
   it only widens `chatBodyAdmission`'s own bounded wait.
 
 **Severity states and thresholds** (`DEFAULT_RESOURCE_PRESSURE_THRESHOLDS`):
-`normal` → `high` at 78% of a tracked ratio (or PSI avg10 ≥ 30), → `critical` at
-84% (or PSI avg10 ≥ 60), each requiring `sustainedSamplesHigh`/`sustainedSamplesCritical`
+`normal` → `high` at 85% of a tracked ratio (or PSI avg10 ≥ 30), → `critical` at
+92% (or PSI avg10 ≥ 60), each requiring `sustainedSamplesHigh`/`sustainedSamplesCritical`
 consecutive samples (2 by default) before escalating. Recovery back to `normal`
-requires every tracked ratio to clear a separate, more conservative 70% recovery
+requires every tracked ratio to clear a separate, more conservative 75% recovery
 threshold (`recoveryRatio`) for `sustainedSamplesRecovery` samples — a wider band on
 the way down than on the way up, by design.
 
-**Why the ratios sit this low (IAF-492, 2026-09-19).** They were 85/92/75 and had
-to clear the SUPERVISOR's restart trigger, not just V8's OOM margin. The gateway's
-watchdog restarts the container at `memory.current / memory.max ≥ 90%` — raw
-charge, page cache included — while `cgroup_ratio` above deliberately ratios the
-WORKING SET (`current − file`) so reclaimable cache cannot trip it (incident
-2026-08-29). On an anon-dominated host the two metrics differ by the cache
-fraction: with `file` at 3.2% of the limit, the working set stood at ~86.8%
-exactly when the watchdog fired at 90% raw, so a 92% critical ratio was
-unreachable by construction and the container was always restarted first
-(`admission_sheds=0` throughout, while the process restarted every 4–5 hours).
-84% leaves ~2.8 points of headroom below that crossing point. Shedding returns 503
-to one request; a restart drops every in-flight stream for ~40s. When tuning a
-deployment, keep `criticalRatio` below `<supervisor restart ratio> − <page-cache
-fraction of the limit>`; `tests/unit/resource-pressure-watchdog-ordering.test.ts`
-asserts that invariant against the production geometry.
-
-**The critical hold timeout (incident 2026-09-16).** Between `recoveryRatio` (70%)
-and `criticalRatio` (84%) is a band where a raw sample is neither a critical
+**The critical hold timeout (incident 2026-09-16).** Between `recoveryRatio` (75%)
+and `criticalRatio` (92%) is a band where a raw sample is neither a critical
 reconfirmation nor a full recovery. Once `critical`, staying in that band held the
 state at `critical` indefinitely — and since the gate sheds before any allocation,
 the process stopped allocating, so V8 never ran the GC that would have shrunk the
