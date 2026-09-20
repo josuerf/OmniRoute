@@ -72,27 +72,9 @@ export type ResourcePressureThresholds = {
 };
 
 export const DEFAULT_RESOURCE_PRESSURE_THRESHOLDS: ResourcePressureThresholds = {
-  // Lowered 0.85/0.92/0.75 -> 0.78/0.84/0.70 (IAF-492). These ratios have to
-  // clear the SUPERVISOR's restart trigger, not just V8's OOM margin, and the
-  // old numbers could not. The gateway's watchdog restarts the container at
-  // memory.current / memory.max >= 90% (raw charge, page cache included), while
-  // the cgroup band below deliberately ratios the WORKING SET (current - file)
-  // so reclaimable cache cannot trip it. On an anon-dominated host those two
-  // metrics differ by the cache fraction -- 3.2% when measured on 2026-09-19 --
-  // so the working set stood at ~86.8% exactly when the watchdog fired at 90%
-  // raw. A 92% critical ratio is therefore unreachable by construction: the
-  // container is always restarted first, which is what `admission_sheds=0`
-  // recorded on the day of the incident while the process was restarted every
-  // 4-5 hours. 84% leaves ~2.8 points of headroom below that crossing point.
-  //
-  // Shedding is strictly cheaper than being restarted: a shed returns 503 to
-  // ONE request, a restart drops every in-flight stream for ~40s (11 nginx 502s
-  // on 2026-09-19). The heap ratio rides the same constant; at the 8192 MiB V8
-  // ceiling this host runs, 84% is 6881 MiB, just under the absolute heap guard
-  // (~6963 MiB), so the two now agree instead of the ratio sitting above it.
-  highRatio: 0.78,
-  criticalRatio: 0.84,
-  recoveryRatio: 0.7,
+  highRatio: 0.85,
+  criticalRatio: 0.92,
+  recoveryRatio: 0.75,
   // Bumped 50% (20/40/10 -> 30/60/15): /proc/pressure/memory reflects
   // HOST-wide PSI, not this process's own cgroup pressure (confirmed by
   // comparing /proc/pressure/memory against /sys/fs/cgroup/memory.pressure
