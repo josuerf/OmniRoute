@@ -154,7 +154,10 @@ async function resolveConnection(
   const configuredPort = Number.parseInt(process.env.CLIPROXYAPI_PORT ?? "", 10);
   return {
     state: "ready",
-    host: options.host ?? externalHost,
+    // `externalHost` is `string | undefined` (an empty CLIPROXYAPI_HOST trims to
+    // ""), so it cannot satisfy `host: string` on its own. Same loopback fallback
+    // the embedded branch above uses. Inherited base-red from upstream d7be9fd52.
+    host: options.host ?? externalHost ?? "127.0.0.1",
     port:
       options.port ??
       (Number.isInteger(configuredPort) && configuredPort > 0
