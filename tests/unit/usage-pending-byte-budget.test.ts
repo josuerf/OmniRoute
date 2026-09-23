@@ -21,8 +21,13 @@ const HOUR_MS = 60 * 60 * 1000;
  * overwrites the id-keyed view — but it is pushed into its OWN bucket. The
  * first detail is then unreachable from `pendingById`, which is exactly what
  * the age sweep and the 5000-entry cap iterate, so it is retained forever.
+ *
+ * Since upstream #14319 the age pass MARKS over-age details instead of removing
+ * them, so a stuck request stays visible on the dashboard. That makes reaching
+ * the orphan matter more, not less: an entry the sweep cannot see is neither
+ * marked nor ever reclaimed by the byte budget.
  */
-test("sweep reclaims bucket details the id index no longer points at", () => {
+test("sweep reaches bucket details the id index no longer points at", () => {
   clearPendingRequests();
 
   const firstId = trackPendingRequest("model-a", "prov-a", "conn", true, {
@@ -45,9 +50,22 @@ test("sweep reclaims bucket details the id index no longer points at", () => {
     for (const detail of bucket) detail.startedAt = Date.now() - 2 * HOUR_MS;
   }
 
-  const removed = sweepStalePendingRequests(Date.now(), HOUR_MS);
+  assert.equal(
+    sweepStalePendingRequests(Date.now(), HOUR_MS),
+    0,
+    "over-age details are marked, not removed"
+  );
+  const aged = Object.values(getPendingRequests().details["conn"]).flat();
+  assert.equal(aged.length, 2, "marking must keep both details in the store");
+  assert.ok(
+    aged.every((detail) => detail.stale === true),
+    "both the indexed detail and the orphan must be marked"
+  );
 
-  assert.equal(removed, 2, "both the indexed detail and the orphan must be swept");
+  // Reclaim is the byte budget's job now, and it has to reach the orphan too.
+  const removed = sweepStalePendingRequests(Date.now(), HOUR_MS, 1);
+
+  assert.equal(removed, 2, "both the indexed detail and the orphan must be reclaimed");
   assert.equal(
     getPendingRequests().byModel["model-a (prov-a)"],
     undefined,
@@ -60,26 +78,40 @@ test("sweep reclaims bucket details the id index no longer points at", () => {
   clearPendingRequests();
 });
 
-test("sweeping an orphan never evicts the live detail sharing its id", () => {
+test("reclaiming an orphan never evicts the live detail sharing its id", () => {
   clearPendingRequests();
 
+  // The orphan carries a payload preview and the live attempt does not, so a
+  // budget of half the store reclaims the orphan alone: eviction walks
+  // oldest-first (the orphan) and stops as soon as the store fits.
   const sharedId = trackPendingRequest("model-a", "prov-a", "conn", true, {
     correlationId: "shared-correlation",
+    clientRequest: { note: "x".repeat(4000) },
   });
   trackPendingRequest("model-b", "prov-b", "conn", true, { correlationId: "shared-correlation" });
 
-  // Only the orphan is stale; the newest attempt is still in flight.
+  // Only the orphan is over-age; the newest attempt is still in flight.
   const orphan = getPendingRequests().details["conn"]["model-a (prov-a)"][0];
   orphan.startedAt = Date.now() - 2 * HOUR_MS;
 
-  const removed = sweepStalePendingRequests(Date.now(), HOUR_MS);
+  assert.equal(sweepStalePendingRequests(Date.now(), HOUR_MS), 0);
+  assert.equal(orphan.stale, true, "the orphan must be marked even though the index misses it");
+  assert.notEqual(
+    getPendingRequests().details["conn"]["model-b (prov-b)"][0].stale,
+    true,
+    "the in-flight attempt must not be marked"
+  );
 
-  assert.equal(removed, 1, "only the stale orphan should be swept");
+  const budget = Math.floor(getPendingDetailsByteSize() / 2);
+  const removed = sweepStalePendingRequests(Date.now(), HOUR_MS, budget);
+
+  assert.equal(removed, 1, "only the marked orphan should be reclaimed");
   assert.ok(
     getPendingById().has(sharedId!),
     "the live attempt must survive — it merely shares the orphan's id"
   );
   assert.equal(getPendingRequests().details["conn"]["model-b (prov-b)"].length, 1);
+  assert.equal(getPendingRequests().details["conn"]["model-a (prov-a)"], undefined);
 
   clearPendingRequests();
 });
