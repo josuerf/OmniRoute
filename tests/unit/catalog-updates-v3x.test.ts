@@ -202,3 +202,31 @@ test("Every Codex registry model resolves a non-zero pricing row (alias: cx)", a
     );
   }
 });
+
+test("Opus 5.5 is in the claude REGISTRY — quota-share combos are minted from it", async () => {
+  // Regression: the Claude Code client version was bumped to serve Opus 5.5, but the
+  // model was never added to the catalog. `cc/claude-opus-5-5` still worked (the model
+  // id is forwarded upstream), while quota share broke: syncQuotaCombos mints one
+  // `qtSd/<group>/<provider>/<model>` combo per REGISTRY[provider].models entry, so a
+  // model missing from the registry has no combo row and cannot be selected at all.
+  const { REGISTRY } = await import("../../open-sse/config/providerRegistry.ts");
+  const registryIds = new Set((REGISTRY.claude?.models ?? []).map((m: { id: string }) => m.id));
+  assert.ok(
+    registryIds.has("claude-opus-5-5"),
+    "REGISTRY.claude must list claude-opus-5-5 or quota-share mints no combo for it"
+  );
+
+  // …and the same id must reach the public catalog through the cc alias.
+  const ccIds = new Set(getModelsByProviderId("cc").map((m) => m.id));
+  assert.ok(ccIds.has("claude-opus-5-5"), "cc must expose claude-opus-5-5");
+});
+
+test("Opus 5.5 carries its published cc pricing ($4 in / $20 out)", () => {
+  const ccPricing = (DEFAULT_PRICING as Record<string, Record<string, unknown>>).cc;
+  const pricing = ccPricing["claude-opus-5-5"] as Record<string, number> | undefined;
+  assert.ok(pricing, "cc pricing must include claude-opus-5-5");
+  assert.equal(pricing?.input, 4.0);
+  assert.equal(pricing?.output, 20.0);
+  // Cache read is $0.20/MTok — a tenth of Opus 5, so a wrong value skews quota-share cost.
+  assert.equal(pricing?.cached, 0.2);
+});

@@ -48,6 +48,17 @@ export const claudeProvider: RegistryEntry = {
       unsupportedParams: ["temperature", "top_p", "top_k"],
     },
     {
+      id: "claude-opus-5-5",
+      name: "Claude Opus 5.5",
+      contextLength: 1000000,
+      maxOutputTokens: 128000,
+      supportsXHighEffort: true,
+      // Opus 5.5 cannot disable thinking at any effort level (both a disabled thinking
+      // block and budget_tokens return 400) and, like Opus 5 / Fable 5, rejects
+      // non-default temperature/top_p/top_k. Strip them before dispatch.
+      unsupportedParams: ["temperature", "top_p", "top_k"],
+    },
+    {
       id: "claude-opus-5",
       name: "Claude Opus 5",
       contextLength: 1000000,
