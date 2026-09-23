@@ -80,6 +80,8 @@ export type PendingRequestDetail = {
   stageUpdatedAt?: number | null;
   correlationId?: string | null;
   sessionTag?: string | null;
+  stale?: boolean;
+  sweptAt?: number | null;
   streamChunks?: {
     provider?: string[];
     openai?: string[];
@@ -306,6 +308,16 @@ function oldestFirst(a: PendingDetailEntry, b: PendingDetailEntry): number {
 }
 
 /**
+ * Cap-eviction order: already-marked entries go first, then the oldest. A marked
+ * entry has already been reported as stuck on the dashboard, so it is the one
+ * whose removal costs the least information when the store overflows.
+ */
+function markedFirstThenOldest(a: PendingDetailEntry, b: PendingDetailEntry): number {
+  if (Boolean(a.detail.stale) !== Boolean(b.detail.stale)) return a.detail.stale ? -1 : 1;
+  return oldestFirst(a, b);
+}
+
+/**
  * Drop the oldest pending details until the store fits the estimated byte
  * budget. The entry cap says nothing about how heavy each entry is: one detail
  * carries up to four payload previews plus the live streamChunks arrays.
@@ -341,12 +353,20 @@ function enforcePendingByteBudgetPeriodically(): void {
 }
 
 /**
- * Evicts pending-request details that are orphaned by age, beyond the entry cap,
- * or beyond the estimated byte budget. Mirrors the normal removal path
- * (decrement counters + cleanup detail buckets) so the dashboard's pending
- * counts self-heal. Exported for deterministic testing.
+ * Marks over-age pending-request details so a stuck request stays visible on the
+ * dashboard, then enforces the entry cap and the estimated byte budget. Marked
+ * entries keep their map, detail bucket and counters; only the cap and
+ * byte-budget paths remove entries (marked first, oldest first), mirroring the
+ * normal removal path so the dashboard's pending counts self-heal.
+ *
+ * The marking pass walks the pending STORE, not `pendingById`: the index is a
+ * strict subset of the store, so a first attempt orphaned by a retry that reused
+ * its id is invisible there and would be neither marked nor ever reclaimed
+ * (IAF-492). Because over-age entries are now marked instead of dropped, the
+ * byte budget is what keeps a long stretch of stuck requests from growing the
+ * store without bound. Exported for deterministic testing.
  * @param now - Clock reading used for the age comparison.
- * @param maxAgeMs - Age beyond which an entry counts as orphaned.
+ * @param maxAgeMs - Age beyond which an entry counts as over-age.
  * @param maxBytes - Estimated payload-byte budget for the whole store.
  * @returns number of entries removed.
  */
@@ -362,8 +382,12 @@ export function sweepStalePendingRequests(
     removed++;
   };
 
-  for (const entry of listPendingDetails()) {
-    if (now - entry.detail.startedAt > maxAgeMs) remove(entry);
+  for (const { detail } of listPendingDetails()) {
+    if (detail.stale) continue;
+    if (now - detail.startedAt > maxAgeMs) {
+      detail.stale = true;
+      detail.sweptAt = now;
+    }
   }
 
   // Hard backstop: if entries are still piling up faster than they age out, drop the oldest
@@ -371,7 +395,9 @@ export function sweepStalePendingRequests(
   const survivors = listPendingDetails();
   if (survivors.length > MAX_PENDING_DETAILS) {
     const overflow = survivors.length - MAX_PENDING_DETAILS;
-    for (const entry of [...survivors].sort(oldestFirst).slice(0, overflow)) remove(entry);
+    for (const entry of [...survivors].sort(markedFirstThenOldest).slice(0, overflow)) {
+      remove(entry);
+    }
   }
 
   removed += evictPendingBeyondByteBudget(maxBytes);
@@ -746,8 +772,11 @@ export async function getUsageDb(sinceIso?: string | null, limit?: number, curso
       timeToFirstTokenMs: toNumber(r.ttft_ms),
       errorCode: toStringOrNull(r.error_code),
       timestamp: toStringOrNull(r.timestamp),
+      cpaAuthIndex: toStringOrNull(r.cpa_auth_index),
+      cpaAccountLabel: null as string | null,
     };
   });
+  await attachCpaAccountLabels(history);
 
   // Provide next cursor if we hit the limit (more rows exist)
   const nextCursor =
@@ -796,6 +825,8 @@ export interface UsageEntry {
   /** @deprecated legacy snake_case fallback, read only if `comboStrategy` is unset. */
   combo_strategy?: string | null;
   endpoint?: string | null;
+  /** Opaque CLIProxyAPI auth_index. Never a label, path, token, or email. */
+  cpaAuthIndex?: string | null;
 }
 
 /**
@@ -831,7 +862,7 @@ export async function saveRequestUsage(entry: UsageEntry) {
     db.transaction(() => {
       const existing = db
         .prepare(
-          `SELECT id, endpoint FROM usage_history
+          `SELECT id, endpoint, cpa_auth_index FROM usage_history
            WHERE timestamp = ?
              AND COALESCE(provider, '')     = COALESCE(?, '')
              AND COALESCE(model, '')        = COALESCE(?, '')
@@ -849,13 +880,20 @@ export async function saveRequestUsage(entry: UsageEntry) {
           entry.apiKeyId || null,
           tokensInput,
           tokensOutput
-        ) as { id: number; endpoint: string | null } | undefined;
+        ) as { id: number; endpoint: string | null; cpa_auth_index: string | null } | undefined;
 
       if (existing) {
         // Back-fill endpoint if the original row missed it.
         if (!existing.endpoint && entry.endpoint) {
           db.prepare(`UPDATE usage_history SET endpoint = ? WHERE id = ?`).run(
             entry.endpoint,
+            existing.id
+          );
+        }
+        // A later completed attempt can carry the trace the first write missed.
+        if (!existing.cpa_auth_index && entry.cpaAuthIndex) {
+          db.prepare(`UPDATE usage_history SET cpa_auth_index = ? WHERE id = ?`).run(
+            entry.cpaAuthIndex,
             existing.id
           );
         }
@@ -867,8 +905,8 @@ export async function saveRequestUsage(entry: UsageEntry) {
         INSERT INTO usage_history (provider, model, connection_id, account_key, account_label,
           account_label_priority, api_key_id, api_key_name, tokens_input, tokens_output,
           tokens_cache_read, tokens_cache_creation, tokens_reasoning, service_tier, status, success,
-          latency_ms, ttft_ms, error_code, combo_strategy, endpoint, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          latency_ms, ttft_ms, error_code, combo_strategy, endpoint, cpa_auth_index, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       ).run(
         entry.provider ? resolveProviderId(entry.provider) : null,
@@ -896,6 +934,7 @@ export async function saveRequestUsage(entry: UsageEntry) {
         entry.errorCode || null,
         entry.comboStrategy || entry.combo_strategy || null,
         entry.endpoint || null,
+        entry.cpaAuthIndex || null,
         timestamp
       );
 
@@ -954,7 +993,7 @@ export async function getUsageHistory(filter: UsageHistoryFilter = {}) {
   sql += " ORDER BY timestamp ASC";
 
   const rows = db.prepare(sql).all(params);
-  return rows.map((row) => {
+  const history = rows.map((row) => {
     const r = asRecord(row);
     return {
       provider: toStringOrNull(r.provider),
@@ -976,8 +1015,28 @@ export async function getUsageHistory(filter: UsageHistoryFilter = {}) {
       timeToFirstTokenMs: toNumber(r.ttft_ms),
       errorCode: toStringOrNull(r.error_code),
       timestamp: toStringOrNull(r.timestamp),
+      cpaAuthIndex: toStringOrNull(r.cpa_auth_index),
+      cpaAccountLabel: null as string | null,
     };
   });
+  await attachCpaAccountLabels(history);
+  return history;
+}
+
+async function attachCpaAccountLabels(
+  rows: Array<{ cpaAuthIndex: string | null; cpaAccountLabel: string | null }>
+): Promise<void> {
+  if (!rows.some((row) => row.cpaAuthIndex)) return;
+  try {
+    const { getCliproxyAccountHealth, labelForCliproxyAuthIndex } =
+      await import("@/lib/services/cliproxyAccountHealth");
+    const health = await getCliproxyAccountHealth();
+    for (const row of rows) {
+      row.cpaAccountLabel = labelForCliproxyAuthIndex(row.cpaAuthIndex, health.accounts);
+    }
+  } catch {
+    // The opaque index remains when the sanitized account-health read fails.
+  }
 }
 
 export type { ModelLatencyStatsEntry } from "./usageHistory/helpers";

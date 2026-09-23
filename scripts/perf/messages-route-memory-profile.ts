@@ -821,8 +821,10 @@ function sourceProvenance() {
   if (!/^[0-9a-f]{40}$/.test(testedCommit)) {
     throw new Error(`invalid git HEAD: ${testedCommit || "empty"}`);
   }
-  const branch = gitOutput(["branch", "--show-current"]);
-  if (!branch) throw new Error("git branch is empty");
+  // `git branch --show-current` is empty on a detached HEAD, which is the normal checkout
+  // state for a CI PR run and for this fix worktree's own detached `git worktree add` — fall
+  // back to a descriptive marker instead of treating that as an error.
+  const branch = gitOutput(["branch", "--show-current"]) || `detached@${testedCommit.slice(0, 12)}`;
   const sourceFiles = Object.fromEntries(
     PROVENANCE_FILES.map((file) => {
       if (!fs.existsSync(file)) throw new Error(`provenance file missing: ${file}`);
@@ -894,7 +896,11 @@ async function runDriver(): Promise<void> {
           cwd: process.cwd(),
           encoding: "utf8",
           env: buildWorkerEnv(process.env),
-          timeout: 180_000,
+          // Measured ~230s wall for the 100k-token case alone (tsx/esm boot of the full
+          // route/handler module graph + real request lifecycle) on an idle box — 180s left
+          // no margin and made SIGKILL-on-timeout indistinguishable from a real worker crash
+          // (`worker.status` is `null`, which already fails the `!== 0` check below).
+          timeout: 300_000,
           killSignal: "SIGKILL",
         }
       );

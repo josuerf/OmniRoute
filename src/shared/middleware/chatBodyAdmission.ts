@@ -38,9 +38,8 @@ import {
   type IngestBudgetAcquireResult,
 } from "./ingestByteAdmission";
 import {
-  getAdmissionResourcePressureSeverity,
+  checkResourcePressureGuard,
   getResourcePressureObservation,
-  type PressureReason,
   type PressureSeverity,
 } from "@omniroute/open-sse/utils/resourcePressure.ts";
 
@@ -219,51 +218,47 @@ export type ChatAdmissionShedReason =
   | "inflight_bytes_budget"
   | "resource_pressure";
 
-/** Cached pressure for diagnostics only; request decisions use the freshness-aware async seam. */
-function cachedPressureSeverityForDiagnostics(): PressureSeverity {
+/**
+ * Read pressure severity for admission decisions.
+ *
+ * This MUST drive an active re-sample (`checkResourcePressureGuard`), not a
+ * passive cache read of `getResourcePressureObservation`. The resource-pressure
+ * runtime only refreshes its sample and re-evaluates recovery from *inside*
+ * `check()` (via `scheduleRefresh`) — nothing else in the singleton mutates
+ * `state` or schedules a refresh. The structural admission gate that calls
+ * this function runs *before* every other code path that would otherwise call
+ * `check()` (`handleChatCore`, `checkResourcePressureBeforeProviderWork`,
+ * `AdaptiveAdmissionRuntimeImpl.acquire`) — so once `state.severity` flips to
+ * "critical", a passive read here sheds every subsequent request before any
+ * of those downstream paths can run, which means `check()` never gets called
+ * again and the guard can never observe recovery. See
+ * https://github.com/diegosouzapw/OmniRoute/issues/13821.
+ *
+ * `checkResourcePressureGuard()` is cheap on the hot path: it only does a
+ * synchronous `process.memoryUsage()` read plus a timestamp comparison per
+ * call; the actual signal sampling (`/proc/pressure/memory`, cgroup reads)
+ * happens asynchronously via `scheduleRefresh()` and is throttled by
+ * `staleAfterMs`, so calling this on every admitted request does not add
+ * per-request I/O.
+ *
+ * A non-null guard is this request's authoritative "shed now" answer and maps
+ * to "critical". A null guard means this request is not shed, but the
+ * observation's cached label can still read "critical" for a few more
+ * milliseconds until the async refresh settles (or if the last real sample
+ * merely went stale — `check()`'s own `maxStaleMs` fallback) — reporting that
+ * stale "critical" label to callers that branch on severity (e.g. the queue
+ * wait sizing at admitChatRequest's `reserve()`) would just re-introduce the
+ * same "never downgrades" problem for the "high" queueing bucket, so it is
+ * downgraded to "high" here instead.
+ */
+export function defaultPressureSeverity(): PressureSeverity {
   try {
-    return getResourcePressureObservation().state.severity;
+    const guard = checkResourcePressureGuard();
+    if (guard) return "critical";
+    const severity = getResourcePressureObservation().state.severity;
+    return severity === "critical" ? "high" : severity;
   } catch {
     return "normal";
-  }
-}
-
-/** Extra telemetry attached to a `resource_pressure` shed only (#503-fanout follow-up). */
-export interface ResourcePressureShedDetail {
-  pressureReason: PressureReason;
-  heapUsedMb: number | null;
-  cgroupPct: number | null;
-  criticalForMs: number;
-}
-
-/**
- * Best-effort snapshot of *why* the process is currently critical, for the
- * shed event and the Retry-After ramp. Reads the same global observation
- * `cachedPressureSeverityForDiagnostics` uses; returns `undefined` whenever
- * the global runtime disagrees (e.g. a test-injected controller) or is no
- * longer critical by the time this runs — never throws, never blocks.
- */
-export function describeResourcePressureShedDetail(): ResourcePressureShedDetail | undefined {
-  try {
-    const { signals, state } = getResourcePressureObservation();
-    if (state.severity !== "critical") return undefined;
-    const heapUsedMb = signals ? signals.v8.heapUsedBytes / (1024 * 1024) : null;
-    const cgroupPct =
-      signals?.cgroup.currentBytes != null && signals.cgroup.maxBytes
-        ? (signals.cgroup.currentBytes / signals.cgroup.maxBytes) * 100
-        : null;
-    return {
-      pressureReason: state.reason,
-      heapUsedMb: heapUsedMb != null ? Math.round(heapUsedMb) : null,
-      cgroupPct: cgroupPct != null ? Math.round(cgroupPct * 10) / 10 : null,
-      // Both timestamps come from the same clock the tracker samples with
-      // (state.observedAtMs is the last sample's timestamp) -- mixing in the
-      // wall-clock Date.now() here would desync from a test's fake clock and
-      // produce a nonsensical elapsed value.
-      criticalForMs: Math.max(0, state.observedAtMs - state.lastTransitionAtMs),
-    };
-  } catch {
-    return undefined;
   }
 }
 
@@ -271,9 +266,6 @@ export function describeResourcePressureShedDetail(): ResourcePressureShedDetail
  * One structural-shed observation, emitted to the shed sink at warn level.
  * `lane` is the opaque fairness key — the HMAC fingerprint produced by
  * `resolveSessionId` (or "anonymous"/"default"), never a raw credential.
- * The `pressureReason`/`heapUsedMb`/`cgroupPct`/`criticalForMs` fields are
- * populated only for `reason: "resource_pressure"` sheds (see
- * `describeResourcePressureShedDetail`); every other shed reason omits them.
  */
 export interface ChatAdmissionShedEvent {
   reason: ChatAdmissionShedReason;
@@ -281,10 +273,6 @@ export interface ChatAdmissionShedEvent {
   waiting: number;
   queuedBytes: number;
   lane: string;
-  pressureReason?: PressureReason;
-  heapUsedMb?: number | null;
-  cgroupPct?: number | null;
-  criticalForMs?: number;
 }
 
 export type ChatAdmissionShedSink = (event: ChatAdmissionShedEvent) => void;
@@ -442,11 +430,7 @@ export class ChatAdmissionController {
    * exercise the same single path. `lane` is the opaque fairness key (HMAC
    * fingerprint), never a raw credential.
    */
-  recordShed(
-    reason: ChatAdmissionShedReason,
-    lane = "default",
-    pressureDetail?: ResourcePressureShedDetail
-  ): void {
+  recordShed(reason: ChatAdmissionShedReason, lane = "default"): void {
     this.#shedTotal += 1;
     this.#shedsByReason.set(reason, (this.#shedsByReason.get(reason) ?? 0) + 1);
     this.#onShed({
@@ -455,7 +439,6 @@ export class ChatAdmissionController {
       waiting: this.waitingCount,
       queuedBytes: this.#queuedBytes,
       lane,
-      ...pressureDetail,
     });
   }
 
@@ -826,7 +809,7 @@ export const perConnectionAdmissionController = new PerConnectionAdmissionContro
     budget: {
       maxInflightBytes: productionIngestBudget.bytes,
       budgetSource: productionIngestBudget.source,
-      checkPressureSeverity: cachedPressureSeverityForDiagnostics,
+      checkPressureSeverity: defaultPressureSeverity,
     },
   }
 );
@@ -1058,21 +1041,9 @@ export async function admitChatRequest(
   // #503-fanout: shed before spending any bytes on ingestion when the process
   // is under genuine critical resource pressure. No-op for every controller a
   // test constructs directly (default severity is always "normal").
-  let pressureSeverity: PressureSeverity;
-  try {
-    pressureSeverity = options.controller
-      ? controller.pressureSeverity()
-      : await getAdmissionResourcePressureSeverity();
-  } catch {
-    pressureSeverity = "normal";
-  }
-  if (pressureSeverity === "critical") {
-    const pressureDetail = describeResourcePressureShedDetail();
-    controller.recordShed("resource_pressure", sessionId, pressureDetail);
-    return {
-      admit: false,
-      response: resourcePressureRejectionResponse(pressureDetail?.criticalForMs ?? 0),
-    };
+  if (controller.pressureSeverity() === "critical") {
+    controller.recordShed("resource_pressure", sessionId);
+    return { admit: false, response: resourcePressureRejectionResponse() };
   }
 
   if (contentLength !== null && contentLength > hardMaxBytes) {
@@ -1104,8 +1075,9 @@ export async function admitChatRequest(
     // every controller a test constructs directly, so this resolves
     // synchronously true there — only the production singleton (built with a
     // real host-derived budget) is ever actually gated by it.
+    const severity = controller.pressureSeverity();
     const budgetWaitMs =
-      pressureSeverity === "high" ? queueMs : Math.min(queueMs, INGEST_NORMAL_MAX_WAIT_MS);
+      severity === "high" ? queueMs : Math.min(queueMs, INGEST_NORMAL_MAX_WAIT_MS);
     const budgetResult = await controller.acquireBudgetWithin(
       bytes,
       budgetWaitMs,
@@ -1178,56 +1150,10 @@ export async function admitChatRequest(
   return { admit: true, request: rebuildRequest(request, body), lease };
 }
 
-/** Release a lease if a handler rejects; otherwise bind it to the returned response lifecycle. */
-export async function releaseChatAdmissionAfterHandler(
-  responsePromise: Promise<Response>,
-  lease: ChatAdmissionLease | null
-): Promise<Response> {
-  try {
-    return releaseChatAdmissionWhenDone(await responsePromise, lease);
-  } catch (error) {
-    lease?.release();
-    throw error;
-  }
-}
-
-/** Hold a heavyweight lease through an SSE response without buffering the response body. */
-export function releaseChatAdmissionWhenDone(
-  response: Response,
-  lease: ChatAdmissionLease | null
-): Response {
-  if (!lease) return response;
-  const isStreaming = response.headers.get("content-type")?.includes("text/event-stream");
-  if (!isStreaming || !response.body) {
-    lease.release();
-    return response;
-  }
-
-  const reader = response.body.getReader();
-  const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          lease.release();
-          controller.close();
-        } else {
-          controller.enqueue(value);
-        }
-      } catch (error) {
-        lease.release();
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      lease.release();
-      await reader.cancel(reason).catch(() => undefined);
-    },
-  });
-
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
-}
+// Lease release binding lives in ./chatAdmissionRelease. Re-exported here so
+// existing import sites keep working.
+export {
+  releaseChatAdmissionAfterHandler,
+  releaseChatAdmissionWhenDone,
+  type ReleaseChatAdmissionOptions,
+} from "./chatAdmissionRelease";

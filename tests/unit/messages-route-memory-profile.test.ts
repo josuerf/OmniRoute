@@ -267,7 +267,11 @@ test("JON-562 standalone analyzer deletes raw input when size validation fails",
 
 test(
   "JON-562 real /v1/messages path rejects context-sized post-GC retention",
-  { timeout: 90_000 },
+  // Measured ~4m12s end-to-end (2 iterations @ 100k tokens, including tsx/esm transpile of
+  // the full handler chain, allocation sampling and a post-GC heap snapshot) on an idle
+  // 16-core/54GB box — 90s/85s left no margin and made the driver's SIGTERM-on-timeout show
+  // up as `driver failed: null !== 0`, indistinguishable from a real hang.
+  { timeout: 360_000 },
   () => {
     const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-JON-562-canary-"));
     try {
@@ -289,7 +293,7 @@ test(
           cwd: REPO_ROOT,
           encoding: "utf8",
           env: buildWorkerEnv(process.env),
-          timeout: 85_000,
+          timeout: 340_000,
         }
       );
 

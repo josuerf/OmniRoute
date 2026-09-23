@@ -89,7 +89,6 @@ import { antigravityProvider } from "./registry/antigravity/index.ts";
 import { openaiProvider } from "./registry/openai/index.ts";
 import { snowflakeProvider } from "./registry/snowflake/index.ts";
 import { huggingfaceProvider } from "./registry/huggingface/index.ts";
-import { chipotleProvider } from "./registry/chipotle/index.ts";
 import { freeaiapikeyProvider } from "./registry/freeaiapikey/index.ts";
 import { qwen_cloudProvider } from "./registry/qwen-cloud/index.ts";
 import { qwen_cloud_token_planProvider } from "./registry/qwen-cloud-token-plan/index.ts";
@@ -232,6 +231,7 @@ import { x5labProvider } from "./registry/x5lab/index.ts";
 import { kenariProvider } from "./registry/kenari/index.ts";
 import { navyProvider } from "./registry/navy/index.ts";
 import { naraProvider } from "./registry/nara/index.ts";
+import { xkiroProvider } from "./registry/xkiro/index.ts";
 import { opperProvider } from "./registry/opper/index.ts";
 import { requestyProvider } from "./registry/requesty/index.ts";
 import { sealionProvider } from "./registry/sealion/index.ts";
@@ -249,6 +249,7 @@ import { fastrouterProvider } from "./registry/fastrouter/index.ts";
 import { anyapiProvider } from "./registry/anyapi/index.ts";
 import { electronhubProvider } from "./registry/electronhub/index.ts";
 import { llmgatewayProvider } from "./registry/llmgateway/index.ts";
+import { lyceumProvider } from "./registry/lyceum/index.ts";
 import { llmKiwiProvider } from "./registry/llm-kiwi/index.ts";
 import { literouterProvider } from "./registry/literouter/index.ts";
 import { greenptProvider } from "./registry/greenpt/index.ts";
@@ -363,7 +364,6 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   openai: openaiProvider,
   snowflake: snowflakeProvider,
   huggingface: huggingfaceProvider,
-  chipotle: chipotleProvider,
   freeaiapikey: freeaiapikeyProvider,
   "qwen-cloud": qwen_cloudProvider,
   "qwen-cloud-token-plan": qwen_cloud_token_planProvider,
@@ -510,6 +510,7 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   kenari: kenariProvider,
   navy: navyProvider,
   nara: naraProvider,
+  xkiro: xkiroProvider,
   opper: opperProvider,
   requesty: requestyProvider,
   sealion: sealionProvider,
@@ -528,6 +529,7 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   anyapi: anyapiProvider,
   electronhub: electronhubProvider,
   llmgateway: llmgatewayProvider,
+  lyceum: lyceumProvider,
   "llm-kiwi": llmKiwiProvider,
   literouter: literouterProvider,
   greenpt: greenptProvider,
