@@ -40,6 +40,7 @@ import {
 import {
   checkResourcePressureGuard,
   getResourcePressureObservation,
+  type PressureReason,
   type PressureSeverity,
 } from "@omniroute/open-sse/utils/resourcePressure.ts";
 
@@ -262,10 +263,51 @@ export function defaultPressureSeverity(): PressureSeverity {
   }
 }
 
+export interface ResourcePressureShedDetail {
+  pressureReason: PressureReason;
+  heapUsedMb: number | null;
+  cgroupPct: number | null;
+  criticalForMs: number;
+}
+
+/**
+ * Best-effort snapshot of *why* the process is currently critical, for the shed
+ * event and the Retry-After ramp. Reads the same global observation
+ * `defaultPressureSeverity` falls back to; returns `undefined` whenever the
+ * global runtime disagrees (e.g. a test-injected controller) or is no longer
+ * critical by the time this runs — never throws, never blocks.
+ */
+export function describeResourcePressureShedDetail(): ResourcePressureShedDetail | undefined {
+  try {
+    const { signals, state } = getResourcePressureObservation();
+    if (state.severity !== "critical") return undefined;
+    const heapUsedMb = signals ? signals.v8.heapUsedBytes / (1024 * 1024) : null;
+    const cgroupPct =
+      signals?.cgroup.currentBytes != null && signals.cgroup.maxBytes
+        ? (signals.cgroup.currentBytes / signals.cgroup.maxBytes) * 100
+        : null;
+    return {
+      pressureReason: state.reason,
+      heapUsedMb: heapUsedMb != null ? Math.round(heapUsedMb) : null,
+      cgroupPct: cgroupPct != null ? Math.round(cgroupPct * 10) / 10 : null,
+      // Both timestamps come from the same clock the tracker samples with
+      // (state.observedAtMs is the last sample's timestamp) -- mixing in the
+      // wall-clock Date.now() here would desync from a test's fake clock and
+      // produce a nonsensical elapsed value.
+      criticalForMs: Math.max(0, state.observedAtMs - state.lastTransitionAtMs),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * One structural-shed observation, emitted to the shed sink at warn level.
  * `lane` is the opaque fairness key — the HMAC fingerprint produced by
  * `resolveSessionId` (or "anonymous"/"default"), never a raw credential.
+ * The `pressureReason`/`heapUsedMb`/`cgroupPct`/`criticalForMs` fields are
+ * populated only for `reason: "resource_pressure"` sheds (see
+ * `describeResourcePressureShedDetail`); every other shed reason omits them.
  */
 export interface ChatAdmissionShedEvent {
   reason: ChatAdmissionShedReason;
@@ -273,6 +315,10 @@ export interface ChatAdmissionShedEvent {
   waiting: number;
   queuedBytes: number;
   lane: string;
+  pressureReason?: PressureReason;
+  heapUsedMb?: number | null;
+  cgroupPct?: number | null;
+  criticalForMs?: number;
 }
 
 export type ChatAdmissionShedSink = (event: ChatAdmissionShedEvent) => void;
@@ -430,7 +476,11 @@ export class ChatAdmissionController {
    * exercise the same single path. `lane` is the opaque fairness key (HMAC
    * fingerprint), never a raw credential.
    */
-  recordShed(reason: ChatAdmissionShedReason, lane = "default"): void {
+  recordShed(
+    reason: ChatAdmissionShedReason,
+    lane = "default",
+    pressureDetail?: ResourcePressureShedDetail
+  ): void {
     this.#shedTotal += 1;
     this.#shedsByReason.set(reason, (this.#shedsByReason.get(reason) ?? 0) + 1);
     this.#onShed({
@@ -439,6 +489,7 @@ export class ChatAdmissionController {
       waiting: this.waitingCount,
       queuedBytes: this.#queuedBytes,
       lane,
+      ...pressureDetail,
     });
   }
 
@@ -1042,8 +1093,15 @@ export async function admitChatRequest(
   // is under genuine critical resource pressure. No-op for every controller a
   // test constructs directly (default severity is always "normal").
   if (controller.pressureSeverity() === "critical") {
-    controller.recordShed("resource_pressure", sessionId);
-    return { admit: false, response: resourcePressureRejectionResponse() };
+    // Enrich the shed line and ramp Retry-After with how long the process has
+    // been critical: a 503 that says nothing about why leaves the operator
+    // guessing between heap, cgroup and a stuck sampler.
+    const pressureDetail = describeResourcePressureShedDetail();
+    controller.recordShed("resource_pressure", sessionId, pressureDetail);
+    return {
+      admit: false,
+      response: resourcePressureRejectionResponse(pressureDetail?.criticalForMs ?? 0),
+    };
   }
 
   if (contentLength !== null && contentLength > hardMaxBytes) {

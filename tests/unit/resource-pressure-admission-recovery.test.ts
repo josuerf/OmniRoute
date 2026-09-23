@@ -80,7 +80,12 @@ test("JON-563: actual /v1/messages route refreshes stale critical pressure and r
   }
 
   assert.equal(response.status, 415, "415 proves the request passed structural admission");
-  assert.equal(sampleCalls, 2, "the rejected front door must coalesce and await one fresh sample");
+  // Since the gate moved to the synchronous `checkResourcePressureGuard()` seam
+  // (upstream #13823) the front door re-samples immediately and schedules the
+  // refresh instead of awaiting a coalesced async sample, so the fresh sample
+  // lands once that scheduled refresh settles.
+  await runtime.whenRefreshSettled();
+  assert.equal(sampleCalls, 2, "the rejected front door must trigger one fresh sample");
   assert.equal(runtime.getObservation().state.severity, "normal");
   assert.equal(
     warnings.some((warning) => warning.includes("returning 503")),
@@ -128,6 +133,9 @@ test("JON-563: concurrent stale-critical requests coalesce one recovery sample",
     responses.map((response) => response.status),
     Array.from({ length: 20 }, () => 200)
   );
+  // The point is the coalescing: 20 concurrent front-door checks must not each
+  // drive their own sample. The scheduled refresh settles after the burst.
+  await runtime.whenRefreshSettled();
   assert.equal(sampleCalls, 2, "concurrent retries must share one in-flight recovery sample");
 });
 

@@ -725,8 +725,8 @@ would push a struggling process into a real OOM.
   ratio, cgroup `memory.high` ratio, and `/sys/fs/cgroup/memory.pressure` PSI, and
   classifies each sample as `normal` / `high` / `critical`.
 - Runtime/cache/self-restart: `open-sse/utils/resourcePressure.ts`
-  (`createResourcePressureRuntime`, process singleton via
-  `getAdmissionResourcePressureSeverity()`).
+  (`createResourcePressureRuntime`, process singleton read through
+  `checkResourcePressureGuard()` / `getResourcePressureObservation()`).
 - Admission gate call site: `src/shared/middleware/chatBodyAdmission.ts` — rejects
   with 503 `resource_pressure` only when severity is `critical`; `high` never sheds,
   it only widens `chatBodyAdmission`'s own bounded wait.
