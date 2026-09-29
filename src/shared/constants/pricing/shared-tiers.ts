@@ -126,6 +126,17 @@ export const CLAUDE_SONNET_46_PRICING = {
   cache_creation: 3.0,
 };
 
+// Claude Sonnet 5.5 (2026-09-28, platform.claude.com/docs/en/models/sonnet-5-5):
+// $2 in / $10 out, standard multipliers (10% cache read, 1.25x 5m cache write) —
+// unlike Opus 5.5, Sonnet 5.5 did NOT get a reduced cache-read rate.
+export const CLAUDE_SONNET_5_5_PRICING = {
+  input: 2.0,
+  output: 10.0,
+  cached: 0.2,
+  reasoning: 10.0,
+  cache_creation: 2.5,
+};
+
 // Claude Sonnet 5 — Sonnet-tier ($3/$15/M, same sticker as Sonnet 4.6; intro
 // $2/$10 through 2026-08-31 not encoded — track the standard rate like 4.6).
 export const CLAUDE_SONNET_5_PRICING = {

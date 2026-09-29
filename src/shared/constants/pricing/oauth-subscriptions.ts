@@ -7,6 +7,7 @@ import {
   CLAUDE_FABLE_5_1_PRICING,
   CLAUDE_OPUS_5_5_PRICING,
   CLAUDE_OPUS_5_PRICING,
+  CLAUDE_SONNET_5_5_PRICING,
   GEMINI_3_7_FLASH_PROMO_PRICING,
   GPT_5_3_CODEX_PRICING,
   GPT_5_5_PRICING,
@@ -65,6 +66,7 @@ export const DEFAULT_PRICING_OAUTH = {
       reasoning: 15.0,
       cache_creation: 3.75,
     },
+    "claude-sonnet-5-5": CLAUDE_SONNET_5_5_PRICING,
     "claude-sonnet-5": {
       input: 3.0,
       output: 15.0,

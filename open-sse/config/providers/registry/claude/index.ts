@@ -95,6 +95,17 @@ export const claudeProvider: RegistryEntry = {
       maxOutputTokens: 64000,
     },
     {
+      id: "claude-sonnet-5-5",
+      name: "Claude Sonnet 5.5",
+      contextLength: 1000000,
+      maxOutputTokens: 128000,
+      supportsXHighEffort: true,
+      // Sonnet 5.5's lowest thinking setting is `between_tools` (works at low/medium/high
+      // only — xhigh/max reject it with a 400, use adaptive there), and like Opus 5.5 /
+      // Sonnet 5 it rejects non-default temperature/top_p/top_k. Strip them before dispatch.
+      unsupportedParams: ["temperature", "top_p", "top_k"],
+    },
+    {
       id: "claude-sonnet-5",
       name: "Claude Sonnet 5",
       contextLength: 1000000,

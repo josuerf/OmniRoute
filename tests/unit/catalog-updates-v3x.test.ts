@@ -230,3 +230,31 @@ test("Opus 5.5 carries its published cc pricing ($4 in / $20 out)", () => {
   // Cache read is $0.20/MTok — a tenth of Opus 5, so a wrong value skews quota-share cost.
   assert.equal(pricing?.cached, 0.2);
 });
+
+test("Sonnet 5.5 is in the claude REGISTRY — quota-share combos are minted from it", async () => {
+  // Same regression class as Opus 5.5 (#12417/#799a1a3): the client version bump that
+  // unlocked the whole 5.5 wave (Opus, Sonnet, Haiku) does not by itself register any
+  // model in the catalog. Without a REGISTRY.claude entry, syncQuotaCombos mints no
+  // `qtSd/<group>/claude/claude-sonnet-5-5` combo and quota-share can't select it.
+  const { REGISTRY } = await import("../../open-sse/config/providerRegistry.ts");
+  const registryIds = new Set((REGISTRY.claude?.models ?? []).map((m: { id: string }) => m.id));
+  assert.ok(
+    registryIds.has("claude-sonnet-5-5"),
+    "REGISTRY.claude must list claude-sonnet-5-5 or quota-share mints no combo for it"
+  );
+
+  // …and the same id must reach the public catalog through the cc alias.
+  const ccIds = new Set(getModelsByProviderId("cc").map((m) => m.id));
+  assert.ok(ccIds.has("claude-sonnet-5-5"), "cc must expose claude-sonnet-5-5");
+});
+
+test("Sonnet 5.5 carries its published cc pricing ($2 in / $10 out)", () => {
+  const ccPricing = (DEFAULT_PRICING as Record<string, Record<string, unknown>>).cc;
+  const pricing = ccPricing["claude-sonnet-5-5"] as Record<string, number> | undefined;
+  assert.ok(pricing, "cc pricing must include claude-sonnet-5-5");
+  assert.equal(pricing?.input, 2.0);
+  assert.equal(pricing?.output, 10.0);
+  // Cache read is $0.20/MTok (standard 10% multiplier — Sonnet 5.5 did NOT get Opus
+  // 5.5's reduced cache-read rate), so a wrong value skews quota-share cost.
+  assert.equal(pricing?.cached, 0.2);
+});
