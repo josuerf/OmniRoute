@@ -9,7 +9,7 @@
 
 import { getDbInstance } from "../db/core";
 import { resolveProviderId } from "@/shared/constants/providers";
-import { protectPayloadForLog } from "../logPayloads";
+import { normalizePayloadForLog, protectPayloadForLog } from "../logPayloads";
 import { estimateRetainedBytes } from "./retainedBytes";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/errorSanitization.ts";
 import {
@@ -25,7 +25,8 @@ import {
   resolvePositiveOption,
   toNumber,
   toStringOrNull,
-  truncatePendingPreview,
+  prunePendingPreview,
+  truncatePendingPreviewStrings,
 } from "./usageHistory/helpers";
 import type { ModelLatencyStatsEntry } from "./usageHistory/helpers";
 import {
@@ -33,6 +34,7 @@ import {
   maybeEnrichCompletedDetail,
   scheduleCompletedDetailCleanup,
   storeCompletedDetail,
+  getCompletedDetails,
 } from "./completedRequestDetails";
 import { shouldPersistToDisk } from "./migrations";
 import { emitUsageRecorded } from "./usageEvents";
@@ -60,6 +62,14 @@ export type PendingRequestMetadata = {
   sessionTag?: string | null;
 };
 export type PendingRequestDetail = {
+  tokens?: {
+    in: number;
+    out: number;
+    cacheRead: number | null;
+    cacheCreation: number | null;
+    reasoning: number | null;
+    compressed: number | null;
+  };
   id: string;
   model: string;
   provider: string;
@@ -89,6 +99,20 @@ export type PendingRequestDetail = {
   } | null;
 };
 
+// The preview is bounded (MAX_PREVIEW_*), the payload is not: chatCore pushes
+// the full provider body through here at every stage of a request, and
+// protecting a multi-megabyte agentic body four times per request was a large
+// synchronous cost on the event loop. So the structure is pruned to the preview
+// shape first, then protected, and only then are strings cut. The regex-based
+// stages (error message sanitizing, opt-in PII sanitizing) must see whole
+// strings: a secret straddling the cut would otherwise survive as a fragment
+// no pattern matches. Normalizing first keeps a JSON string payload parsed.
+function protectPendingPreview(payload: unknown): unknown {
+  return truncatePendingPreviewStrings(
+    protectPayloadForLog(prunePendingPreview(normalizePayloadForLog(payload)))
+  );
+}
+
 function normalizePendingMetadata(metadata?: PendingRequestMetadata): PendingRequestMetadata {
   if (!metadata) return {};
 
@@ -111,22 +135,16 @@ function normalizePendingMetadata(metadata?: PendingRequestMetadata): PendingReq
         : null;
   }
   if (metadata.clientRequest !== undefined) {
-    normalized.clientRequest = truncatePendingPreview(protectPayloadForLog(metadata.clientRequest));
+    normalized.clientRequest = protectPendingPreview(metadata.clientRequest);
   }
   if (metadata.providerRequest !== undefined) {
-    normalized.providerRequest = truncatePendingPreview(
-      protectPayloadForLog(metadata.providerRequest)
-    );
+    normalized.providerRequest = protectPendingPreview(metadata.providerRequest);
   }
   if (metadata.providerResponse !== undefined) {
-    normalized.providerResponse = truncatePendingPreview(
-      protectPayloadForLog(metadata.providerResponse)
-    );
+    normalized.providerResponse = protectPendingPreview(metadata.providerResponse);
   }
   if (metadata.clientResponse !== undefined) {
-    normalized.clientResponse = truncatePendingPreview(
-      protectPayloadForLog(metadata.clientResponse)
-    );
+    normalized.clientResponse = protectPendingPreview(metadata.clientResponse);
   }
   if (metadata.status !== undefined) {
     const status = Number(metadata.status);
@@ -433,11 +451,18 @@ export function trackPendingRequest(
   provider: string,
   connectionId: string | null,
   started: boolean,
-  metadata?: PendingRequestMetadata
+  metadata?: PendingRequestMetadata,
+  pendingRequestId?: string
 ) {
   const modelKey = provider ? `${model} (${provider})` : model;
   if (!isSafeKey(modelKey)) return;
   const normalizedMetadata = normalizePendingMetadata(metadata);
+  // An id that is no longer listed was already withdrawn (completion and
+  // disconnect both end the same request): leave every counter untouched.
+  if (!started && pendingRequestId && connectionId) {
+    const listed = pendingRequests.details[connectionId]?.[modelKey];
+    if (!listed?.some((entry) => entry.id === pendingRequestId)) return;
+  }
 
   // Ensure the orphaned-pending reaper is running once pending tracking is in use.
   if (started) ensurePendingSweepTimer();
@@ -509,7 +534,14 @@ export function trackPendingRequest(
       enforcePendingByteBudgetPeriodically();
       return newDetail.id;
     } else if (!started && nextCount >= 0) {
-      if (pendingRequests.details[connectionId]?.[modelKey]?.length) {
+      if (pendingRequestId) {
+        const bucket = pendingRequests.details[connectionId][modelKey];
+        const [removed] = bucket.splice(
+          bucket.findIndex((entry) => entry.id === pendingRequestId),
+          1
+        );
+        if (removed) pendingById.delete(removed.id);
+      } else if (pendingRequests.details[connectionId]?.[modelKey]?.length) {
         const removed = pendingRequests.details[connectionId][modelKey].shift();
         if (removed) pendingById.delete(removed.id);
       }
@@ -543,6 +575,18 @@ export function updatePendingRequestById(id: string | null, metadata: PendingReq
   if (!detail) return false;
   Object.assign(detail, normalizePendingMetadata(metadata));
   return true;
+}
+
+/** Attach scalar usage to the exact attempt, even if its stream already finalized. */
+export function updateRequestTokensById(id: unknown, tokens: PendingRequestDetail["tokens"]) {
+  if (typeof id !== "string") return;
+  const pending = pendingById.get(id);
+  if (pending) {
+    pending.tokens = tokens;
+    return;
+  }
+  const completed = getCompletedDetails().get(id);
+  if (completed) storeCompletedDetail({ ...completed, tokens });
 }
 
 /**
@@ -1070,6 +1114,7 @@ export async function getModelLatencyStats(
     latency_ms: number | null;
     ttft_ms: number | null;
     tokens_output: number | null;
+    tokens_reasoning: number | null;
   };
 
   const conditions = ["timestamp >= @sinceIso", "provider IS NOT NULL", "model IS NOT NULL"];
@@ -1086,7 +1131,7 @@ export async function getModelLatencyStats(
   const rows = db
     .prepare(
       `
-      SELECT provider, model, success, latency_ms, ttft_ms, tokens_output
+      SELECT provider, model, success, latency_ms, ttft_ms, tokens_output, tokens_reasoning
       FROM usage_history
       WHERE ${conditions.join(" AND ")}
       ORDER BY timestamp DESC
@@ -1116,7 +1161,8 @@ export async function getModelLatencyStats(
       toNumber(row.latency_ms),
       toNumber(row.ttft_ms),
       toNumber(row.tokens_output),
-      isSuccess
+      isSuccess,
+      toNumber(row.tokens_reasoning)
     );
   }
 

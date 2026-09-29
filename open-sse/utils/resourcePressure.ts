@@ -346,6 +346,11 @@ export function createResourcePressureRuntime(
         state = tracker.observe(signals);
         failOpenLoggedObservation = null;
         observeSelfRestart(settledAtMs);
+        if (state.severity !== "normal") {
+          ensureDriver();
+        } else {
+          maybeStopDriver();
+        }
         lastRefreshAtMs = settledAtMs;
         nextRefreshAtMs = settledAtMs + staleAfterMs;
       })
@@ -457,25 +462,40 @@ export function createResourcePressureRuntime(
         lastTransitionAtMs: now,
         observedAtMs: now,
       };
+      // Keep observing without traffic so recovery is detected (declared below).
+      ensureDriver();
     }
     return immediate;
   };
 
-  // The self-restart circuit measures *sustained* critical time, so it must not
-  // depend on incoming requests to advance: during an outage clients back off and
-  // check() may not be called for long stretches. An unref'd driver re-arms the
-  // refresh whenever the circuit is armed. A fully stalled event loop still can't
-  // be unwedged from inside the process — that case belongs to the supervisor's
-  // own watchdog, not to this circuit.
-  let selfRestartDriver: NodeJS.Timeout | null = null;
-  if (selfRestart.enabled) {
-    const driverIntervalMs = Math.max(1_000, Math.min(staleAfterMs, 10_000));
-    selfRestartDriver = setInterval(() => {
+  // Both the self-restart circuit and recovery detection must not depend on
+  // incoming requests to advance: during an outage clients back off and check()
+  // may not be called for long stretches. An unref'd background driver re-arms
+  // refresh whenever self-restart is enabled or the runtime is under non-normal
+  // pressure, allowing the system to self-heal and observe recovery without
+  // requiring incoming traffic.
+  let backgroundDriver: NodeJS.Timeout | null = null;
+  const driverIntervalMs = Math.max(1_000, Math.min(staleAfterMs, 10_000));
+
+  const ensureDriver = (): void => {
+    if (disposed || backgroundDriver) return;
+    backgroundDriver = setInterval(() => {
       if (disposed) return;
       nextRefreshAtMs = Math.min(nextRefreshAtMs, nowMs());
       scheduleRefresh();
     }, driverIntervalMs);
-    selfRestartDriver.unref?.();
+    backgroundDriver.unref?.();
+  };
+
+  const maybeStopDriver = (): void => {
+    if (!selfRestart.enabled && state.severity === "normal" && backgroundDriver) {
+      clearInterval(backgroundDriver);
+      backgroundDriver = null;
+    }
+  };
+
+  if (selfRestart.enabled) {
+    ensureDriver();
   }
 
   return {
@@ -520,9 +540,9 @@ export function createResourcePressureRuntime(
       const cycle = refreshCycle;
       refreshCycle = null;
       if (cycle) settleRefreshCycle(cycle);
-      if (selfRestartDriver) {
-        clearInterval(selfRestartDriver);
-        selfRestartDriver = null;
+      if (backgroundDriver) {
+        clearInterval(backgroundDriver);
+        backgroundDriver = null;
       }
     },
   };

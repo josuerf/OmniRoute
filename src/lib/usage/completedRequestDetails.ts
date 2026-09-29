@@ -11,10 +11,30 @@ const MAX_COMPLETED_DETAILS = 256;
  */
 export const MAX_COMPLETED_DETAILS_BYTES = 16 * 1024 * 1024;
 
+/** #13621: stream diagnostics are a dashboard preview, so each stage keeps a bounded chunk count. */
+const MAX_COMPLETED_STREAM_CHUNKS_PER_STAGE = 64;
+
 const completedDetails = new Map<string, PendingRequestDetail>();
 const completedDetailTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const completedDetailBytes = new Map<string, number>();
 let totalCompletedDetailBytes = 0;
+
+function capStreamChunkList(values?: string[]): string[] | undefined {
+  if (!values || values.length <= MAX_COMPLETED_STREAM_CHUNKS_PER_STAGE) return values;
+  const kept = values.slice(0, MAX_COMPLETED_STREAM_CHUNKS_PER_STAGE);
+  kept.push(`[TRUNCATED_STREAM_CHUNKS: ${values.length - MAX_COMPLETED_STREAM_CHUNKS_PER_STAGE}]`);
+  return kept;
+}
+
+function capStreamChunks(detail: PendingRequestDetail): PendingRequestDetail {
+  const chunks = detail.streamChunks;
+  if (!chunks) return detail;
+  const capped = { ...chunks };
+  for (const stage of ["provider", "openai", "client"] as const) {
+    if (capped[stage]) capped[stage] = capStreamChunkList(capped[stage]);
+  }
+  return { ...detail, streamChunks: capped };
+}
 
 function deleteCompletedDetail(id: string) {
   completedDetails.delete(id);
@@ -71,10 +91,11 @@ export function getCompletedDetailsCacheStats(): {
 
 /**
  * Store a detached completed-request preview.
- * @param detail - Completed request detail to detach and cache.
+ * @param input - Completed request detail to cap, detach and cache.
  * @returns `true` only when the entry remains cached after count and byte-budget eviction.
  */
-export function storeCompletedDetail(detail: PendingRequestDetail): boolean {
+export function storeCompletedDetail(input: PendingRequestDetail): boolean {
+  const detail = capStreamChunks(input);
   const inputBytes = estimateRetainedBytes(detail);
   if (inputBytes > MAX_COMPLETED_DETAILS_BYTES) {
     deleteCompletedDetail(detail.id);
@@ -168,7 +189,12 @@ export function maybeEnrichCompletedDetail(updated: PendingRequestDetail, connec
           if (isUnset(updated.clientResponse)) updated.clientResponse = responseBody;
         }
         if (updated.providerResponse || updated.clientResponse) {
-          if (completedDetails.has(updated.id)) storeCompletedDetail(updated);
+          const current = completedDetails.get(updated.id);
+          if (current) {
+            // Usage can arrive while the artifact read is awaiting its import.
+            // Keep newer counters instead of restoring the pre-usage snapshot.
+            storeCompletedDetail({ ...updated, tokens: current.tokens ?? updated.tokens });
+          }
           break;
         }
       }
