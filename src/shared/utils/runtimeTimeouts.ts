@@ -59,6 +59,12 @@ export const DEFAULT_TLS_FIRST_BYTE_WATCHDOG_MS = 10_000;
 // thinking. Executors that can rotate accounts use it to move on instead of waiting for the
 // readiness timeout. Set to 0 to disable.
 export const DEFAULT_RESPONSES_FIRST_BYTE_TIMEOUT_MS = 15_000;
+// Minimum budget for the content-stall watchdog (a handed-off stream that never
+// produces real model output). It used to inherit the adaptive readiness
+// budget (80-180s), which aborted healthy long-thinking Claude turns whose
+// reasoning is streamed redacted. The effective budget is the larger of this
+// value and the readiness budget. Set to 0 to fall back to the readiness budget.
+export const DEFAULT_STREAM_CONTENT_STALL_TIMEOUT_MS = 300_000;
 // Suggested operator value when enabling the Responses headers-wait bound below.
 // Not an active default: the getters read 0 (off) unless the operator sets the env var.
 export const SUGGESTED_OPENCODE_RESPONSES_HEADERS_WAIT_MS = 30_000;
@@ -259,6 +265,28 @@ export function getTlsFirstByteWatchdogMs(
     allowZero: true,
     logger,
   });
+}
+
+export function getStreamContentStallTimeoutMs(
+  env: EnvSource = process.env,
+  logger?: TimeoutLogger
+): number {
+  return readTimeoutMs(
+    env,
+    "STREAM_CONTENT_STALL_TIMEOUT_MS",
+    DEFAULT_STREAM_CONTENT_STALL_TIMEOUT_MS,
+    { allowZero: true, logger }
+  );
+}
+
+/**
+ * Content-stall budget for one request. Disabled whenever the readiness gate is
+ * disabled (readiness budget 0), so turning readiness off keeps meaning "no
+ * stream watchdogs on first output"; otherwise never shorter than the floor.
+ */
+export function resolveContentStallTimeoutMs(readinessTimeoutMs: number, floorMs: number): number {
+  if (readinessTimeoutMs <= 0) return 0;
+  return Math.max(readinessTimeoutMs, floorMs);
 }
 
 export function getResponsesFirstByteTimeoutMs(

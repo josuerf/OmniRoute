@@ -983,7 +983,9 @@ export function pipeWithDisconnect(
   // with a clear error the client's own retry/fallback logic can react to
   // immediately. Armed ONCE at stream start (not re-armed by lifecycle-only
   // bytes, unlike armStall above) and cleared permanently the first time
-  // real content is observed -- reuses the exact classifier
+  // real content is observed. The one exception that re-arms it is Claude
+  // reasoning progress with no visible text (redacted/omitted thinking), which
+  // restarts the budget without counting as content -- reuses the exact classifier
   // (createStreamContentWatcher) createDisconnectAwareStream already trusts
   // for its own end-of-stream #8649 empty-content check.
   let contentStallTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1147,8 +1149,21 @@ export function pipeWithDisconnect(
         const decoded = upstreamContentDecoder.decode(chunk, { stream: true });
         stallBytes += chunk.byteLength;
         noteStallText(decoded);
+        const progressBefore = upstreamContentWatcher.reasoningProgressCount();
         upstreamContentWatcher.note(decoded);
-        if (upstreamContentWatcher.sawContent()) clearContentStall();
+        if (upstreamContentWatcher.sawContent()) {
+          clearContentStall();
+        } else if (
+          upstreamContentWatcher.reasoningProgressCount() > progressBefore &&
+          contentStallTimer
+        ) {
+          // Redacted/omitted Claude thinking: the model is still generating
+          // (empty thinking_delta frames with estimated_tokens, signature_delta),
+          // just not visibly. Restart the budget instead of clearing it, so a
+          // model that stops progressing still trips the watchdog.
+          clearContentStall();
+          armContentStall();
+        }
       }
       controller.enqueue(chunk);
     },

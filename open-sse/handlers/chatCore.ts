@@ -237,6 +237,7 @@ import {
   STREAM_RECOVERY,
   DEFAULT_MAX_TOKENS,
   STREAM_DISCONNECT_GRACE_PERIOD_MS,
+  STREAM_CONTENT_STALL_TIMEOUT_MS,
 } from "../config/constants.ts";
 import { applyStatusRestatement } from "../config/upstreamStatusRestatement.ts";
 import { createRecoverableStream, makeContinuationBody } from "../services/streamRecovery.ts";
@@ -419,6 +420,7 @@ import { generateRequestId } from "@/shared/utils/requestId";
 import { isLocalStreamLifecycleError } from "@/shared/utils/circuitBreaker";
 import { shouldIsolateProbeFailures } from "@/shared/utils/probeOrigin";
 import { writeTerminalStatus } from "@/shared/utils/terminalStatus";
+import { resolveContentStallTimeoutMs } from "@/shared/utils/runtimeTimeouts";
 import { extractFacts } from "@/lib/memory/extraction";
 import { handleToolCallExecution } from "@/lib/skills/interception";
 import { MEMORY_BUILTIN_TOOL_NAMES } from "@/lib/skills/memoryBuiltins";
@@ -6397,8 +6399,13 @@ async function handleChatCoreInner({
       // Same adaptive budget the pre-handoff readiness gate above just used —
       // reasoning models that legitimately take a while to say anything keep
       // that same patience for their first REAL content, not just their first
-      // lifecycle frame. See pipeWithDisconnect's own doc comment.
-      contentStallTimeoutMs: streamReadinessPolicy.timeoutMs,
+      // lifecycle frame. See pipeWithDisconnect's own doc comment. Floored at
+      // STREAM_CONTENT_STALL_TIMEOUT_MS (default 300s) so long redacted Claude
+      // thinking is not cut at the 80-180s readiness budget.
+      contentStallTimeoutMs: resolveContentStallTimeoutMs(
+        streamReadinessPolicy.timeoutMs,
+        STREAM_CONTENT_STALL_TIMEOUT_MS
+      ),
     });
     const clientFacingStream = wrapReadableStreamWithFinalize(
       finalStream,

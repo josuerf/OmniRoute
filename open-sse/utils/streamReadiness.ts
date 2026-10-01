@@ -246,6 +246,45 @@ export function frameHasStructuredStreamError(frame: string): boolean {
   return false;
 }
 
+const CLAUDE_REASONING_DELTA_TYPES = new Set(["thinking_delta", "signature_delta"]);
+const CLAUDE_REASONING_BLOCK_TYPES = new Set(["thinking", "redacted_thinking"]);
+
+function isClaudeReasoningProgressPayload(payload: Record<string, unknown>): boolean {
+  if (payload.type === "content_block_delta" && isRecord(payload.delta)) {
+    return CLAUDE_REASONING_DELTA_TYPES.has(payload.delta.type as string);
+  }
+  if (payload.type === "content_block_start" && isRecord(payload.content_block)) {
+    return CLAUDE_REASONING_BLOCK_TYPES.has(payload.content_block.type as string);
+  }
+  return false;
+}
+
+/**
+ * Number of Claude reasoning frames in an SSE frame that prove the model is
+ * still generating even though nothing user-visible arrived. Under the
+ * redact-thinking / thinking-token-count betas the whole thinking phase is
+ * streamed as `thinking_delta` frames with `thinking: ""` plus an
+ * `estimated_tokens` counter, then a `signature_delta` — none of which is
+ * content for #8649, but all of which are liveness for the content-stall
+ * watchdog.
+ */
+function countReasoningProgressFrames(frame: string): number {
+  let count = 0;
+  for (const line of frame.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const data = trimmed.slice(5).trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      const parsed: unknown = JSON.parse(data);
+      if (isRecord(parsed) && isClaudeReasoningProgressPayload(parsed)) count += 1;
+    } catch {
+      // non-JSON data lines are never reasoning progress
+    }
+  }
+  return count;
+}
+
 export type StreamContentWatcher = {
   /** Feed a decoded slice of the client-facing stream. Safe to call with partial frames. */
   note: (text: string) => void;
@@ -267,6 +306,12 @@ export type StreamContentWatcher = {
    * so #8649 can stand down without treating errors as model output.
    */
   sawError: () => boolean;
+  /**
+   * Running count of reasoning frames that carry no visible output (Claude
+   * redacted/omitted thinking progress). Never feeds sawContent — callers use
+   * it as a liveness signal only, e.g. to re-arm the content-stall watchdog.
+   */
+  reasoningProgressCount: () => number;
 };
 
 /**
@@ -290,12 +335,14 @@ export function createStreamContentWatcher(): StreamContentWatcher {
   let legitEmpty = false;
   let sse = false;
   let error = false;
+  let reasoningProgress = 0;
 
   const inspect = (frame: string): void => {
     if (!frame) return;
     if (!sse && SSE_FIELD_LINE.test(frame)) sse = true;
     if (!error && frameHasStructuredStreamError(frame)) error = true;
     if (!content && hasUsefulStreamContent(frame)) content = true;
+    if (!content) reasoningProgress += countReasoningProgressFrames(frame);
     if (legitEmpty) return;
     for (const match of frame.matchAll(TERMINAL_REASON_PATTERN)) {
       if (LEGIT_EMPTY_TERMINAL_REASONS.has(match[1])) {
@@ -328,6 +375,7 @@ export function createStreamContentWatcher(): StreamContentWatcher {
     sawLegitEmptyTerminal: () => legitEmpty,
     sawSseFrame: () => sse,
     sawError: () => error,
+    reasoningProgressCount: () => reasoningProgress,
   };
 }
 

@@ -1,4 +1,7 @@
-import { getUpstreamTimeoutConfig } from "@/shared/utils/runtimeTimeouts";
+import {
+  getStreamContentStallTimeoutMs,
+  getUpstreamTimeoutConfig,
+} from "@/shared/utils/runtimeTimeouts";
 import { resolvePublicCred } from "../utils/publicCreds.ts";
 import type { LegacyProvider } from "./providerRegistry.ts";
 import { loadProviderCredentials } from "./credentialLoader.ts";
@@ -43,6 +46,15 @@ export const STREAM_READINESS_TIMEOUT_MS = upstreamTimeouts.streamReadinessTimeo
 // STREAM_READINESS_MAX_TIMEOUT_MS when an operator needs longer first-event
 // windows for slow-thinking agent workloads.
 export const STREAM_READINESS_MAX_TIMEOUT_MS = upstreamTimeouts.streamReadinessMaxTimeoutMs;
+
+// Floor for the post-handoff content-stall watchdog (default 300s). Override
+// with STREAM_CONTENT_STALL_TIMEOUT_MS; 0 falls back to the readiness budget.
+export const STREAM_CONTENT_STALL_TIMEOUT_MS = getStreamContentStallTimeoutMs(
+  process.env,
+  (message) => {
+    console.warn(`[open-sse] ${message}`);
+  }
+);
 
 // Error code used when an upstream Antigravity request stalls before response
 // headers are returned. Keep it shared so executor, core normalization and
