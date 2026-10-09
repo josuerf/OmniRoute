@@ -15,7 +15,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import DatabaseSync from "better-sqlite3";
 
-import { SELF_ACCOUNT_QUOTA_SCOPE, SELF_USAGE_SCOPE } from "../../src/shared/constants/selfServiceScopes.ts";
+import {
+  SELF_ACCOUNT_QUOTA_SCOPE,
+  SELF_USAGE_SCOPE,
+} from "../../src/shared/constants/selfServiceScopes.ts";
 import { buildApiKeySelfServiceStatus } from "../../src/lib/usage/apiKeySelfService.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -57,10 +60,7 @@ test("self-service scope migration backfills own usage once and preserves explic
   assert.deepEqual(scopesById.get("legacy-empty"), [SELF_USAGE_SCOPE]);
   assert.deepEqual(scopesById.get("legacy-null"), [SELF_USAGE_SCOPE]);
   assert.deepEqual(scopesById.get("custom"), ["custom:scope", SELF_USAGE_SCOPE]);
-  assert.deepEqual(scopesById.get("quota-opt-in"), [
-    SELF_ACCOUNT_QUOTA_SCOPE,
-    SELF_USAGE_SCOPE,
-  ]);
+  assert.deepEqual(scopesById.get("quota-opt-in"), [SELF_ACCOUNT_QUOTA_SCOPE, SELF_USAGE_SCOPE]);
   assert.deepEqual(scopesById.get("already-disabled-after-migration"), ["custom:scope"]);
 });
 
@@ -231,7 +231,11 @@ test("self-service status reports all explicitly allowed provider account quotas
         usage: {
           plan: "Claude Max",
           quotas: {
-            daily: { usedPercentage: 35, remainingPercentage: 65, resetAt: "2026-05-30T00:00:00.000Z" },
+            daily: {
+              usedPercentage: 35,
+              remainingPercentage: 65,
+              resetAt: "2026-05-30T00:00:00.000Z",
+            },
           },
         },
         cache: { quotas: null, plan: null, message: null, fetchedAt: "" },
@@ -268,7 +272,10 @@ test("self-service status reports all active provider account quotas for unrestr
       { id: "conn-disabled", provider: "claude", isActive: false },
     ],
     fetchAndPersistProviderLimits: async (connectionId: string) => ({
-      connection: { id: connectionId, provider: connectionId === "conn-codex" ? "codex" : "cursor" },
+      connection: {
+        id: connectionId,
+        provider: connectionId === "conn-codex" ? "codex" : "cursor",
+      },
       usage: {
         plan: connectionId === "conn-codex" ? "ChatGPT Plus" : "Cursor Pro",
         quotas: {
@@ -327,6 +334,66 @@ test("self-service status isolates provider account quota fetch failures per con
     available: false,
     reason: "fetch_failed",
   });
+});
+
+test("self-service status exposes linked connection emails only for keys with explicit allowedConnections", async () => {
+  const connections: Record<
+    string,
+    { id: string; provider: string; isActive: boolean; email: string }
+  > = {
+    "conn-owner": {
+      id: "conn-owner",
+      provider: "claude",
+      isActive: true,
+      email: "ana.silva@example.com",
+    },
+    "conn-other": {
+      id: "conn-other",
+      provider: "claude",
+      isActive: true,
+      email: "bruno.souza@example.com",
+    },
+  };
+  const fetchAndPersistProviderLimits = async () => {
+    throw new Error("upstream unavailable");
+  };
+
+  const restricted = makeDeps({
+    getProviderConnectionById: async (connectionId: string) => connections[connectionId],
+    fetchAndPersistProviderLimits,
+  });
+  const restrictedStatus = await buildApiKeySelfServiceStatus(
+    {
+      id: "key-restricted",
+      name: "ana-silva",
+      scopes: [SELF_USAGE_SCOPE, SELF_ACCOUNT_QUOTA_SCOPE],
+      allowedConnections: ["conn-owner", "conn-other"],
+    },
+    restricted.deps
+  );
+  assert.deepEqual(
+    restrictedStatus.accountQuotas.map((quota: { email?: string }) => quota.email),
+    ["ana.silva@example.com", "bruno.souza@example.com"]
+  );
+
+  const unrestricted = makeDeps({
+    getProviderConnections: async () => Object.values(connections),
+    fetchAndPersistProviderLimits,
+  });
+  const unrestrictedStatus = await buildApiKeySelfServiceStatus(
+    {
+      id: "key-unrestricted",
+      name: "unrestricted",
+      scopes: [SELF_USAGE_SCOPE, SELF_ACCOUNT_QUOTA_SCOPE],
+      allowedConnections: [],
+    },
+    unrestricted.deps
+  );
+  assert.equal(unrestrictedStatus.accountQuotas.length, 2);
+  assert.equal(
+    unrestrictedStatus.accountQuotas.some((quota: Record<string, unknown>) => "email" in quota),
+    false
+  );
 });
 
 test("self-service status isolates explicit provider connection lookup failures", async () => {
@@ -454,11 +521,19 @@ test("self-service fetches Moonshot custom-node quota via providerSpecificData h
     fetchAndPersistProviderLimits: async (connectionId: string) => {
       fetches.push(connectionId);
       return {
-        connection: { id: connectionId, provider: "openai-compatible-chat-e2971611-bc02-4c37-8fc5-39b8e3906fdf" },
+        connection: {
+          id: connectionId,
+          provider: "openai-compatible-chat-e2971611-bc02-4c37-8fc5-39b8e3906fdf",
+        },
         usage: {
           plan: "Kimi 开放平台（国内）",
           quotas: {
-            available: { remaining: 15, remainingPercentage: 100, unlimited: true, currency: "CNY" },
+            available: {
+              remaining: 15,
+              remainingPercentage: 100,
+              unlimited: true,
+              currency: "CNY",
+            },
           },
         },
         cache: { quotas: null, plan: null, message: null, fetchedAt: "" },

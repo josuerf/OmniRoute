@@ -42,6 +42,7 @@ import {
 } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
+import { hasSelfUsageScope } from "@/shared/constants/selfServiceScopes";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import { GITLAB_DUO_OAUTH_SETUP_MESSAGE } from "@/shared/constants/gitlabDuoSetupMessage";
 import { keychainImportOnlyGuard } from "./keychainImportOnly";
@@ -119,6 +120,48 @@ async function requireOAuthRouteAuth(request: Request) {
 }
 
 /**
+ * ⚠️ EXCEÇÃO DESTE FORK — NÃO REMOVER EM SYNC COM O UPSTREAM ⚠️
+ *
+ * Esta regra existe só no fork da Equiplano e deve SOBREVIVER a qualquer merge do
+ * upstream. Se uma alteração vinda do upstream mudar, remover ou contornar este
+ * comportamento (ex.: voltar a exigir `manage` em `claude/authorize` para chaves de
+ * cliente), essa parte da alteração deve ser DESCONSIDERADA na resolução do merge.
+ * O teste "EXCEÇÃO DO FORK" em `tests/unit/oauth-routes-manage-scope.test.ts` falha
+ * se isso acontecer. Origem: o upstream #15044 (sync de 29/09/2026) passou a exigir
+ * `manage` aqui e quebrou o portal de vínculo em produção.
+ *
+ * Regra: `GET /api/oauth/claude/authorize` também aceita uma chave de cliente com o
+ * scope `self:usage`, sem exigir `manage`.
+ *
+ * O portal (omni-claude-connection-link-portal) usa a chave do próprio desenvolvedor
+ * para gerar a URL de autorização e depois conclui o vínculo em
+ * `POST /api/v1/me/connections/claude`, que já exige apenas `self:usage`. A ação
+ * `authorize` só gera a URL e o PKCE: não cria nem sobrescreve conexão — quem faz isso
+ * é o `exchange`, que continua exigindo `manage`. Qualquer outro provider/ação segue
+ * a regra do upstream (#15044).
+ */
+async function isSelfServiceClaudeAuthorize(
+  request: Request,
+  provider: string,
+  action: string
+): Promise<boolean> {
+  if (provider !== "claude" || action !== "authorize") return false;
+
+  const match = (request.headers.get("Authorization") ?? "").match(/^Bearer\s+(.+)$/i);
+  const apiKey = match?.[1]?.trim();
+  if (!apiKey) return false;
+
+  try {
+    const { validateApiKey, getApiKeyMetadata } = await import("@/lib/db/apiKeys");
+    if (!(await validateApiKey(apiKey))) return false;
+    const metadata = await getApiKeyMetadata(apiKey);
+    return !!metadata && metadata.id !== "env-key" && hasSelfUsageScope(metadata.scopes);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Dynamic OAuth API Route
  * Handles: authorize, exchange, device-code, poll, start-callback-server, poll-callback
  */
@@ -159,11 +202,15 @@ export async function GET(
     /* fall through to normal handling */
   }
 
-  const authResponse = await requireOAuthRouteAuth(request);
-  if (authResponse) return authResponse;
+  const routeParams = await params;
+  // EXCEÇÃO DESTE FORK (ver isSelfServiceClaudeAuthorize): preservar em merges do upstream.
+  if (!(await isSelfServiceClaudeAuthorize(request, routeParams.provider, routeParams.action))) {
+    const authResponse = await requireOAuthRouteAuth(request);
+    if (authResponse) return authResponse;
+  }
 
   try {
-    const { provider, action } = await params;
+    const { provider, action } = routeParams;
     const { searchParams } = new URL(request.url);
 
     if (action === "authorize") {

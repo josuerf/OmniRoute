@@ -140,6 +140,14 @@ interface AccountQuotaConnection {
   provider: string;
   lookupFailed?: boolean;
   providerSpecificData?: unknown;
+  /**
+   * Email da conta upstream (ex.: conta Claude). Só é preenchido quando a chave
+   * tem `allowedConnections` explícitas — ou seja, apenas contas vinculadas à
+   * própria chave — para que uma chave sem restrição não enumere o email de
+   * todas as conexões do servidor. Usado pelo portal de vínculo para achar a
+   * conta do dono da chave entre várias contas vinculadas.
+   */
+  email?: string;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -295,7 +303,10 @@ function isSupportedProvider(
   return supportsProviderQuota(provider, connection);
 }
 
-function getConnectionIdentity(value: unknown): AccountQuotaConnection | null {
+function getConnectionIdentity(
+  value: unknown,
+  includeEmail: boolean
+): AccountQuotaConnection | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as JsonRecord;
   if (record.isActive === false) return null;
@@ -304,10 +315,13 @@ function getConnectionIdentity(value: unknown): AccountQuotaConnection | null {
   const provider = typeof record.provider === "string" ? record.provider : "";
   if (!id || !provider) return null;
 
+  const email = includeEmail && typeof record.email === "string" ? record.email.trim() : "";
+
   return {
     id,
     provider,
     providerSpecificData: record.providerSpecificData,
+    ...(email && { email }),
   };
 }
 
@@ -350,7 +364,7 @@ async function listAccountQuotaConnections(
       continue;
     }
 
-    const connection = getConnectionIdentity(rawConnection);
+    const connection = getConnectionIdentity(rawConnection, allowedConnections.length > 0);
     if (!connection || seen.has(connection.id)) continue;
     seen.add(connection.id);
     connections.push(connection);
@@ -379,6 +393,7 @@ async function resolveConnectionAccountQuota(
     return {
       provider: connection.provider,
       connectionId: connection.id,
+      ...(connection.email && { email: connection.email }),
       shared: true,
       ...unavailableAccountQuota("connection_lookup_failed"),
     };
@@ -388,6 +403,7 @@ async function resolveConnectionAccountQuota(
     return {
       provider: connection.provider,
       connectionId: connection.id,
+      ...(connection.email && { email: connection.email }),
       shared: true,
       ...unavailableAccountQuota("not_supported"),
     };
@@ -407,6 +423,7 @@ async function resolveConnectionAccountQuota(
       return {
         provider: connection.provider,
         connectionId: connection.id,
+        ...(connection.email && { email: connection.email }),
         shared: true,
         ...unavailableAccountQuota("not_available"),
       };
@@ -415,6 +432,7 @@ async function resolveConnectionAccountQuota(
     return {
       provider: connection.provider,
       connectionId: connection.id,
+      ...(connection.email && { email: connection.email }),
       shared: true,
       ...(plan !== undefined && { plan }),
       ...(normalizedQuotas && { quotas: normalizedQuotas }),
@@ -423,6 +441,7 @@ async function resolveConnectionAccountQuota(
     return {
       provider: connection.provider,
       connectionId: connection.id,
+      ...(connection.email && { email: connection.email }),
       shared: true,
       ...unavailableAccountQuota("fetch_failed"),
     };

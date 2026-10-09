@@ -226,3 +226,65 @@ test("before a password exists only a local caller may use the routes", async ()
     if (savedPassword !== undefined) process.env.INITIAL_PASSWORD = savedPassword;
   }
 });
+
+// ⚠️ EXCEÇÃO DESTE FORK — NÃO REMOVER EM SYNC COM O UPSTREAM ⚠️
+// O portal de vínculo (omni-claude-connection-link-portal) gera a URL de autorização do
+// Claude com a chave do próprio desenvolvedor (scope `self:usage`, sem `manage`). Só
+// `claude/authorize`. Se um merge do upstream fizer estes testes falharem, a alteração
+// do upstream é que deve ser descartada nesse ponto — NÃO ajuste estes testes para
+// passar. Ver `isSelfServiceClaudeAuthorize` em
+// `src/app/api/oauth/[provider]/[action]/route.ts`.
+const FORK_EXCEPTION_MSG =
+  "EXCEÇÃO DO FORK quebrada: um merge do upstream alterou a regra de claude/authorize " +
+  "com self:usage. Descarte essa parte da alteração do upstream; não altere este teste.";
+const selfUsageKey = await apiKeysDb.createApiKey("self-usage", "machine1234567890", [
+  "self:usage",
+]);
+
+function claudeAuthorizeRequest(apiKey: string) {
+  return jsonRequest(
+    "/api/oauth/claude/authorize?redirect_uri=https%3A%2F%2Fportal.example%2Fcallback",
+    apiKey,
+    null,
+    "GET"
+  );
+}
+
+test("EXCEÇÃO DO FORK: a self:usage API key can generate the Claude authorize URL without the manage scope", async () => {
+  const res = await actionRoute.GET(
+    claudeAuthorizeRequest(selfUsageKey.key),
+    actionParams("claude", "authorize")
+  );
+  assert.equal(res.status, 200, FORK_EXCEPTION_MSG);
+  const body = await res.json();
+  assert.equal(typeof body.authUrl, "string");
+  assert.equal(typeof body.codeVerifier, "string");
+});
+
+test("EXCEÇÃO DO FORK: an API key without self:usage or manage still cannot generate the Claude authorize URL", async () => {
+  const res = await actionRoute.GET(
+    claudeAuthorizeRequest(plainKey.key),
+    actionParams("claude", "authorize")
+  );
+  assert.equal(res.status, 403);
+});
+
+test("EXCEÇÃO DO FORK: the self:usage carve-out does not extend to other providers or actions", async () => {
+  const otherProvider = await actionRoute.GET(
+    jsonRequest("/api/oauth/codex/authorize", selfUsageKey.key, null, "GET"),
+    actionParams("codex", "authorize")
+  );
+  assert.equal(otherProvider.status, 403);
+
+  const exchange = await actionRoute.POST(
+    jsonRequest("/api/oauth/claude/exchange", selfUsageKey.key, {
+      code: "c",
+      redirectUri: "https://portal.example/callback",
+      codeVerifier: "v",
+      state: "s",
+    }),
+    actionParams("claude", "exchange")
+  );
+  assert.equal(exchange.status, 403);
+  assert.deepEqual(outboundCalls, []);
+});
