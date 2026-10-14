@@ -73,15 +73,24 @@ test("empty thinking_delta progress frames are reasoning progress, not content",
 
   assert.equal(watcher.sawContent(), false, "#8649 empty-content semantics must not change");
   // thinking block start + two progress deltas
-  assert.equal(watcher.reasoningProgressCount(), 3);
+  assert.equal(watcher.reasoningProgress(), 3);
 });
 
-test("signature_delta and redacted_thinking blocks count as reasoning progress", () => {
+test("a redacted_thinking block start is reasoning progress, not content", () => {
   const watcher = createStreamContentWatcher();
-  watcher.note(SIGNATURE + REDACTED_START);
+  watcher.note(REDACTED_START);
 
   assert.equal(watcher.sawContent(), false);
-  assert.equal(watcher.reasoningProgressCount(), 2);
+  assert.equal(watcher.reasoningProgress(), 1);
+});
+
+// Upstream v3.8.52 (#15433) treats a signature_delta as real output, which ends the
+// content-stall watch; the fork adopted that rather than keeping its own narrower rule.
+test("a signature_delta counts as content (upstream semantics)", () => {
+  const watcher = createStreamContentWatcher();
+  watcher.note(SIGNATURE);
+
+  assert.equal(watcher.sawContent(), true);
 });
 
 test("ping and lifecycle frames are not reasoning progress", () => {
@@ -89,16 +98,16 @@ test("ping and lifecycle frames are not reasoning progress", () => {
   watcher.note(MESSAGE_START + PING);
   watcher.note('data: {"type":"response.in_progress","response":{"id":"r","output":[]}}\n\n');
 
-  assert.equal(watcher.reasoningProgressCount(), 0);
+  assert.equal(watcher.reasoningProgress(), 0);
 });
 
 test("a progress frame split across two network chunks is counted once", () => {
   const watcher = createStreamContentWatcher();
   const cut = Math.floor(THINKING_PROGRESS.length / 2);
   watcher.note(THINKING_PROGRESS.slice(0, cut));
-  assert.equal(watcher.reasoningProgressCount(), 0);
+  assert.equal(watcher.reasoningProgress(), 0);
   watcher.note(THINKING_PROGRESS.slice(cut));
-  assert.equal(watcher.reasoningProgressCount(), 1);
+  assert.equal(watcher.reasoningProgress(), 1);
 });
 
 test("pipeWithDisconnect keeps a long thinking phase alive past the content-stall budget", async () => {

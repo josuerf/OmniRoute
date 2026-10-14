@@ -226,6 +226,9 @@ const pendingIdByCorrelation = pendingState.pendingIdByCorrelation;
 const DEFAULT_MAX_PENDING_REQUEST_AGE_MS = 60 * 60 * 1000;
 const MAX_PENDING_DETAILS = 5000;
 const PENDING_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+/** Monotonic suffix making pending ids unique even inside one millisecond (upstream #15640). */
+let pendingIdSequence = 0;
+
 /**
  * IAF-492: the pending store had an age cap and a COUNT cap, never a size cap.
  * One detail carries up to four truncated payload previews plus the live
@@ -516,7 +519,9 @@ export function trackPendingRequest(
         // crypto RNG (not Math.random) to satisfy CodeQL js/insecure-randomness —
         // this pending-request id flows into attempt logging; it's a correlation
         // id, not a security secret.
-        id: reusableId ?? `${now}-${globalThis.crypto.randomUUID().slice(0, 6)}`,
+        id:
+          reusableId ??
+          `${now}-${(globalThis.crypto.randomUUID() as string).replace(/-/g, "").slice(0, 12)}-${(++pendingIdSequence).toString(36)}`,
         model,
         provider,
         connectionId,
@@ -1233,3 +1238,6 @@ export async function getRecentLogs(limit = 200) {
     return [];
   }
 }
+
+/** Name used by the upstream sweep test; same measure as getPendingDetailsByteSize. */
+export const getPendingRetainedBytes = getPendingDetailsByteSize;

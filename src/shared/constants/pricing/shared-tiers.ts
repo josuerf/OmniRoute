@@ -11,6 +11,14 @@ export const GPT_6_ASTRA_PRICING = {
   cache_creation: 12.5,
 };
 
+export const GPT_6_SOL_PRICING = {
+  input: 2.0,
+  output: 10.0,
+  cached: 0.1,
+  reasoning: 10.0,
+  cache_creation: 2.5,
+};
+
 export const GPT_5_3_CODEX_PRICING = {
   input: 5.0,
   output: 20.0,
@@ -140,11 +148,11 @@ export const CLAUDE_SONNET_5_5_PRICING = {
 // Claude Sonnet 5 — Sonnet-tier ($3/$15/M, same sticker as Sonnet 4.6; intro
 // $2/$10 through 2026-08-31 not encoded — track the standard rate like 4.6).
 export const CLAUDE_SONNET_5_PRICING = {
-  input: 3.0,
-  output: 15.0,
-  cached: 1.5,
-  reasoning: 22.5,
-  cache_creation: 3.0,
+  input: 2.0,
+  output: 10.0,
+  cached: 0.2,
+  reasoning: 10.0,
+  cache_creation: 2.5,
 };
 
 export const GLM_PRICING = {

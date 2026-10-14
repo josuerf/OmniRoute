@@ -21,6 +21,7 @@ import { exchangeTokens } from "@/lib/oauth/providers";
 import {
   findExistingOAuthConnectionMatch,
   buildOAuthConnectionCreatePayload,
+  buildOAuthTokenUpdate,
 } from "@/lib/oauth/connectionPersistence";
 import {
   createProviderConnection,
@@ -124,8 +125,7 @@ export async function exchangeAndPersistConnection(
     const matchId = typeof match?.id === "string" ? match.id : null;
     if (matchId) {
       connection = await updateProviderConnection(matchId, {
-        ...tokenData,
-        expiresAt,
+        ...buildOAuthTokenUpdate(tokenData, expiresAt),
         ...antigravityPersistStatus(degradedProject),
         isActive: true,
       });

@@ -11,6 +11,7 @@ import CacheSettingsTab from "@/app/(dashboard)/dashboard/settings/components/Ca
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
+  useFormatter: () => ({ number: (value: number) => String(value) }),
 }));
 
 const roots: Array<{ root: Root; el: HTMLDivElement }> = [];
