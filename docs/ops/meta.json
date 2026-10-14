@@ -4,6 +4,7 @@
     "RELEASE_CHECKLIST",
     "RELEASE_GREEN",
     "BRANCHING_MODEL",
+    "RELEASE_STRATEGY",
     "BRANCH_PROTECTION_MAIN",
     "MERGE_TRAIN",
     "HOMOLOGATION",
@@ -17,8 +18,10 @@
     "SQLITE_RUNTIME",
     "REDIS_PRODUCTION_CONFIG",
     "MONITORING_GUIDE",
+    "PERF_BASELINE",
     "CONTRIBUTION_GOLDEN_PATH",
     "COVERAGE_PLAN",
+    "LTS_GO_NO_GO",
     "claude-connection-link-staging-checklist"
   ]
 }
