@@ -18,7 +18,7 @@ import type { ProviderPlan, QuotaUnit } from "./dimensions";
 import { dimensionKeyToString } from "./dimensions";
 import { decideFairShare } from "./fairShare";
 import { resolvePlan } from "./planResolver";
-import { getSaturation } from "./saturationSignals";
+import { getSaturation, peekSaturation } from "./saturationSignals";
 import { getQuotaStore } from "./QuotaStore";
 import { listAllocationsForApiKey, getPool } from "@/lib/db/quotaPools";
 import { getModelCap } from "@/lib/db/quotaModelCaps";
@@ -226,10 +226,13 @@ export async function enforceQuotaShare(input: EnforceInput): Promise<EnforceDec
     const consumedThisKey = await store.peek(input.apiKeyId, dimKey).catch(() => 0);
     consumedByThisKey[dimKeyStr] = consumedThisKey;
 
-    // Global saturation signal — fail-open: 0 (generous mode)
-    const globalUsedPercent = await getSaturation(input.connectionId, input.provider, dim).catch(
-      () => 0
-    );
+    // Global saturation signal — fail-open: 0 (generous mode). For percent
+    // (account-window) dimensions it is the POOL's utilization, not just the
+    // serving connection's: one exhausted account must not read as "no shared
+    // capacity" while the other members still have headroom.
+    const globalUsedPercent = COUNTABLE_UNITS.has(dim.unit)
+      ? await getSaturation(input.connectionId, input.provider, dim).catch(() => 0)
+      : await poolSaturation(pool, input, dim);
 
     // Effective limit = per-account plan limit × number of accounts in the pool.
     // This is the summed budget: N accounts contribute N × L capacity to the shared bucket.
@@ -248,6 +251,8 @@ export async function enforceQuotaShare(input: EnforceInput): Promise<EnforceDec
       consumedTotal = await store.poolConsumedTotal(pool.id, dimKey).catch(() => 0);
     } else {
       // percent (account-quota window): the saturation signal is authoritative.
+      // globalUsedPercent is the pool mean, so this is the sum of every member's
+      // utilization — it reaches effectiveLimit only when all of them are spent.
       consumedTotal = globalUsedPercent * effectiveLimit;
     }
 
@@ -580,6 +585,37 @@ function activeBudgetSchedule(poolId: string): QuotaSchedule | null {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Pool-wide utilization (0..1) of a percent dimension: the mean of every
+ * member's own plan-window utilization.
+ *
+ * The serving connection is read through getSaturation (fetched on a cache
+ * miss) exactly as before. The other members contribute only their CACHED
+ * reading — the cache is warmed by their own traffic — and a member nobody
+ * routed through in the last 30s counts as 0 (fail-open, B16). This keeps one
+ * request from fanning out into N reads of the rate-limited oauth/usage
+ * endpoint.
+ */
+async function poolSaturation(
+  pool: import("@/lib/db/quotaPools").QuotaPool,
+  input: EnforceInput,
+  dim: { unit: QuotaUnit; window: import("./dimensions").QuotaWindow }
+): Promise<number> {
+  const own = await getSaturation(input.connectionId, input.provider, dim).catch(() => 0);
+  const members =
+    Array.isArray(pool.connectionIds) && pool.connectionIds.length > 0
+      ? pool.connectionIds
+      : [pool.connectionId];
+  if (members.length <= 1) return own;
+
+  let sum = own;
+  for (const memberId of members) {
+    if (memberId === input.connectionId) continue;
+    sum += peekSaturation(memberId, input.provider, dim) ?? 0;
+  }
+  return sum / members.length;
+}
 
 function messageForReason(reason: string, provider: string): string {
   switch (reason) {

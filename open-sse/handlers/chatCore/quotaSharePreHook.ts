@@ -4,13 +4,14 @@
  *
  * Extracted byte-identically from handleChatCore. Runs after provider/model/credentials/apiKeyInfo
  * are fully resolved, before the dispatcher. Fail-open per B16: errors → allow. A `block` decision
- * finalizes the pending-request slot registered at handler entry and returns the 429 response the
- * handler sends; otherwise it returns null (after flagging a soft deprioritize on the current combo
+ * finalizes the pending-request slot registered at handler entry and returns the 429 error result
+ * (createErrorResult) the handler sends; otherwise it returns null (after flagging a soft deprioritize on the current combo
  * candidate when the pool asks for it). The pending-request finalization is injected by the
  * handler (`finalizePendingRequest`) so this engine leaf takes no new open-sse → src import edge.
  */
 
-import type { EnforceDecision } from "@/lib/quota/types";
+import type { EnforceDecision, EnforceInput } from "@/lib/quota/types";
+import { createErrorResult } from "../../utils/error.ts";
 
 type LoggerLike =
   { info?: (...args: unknown[]) => void; warn?: (...args: unknown[]) => void } | null | undefined;
@@ -25,6 +26,7 @@ export async function runQuotaSharePreHook({
   comboExecutionKey,
   finalizePendingRequest,
   log,
+  enforce,
 }: {
   apiKeyInfo: { id?: string } | null | undefined;
   credentials: { connectionId?: string } | null | undefined;
@@ -35,11 +37,13 @@ export async function runQuotaSharePreHook({
   comboExecutionKey: string | null;
   finalizePendingRequest: () => void;
   log?: LoggerLike;
-}): Promise<Response | null> {
+  /** Test seam; defaults to enforceQuotaShare. */
+  enforce?: (input: EnforceInput) => Promise<EnforceDecision>;
+}): Promise<ReturnType<typeof createErrorResult> | null> {
   let quotaSoftDeprioritize = false;
   if (apiKeyInfo?.id && credentials?.connectionId) {
     try {
-      const { enforceQuotaShare } = await import("@/lib/quota/enforce");
+      const enforceQuotaShare = enforce ?? (await import("@/lib/quota/enforce")).enforceQuotaShare;
       const decision = await enforceQuotaShare({
         apiKeyId: apiKeyInfo.id,
         connectionId: credentials.connectionId,
@@ -57,7 +61,6 @@ export async function runQuotaSharePreHook({
       });
 
       if (decision.kind === "block") {
-        const { buildErrorBody } = await import("../../utils/error.ts");
         log?.warn?.(
           "QUOTA_SHARE",
           `[quotaShare] blocked apiKeyId=${apiKeyInfo.id} provider=${provider ?? "unknown"}: ${decision.reason}`
@@ -67,14 +70,15 @@ export async function runQuotaSharePreHook({
         // pending detail lingers as an orphaned status-0 call-log row until the
         // reaper sweeps it (mirrors the other pre-upstream error returns).
         finalizePendingRequest();
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (decision.retryAfterSeconds) {
-          headers["Retry-After"] = String(decision.retryAfterSeconds);
-        }
-        return new Response(JSON.stringify(buildErrorBody(429, decision.reason)), {
-          status: 429,
-          headers,
-        });
+        // Same result shape as every other pre-upstream rejection in handleChatCore.
+        // A bare Response here made callers read `result.response.headers` off
+        // undefined, turning this 429 into a 502 that the combo treated as a
+        // provider failure (skipping every remaining target of the provider).
+        return createErrorResult(
+          429,
+          decision.reason,
+          decision.retryAfterSeconds ? decision.retryAfterSeconds * 1000 : null
+        );
       }
 
       if (decision.kind === "allow" && decision.deprioritize) {

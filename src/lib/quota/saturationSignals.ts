@@ -268,6 +268,19 @@ function cacheKey(connectionId: string, provider: string, dim: DimensionSpec): s
   return `${provider}:${connectionId}:${dim.unit}:${dim.window}`;
 }
 
+/**
+ * Cached saturation (0..1) for a connection+dimension, or undefined on a miss.
+ * Never fetches: for callers that aggregate across many connections on the
+ * request hot path and must not fan one request out into N upstream reads.
+ */
+export function peekSaturation(
+  connectionId: string,
+  provider: string,
+  dim: DimensionSpec
+): number | undefined {
+  return _cache.get(cacheKey(connectionId, provider, dim));
+}
+
 // Exported for test reset
 export function _clearSaturationCache(): void {
   _cache.clear();
