@@ -3,6 +3,7 @@
   "pages": [
     "RELEASE_CHECKLIST",
     "RELEASE_GREEN",
+    "BUILD_WARNINGS",
     "BRANCHING_MODEL",
     "RELEASE_STRATEGY",
     "BRANCH_PROTECTION_MAIN",
@@ -22,6 +23,8 @@
     "CONTRIBUTION_GOLDEN_PATH",
     "COVERAGE_PLAN",
     "LTS_GO_NO_GO",
-    "claude-connection-link-staging-checklist"
+    "claude-connection-link-staging-checklist",
+    "WORKTREE_ISOLATION",
+    "HARD_RULES_DETAIL"
   ]
 }

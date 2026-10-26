@@ -117,7 +117,11 @@ export async function exchangeAndPersistConnection(
     : null;
 
   let connection: any;
-  if (tokenData.email) {
+  // Update-in-place when we can identify the account: by email, or by an
+  // explicit connectionId from a re-auth (providers whose token response
+  // has no email — kimi-coding — would otherwise DUPLICATE the connection
+  // on every re-auth; #16984).
+  if (tokenData.email || connectionId) {
     const existing = await getProviderConnections({ provider });
     // Codex accounts sharing an email require workspaceId/chatgptUserId
     // agreement to be treated as the same account (#7737).
