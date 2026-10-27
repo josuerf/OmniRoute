@@ -31,3 +31,19 @@ export function createAttemptLimiter(
     },
   };
 }
+
+/** Per-key async mutex (in process). */
+export function createKeyedMutex() {
+  const tails = new Map<string, Promise<unknown>>();
+  return async function run<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = tails.get(key) ?? Promise.resolve();
+    const next = prev.then(fn, fn);
+    const tail = next.catch(() => undefined);
+    tails.set(key, tail);
+    try {
+      return await next;
+    } finally {
+      if (tails.get(key) === tail) tails.delete(key);
+    }
+  };
+}

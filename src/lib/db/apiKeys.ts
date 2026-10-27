@@ -814,7 +814,7 @@ export function getApiKeyByName(name: string): ApiKeyLookupByName | null {
   getPreparedStatements(db);
   const row = db
     .prepare(
-      "SELECT id, name, key, key_hash, is_active, is_banned, revoked_at, expires_at FROM api_keys WHERE name = ? ORDER BY created_at ASC LIMIT 1"
+      "SELECT id, name, key, key_hash, is_active, is_banned, revoked_at, expires_at FROM api_keys WHERE name = ? ORDER BY (is_active = 1 AND revoked_at IS NULL) DESC, created_at ASC LIMIT 1"
     )
     .get(name) as Record<string, unknown> | undefined;
   if (!row) return null;

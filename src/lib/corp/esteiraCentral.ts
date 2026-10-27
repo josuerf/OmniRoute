@@ -8,8 +8,20 @@ import { z } from "zod";
 
 export const CENTRAL_TIMEOUT_MS = 5000;
 
+/** Exactly one `@`, ASCII local part, non-empty domain (after NFKC). */
+const EMAIL_LOCAL = /^[A-Za-z0-9._-]+$/;
+export function emailCorporativoValido(email: string): boolean {
+  // Local part must be ASCII BEFORE normalization (NFKC would fold U+212A into "K").
+  const parts = email.split("@");
+  return parts.length === 2 && EMAIL_LOCAL.test(parts[0]) && parts[1].normalize("NFKC").length > 0;
+}
+
 const sessaoSchema = z.object({
-  email: z.string().min(3).max(320),
+  email: z
+    .string()
+    .min(3)
+    .max(320)
+    .refine((v) => emailCorporativoValido(v.trim())),
   validaAte: z.string().min(1).max(64),
   nome: z.string().max(256),
   papel: z.string().max(64),
@@ -27,7 +39,11 @@ function resolveCentralBase(): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    if (url.search || url.hash || url.username || url.password) return null;
+    if (url.protocol !== "https:") {
+      const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+      if (!(url.protocol === "http:" && loopback)) return null;
+    }
     return raw.replace(/\/+$/, "");
   } catch {
     return null;
@@ -58,6 +74,6 @@ export async function conferirSessaoDesktop(token: string): Promise<ConferirSess
 
 /** `josue.defreitas@x.com` -> `josue-defreitas`. */
 export function nomeDaChavePorEmail(email: string): string {
-  const local = email.trim().split("@")[0] ?? "";
+  const local = email.trim().normalize("NFKC").split("@")[0] ?? "";
   return local.toLowerCase().replace(/\./g, "-");
 }

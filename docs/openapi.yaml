@@ -14139,9 +14139,53 @@ paths:
       tags:
         - V1 Me
       summary: "POST me > chave-corporativa (central session token)"
+      description: Returns the corporate API key for the user of a central desktop session (Bearer is the central session token, not an API key). Fork route (IAF-919).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  minLength: 3
+                  maxLength: 320
+                rotacionar:
+                  type: boolean
       responses:
         "200":
-          description: OK
+          description: Key returned (Cache-Control no-store)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nome:
+                    type: string
+                  chave:
+                    type: string
+                  rotacionada:
+                    type: boolean
+        "400":
+          description: corpo_invalido
+        "401":
+          description: sessao_invalida
+        "403":
+          description: email_divergente
+        "404":
+          description: chave_inexistente
+        "409":
+          description: chave_indisponivel or chave_so_hash
+        "413":
+          description: corpo_grande
+        "429":
+          description: muitas_tentativas (Retry-After)
+        "503":
+          description: central_indisponivel
   /api/v1/me/status:
     get:
       tags:
