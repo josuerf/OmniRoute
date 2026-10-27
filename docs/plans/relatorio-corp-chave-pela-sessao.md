@@ -17,13 +17,13 @@ Nova rota `POST /api/v1/me/chave-corporativa`: confirma o token de sessao deskto
 
 ## Gates (rodados no fechamento)
 
-| Gate                                                           | Resultado                                                                                                                                                                                                     |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/unit/api/v1-me-chave-corporativa-route.test.ts`         | 30/30 passam                                                                                                                                                                                                  |
-| vizinhos `tests/unit/authz/*`, `authz*.test.ts`, `api/v1-me-*` | 348 passam, 1 falha: `tests/unit/authz/probe-9033-repro.test.ts` (TypeError "path" undefined; arquivo da base, fora do nosso diff; herdado)                                                                   |
-| `npm run typecheck:core`                                       | exit 0                                                                                                                                                                                                        |
-| `npm run lint`                                                 | exit 2, somente "suppressions left that do not occur anymore"; `eslint --pass-on-unpruned-suppressions` sem erros reais. Herdado (ver abaixo)                                                                 |
-| `npm run check:docs-all`                                       | falha apenas em `check:env-doc-sync` (esperada: `ESTEIRA_CENTRAL_URL`, `NODE_EXTRA_CA_CERTS` + `CATALOG_CACHE_MAX_BYTES`, `CATALOG_CACHE_MAX_ENTRIES`, `OMNIROUTE_MODEL_PERMISSION_CACHE_MAX` pre-existentes) |
+| Gate                                                           | Resultado                                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/unit/api/v1-me-chave-corporativa-route.test.ts`         | 30/30 passam                                                                                                                                                                                                                                                           |
+| vizinhos `tests/unit/authz/*`, `authz*.test.ts`, `api/v1-me-*` | 348 passam, 1 falha: `tests/unit/authz/probe-9033-repro.test.ts` (TypeError "path" undefined: depende do `DATA_DIR` que o `isolateDataDir` injeta pelo runner `npm run test:unit`; falha na linha 13, antes de qualquer código da rota; ambiental, fora do nosso diff) |
+| `npm run typecheck:core`                                       | exit 0                                                                                                                                                                                                                                                                 |
+| `npm run lint`                                                 | exit 2, somente "suppressions left that do not occur anymore"; `eslint --pass-on-unpruned-suppressions` sem erros reais. Herdado (ver abaixo)                                                                                                                          |
+| `npm run check:docs-all`                                       | falha apenas em `check:env-doc-sync` (esperada: `ESTEIRA_CENTRAL_URL`, `NODE_EXTRA_CA_CERTS` + `CATALOG_CACHE_MAX_BYTES`, `CATALOG_CACHE_MAX_ENTRIES`, `OMNIROUTE_MODEL_PERMISSION_CACHE_MAX` pre-existentes)                                                          |
 
 ### Lint: supressoes orfas sao herdadas
 
@@ -33,7 +33,7 @@ Copia de `config/quality/eslint-suppressions.json` podada em `_artifacts/` (`--p
 
 - Carrasco: 6 achados, nota 8; rechecagem APROVADA (nota 9). O agregador marca BLOCK so por 2 Low: teto global esgotavel por quem nao tem sessao (aceito, e a troca do A1) e docs (corrigido neste fechamento).
 - Critico de seguranca (nota 7): S1 Medium (e-mail do central sem validacao) corrigido; S2 Low (URL http/query) corrigido, ambos em 683c2b839.
-- Desfechos por achado em `.harness/reviews/corp-chave-pela-sessao/achados.json` e `achados-seguranca.json`: A1 aceito; A2-A6, S1, S2 corrigidos.
+- Desfechos por achado em `.harness/reviews/corp-chave-pela-sessao/achados.json` e `achados-seguranca.json`: A1-A6, S1, S2 corrigidos (A1 com residual Low aceito: teto global esgotável por quem não tem sessão).
 
 ## Decisoes
 
