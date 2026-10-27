@@ -1023,18 +1023,18 @@ name from the central's e-mail (part before `@`, lowercase, `.` -> `-`). Body:
 `{ "email": string, "rotacionar"?: boolean }`; the e-mail must match the central's (case-insensitive).
 Every response, errors included, carries `Cache-Control: no-store`.
 
-| Status | `error.code`           | When                                                          |
-| ------ | ---------------------- | ------------------------------------------------------------- |
-| 200    | -                      | `{ nome, chave, rotacionada }` (stored plaintext, or rotated) |
-| 400    | `corpo_invalido`       | Body fails validation                                         |
-| 401    | `sessao_invalida`      | No Bearer, or the central answered 401                        |
-| 403    | `email_divergente`     | Body e-mail differs from the central's                        |
-| 404    | `chave_inexistente`    | No key with the derived name (never created here)             |
-| 409    | `chave_indisponivel`   | Key inactive, revoked, banned or expired                      |
-| 409    | `chave_so_hash`        | Only a hash is stored and `rotacionar` is not `true`          |
-| 413    | `corpo_grande`         | Body above 4 KiB                                              |
-| 429    | `muitas_tentativas`    | Rate limit per IP (20/min) or per e-mail (10/min)             |
-| 503    | `central_indisponivel` | Central unset, unreachable, 5xx, timeout or invalid response  |
+| Status | `error.code`           | When                                                                                              |
+| ------ | ---------------------- | ------------------------------------------------------------------------------------------------- |
+| 200    | -                      | `{ nome, chave, rotacionada }` (stored plaintext, or rotated)                                     |
+| 400    | `corpo_invalido`       | Body fails validation                                                                             |
+| 401    | `sessao_invalida`      | No Bearer, or the central answered 401                                                            |
+| 403    | `email_divergente`     | Body e-mail differs from the central's                                                            |
+| 404    | `chave_inexistente`    | No key with the derived name (never created here)                                                 |
+| 409    | `chave_indisponivel`   | Key inactive, revoked, banned or expired                                                          |
+| 409    | `chave_so_hash`        | Only a hash is stored and `rotacionar` is not `true`                                              |
+| 413    | `corpo_grande`         | Body above 4 KiB                                                                                  |
+| 429    | `muitas_tentativas`    | Rate limit: per IP (20/min), per e-mail (10/min), per token hash (10/min) or global cap (120/min) |
+| 503    | `central_indisponivel` | Central unset, unreachable, 5xx, timeout or invalid response                                      |
 
 With `rotacionar: true` and a hash-only key, the same record is regenerated (`regenerateApiKey`,
 same id, scopes and permissions); the old value stops validating. Audited as
