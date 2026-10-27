@@ -49,6 +49,17 @@ const PUBLIC_ERROR_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_PUBLIC_ERROR_IDENTIFIERS = new Set([
   "cyber_policy",
   "content_policy_violation",
+  // Fork: POST /api/v1/me/chave-corporativa (IAF-919)
+  "central_indisponivel",
+  "chave_indisponivel",
+  "chave_inexistente",
+  "chave_so_hash",
+  "corpo_grande",
+  "corpo_invalido",
+  "email_divergente",
+  "erro_interno",
+  "muitas_tentativas",
+  "sessao_invalida",
   "abort",
   "aborted",
   "account_semaphore_capacity",

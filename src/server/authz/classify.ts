@@ -92,6 +92,13 @@ export function classifyRoute(rawPath: string, method: string = "GET"): RouteCla
     };
   }
 
+  // Fork exception (IAF-919): authenticates with the central's session token, not an
+  // OmniRoute API key, so the CLIENT_API key gate must not run. The handler validates the
+  // token against the central itself. EXACT path only; do not widen to /api/v1/me/*.
+  if (normalizedPath === "/api/v1/me/chave-corporativa") {
+    return { routeClass: "PUBLIC", reason: "public_prefix", normalizedPath };
+  }
+
   if (normalizedPath === "/api/v1" || normalizedPath.startsWith("/api/v1/")) {
     return {
       routeClass: "CLIENT_API",

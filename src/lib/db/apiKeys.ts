@@ -789,6 +789,50 @@ export async function createApiKey(
   return apiKey;
 }
 
+export interface ApiKeyLookupByName {
+  id: string;
+  name: string;
+  /** Plaintext key value as stored; null when the row only carries a hash. */
+  key: string | null;
+  storedAsHashOnly: boolean;
+  isActive: boolean;
+  isBanned: boolean;
+  revokedAt: string | null;
+  expiresAt: string | null;
+}
+
+const SHA256_HEX = /^[0-9a-f]{64}$/i;
+
+/**
+ * Find an API key by its exact name (case-sensitive). When several rows share
+ * the name the oldest wins. A row counts as "hash only" when its `key` column is
+ * empty or holds the SHA-256 digest (equal to key_hash or 64 hex chars) instead
+ * of an `sk-...` plaintext value.
+ */
+export function getApiKeyByName(name: string): ApiKeyLookupByName | null {
+  const db = getDbInstance() as ApiKeysDbLike;
+  getPreparedStatements(db);
+  const row = db
+    .prepare(
+      "SELECT id, name, key, key_hash, is_active, is_banned, revoked_at, expires_at FROM api_keys WHERE name = ? ORDER BY created_at ASC LIMIT 1"
+    )
+    .get(name) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const key = typeof row.key === "string" ? row.key : "";
+  const keyHash = typeof row.key_hash === "string" ? row.key_hash : "";
+  const hashOnly = key === "" || (keyHash !== "" && key === keyHash) || SHA256_HEX.test(key);
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    key: hashOnly ? null : key,
+    storedAsHashOnly: hashOnly,
+    isActive: parseIsActive(row.is_active),
+    isBanned: parseIsBanned(row.is_banned),
+    revokedAt: typeof row.revoked_at === "string" && row.revoked_at ? row.revoked_at : null,
+    expiresAt: typeof row.expires_at === "string" && row.expires_at ? row.expires_at : null,
+  };
+}
+
 export async function regenerateApiKey(id: string) {
   const db = getDbInstance() as ApiKeysDbLike;
   const stmt = getPreparedStatements(db);
