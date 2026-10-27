@@ -14134,6 +14134,14 @@ paths:
       responses:
         "200":
           description: OK
+  /api/v1/me/chave-corporativa:
+    post:
+      tags:
+        - V1 Me
+      summary: "POST me > chave-corporativa (central session token)"
+      responses:
+        "200":
+          description: OK
   /api/v1/me/status:
     get:
       tags:
