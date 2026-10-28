@@ -67,3 +67,39 @@ Copia de `config/quality/eslint-suppressions.json` podada em `_artifacts/` (`--p
 3. Implantar o OmniRoute.
 4. Conferir com `curl` sem token: 401 `sessao_invalida` e `Cache-Control: no-store`.
 5. So entao liberar o Iguacu Flow.
+
+---
+
+## Atualizacao: portagem para `release/v3.8.52`
+
+Secao acima mantida como historico (base antiga `fd71f0b68`, SHAs antigos). Esta secao descreve a portagem.
+
+- Base nova: `release/v3.8.52` @ `63dfa4ecae`.
+- Branch: `feat/corp-chave-pela-sessao-v3852` (cherry-pick dos 5 commits, em ordem).
+
+### SHAs antigo -> novo
+
+| Antigo      | Novo         | Commit                                           |
+| ----------- | ------------ | ------------------------------------------------ |
+| `fdd81c4fd` | `df0a513b0c` | feat(api): rota chave-corporativa                |
+| `172039d8b` | `d567f72680` | docs(api): rota e ESTEIRA_CENTRAL_URL            |
+| `683c2b839` | `a7f6c34bb5` | fix(api): endurecimento                          |
+| `d8a122f51` | `326bf3ddc6` | docs(api): alinha URL, limites 429, relatorio    |
+| `496f9651a` | `81d388cf02` | docs(api): corrige desfecho A1 e nota probe-9033 |
+
+### Conflitos
+
+Um so: `open-sse/utils/error.ts` (commit 1). A v3.8.52 acrescentou `cyber_policy` e `content_policy_violation` em `SAFE_PUBLIC_ERROR_IDENTIFIERS`, no mesmo ponto onde a rota acrescenta seus 10 codigos. Resolvido mantendo os dois conjuntos (uniao, sem mudar o contrato). `classify.ts`, `apiKeys.ts` e docs aplicaram limpos; nenhuma assinatura usada pela rota mudou.
+
+### Gates: base x branch
+
+| Gate                                           | Base v3.8.52 limpa | Branch portada                   |
+| ---------------------------------------------- | ------------------ | -------------------------------- |
+| vizinhos authz + `api/v1-me-*` (`node --test`) | 390/391 (1 falha)  | 420/421 (mesma 1 falha)          |
+| `v1-me-chave-corporativa-route.test.ts`        | n/a                | 30/30                            |
+| `npm run typecheck:core`                       | exit 0             | exit 0                           |
+| `npm run lint`                                 | exit 0             | exit 0                           |
+| `npm run check:docs-all`                       | nao medido         | falha so em `check:env-doc-sync` |
+
+- Falha herdada: `tests/unit/authz/probe-9033-repro.test.ts` falha igual na base limpa.
+- `check:env-doc-sync`: `ESTEIRA_CENTRAL_URL` e `NODE_EXTRA_CA_CERTS` (esperadas, `.env.example` fica para a implantacao) mais `CATALOG_CACHE_MAX_BYTES`, `CATALOG_CACHE_MAX_ENTRIES`, `OMNIROUTE_MODEL_PERMISSION_CACHE_MAX` (nao tocadas pelo diff, vindas da base). O lint da v3.8.52 passa limpo (as supressoes orfas da base antiga sumiram).
