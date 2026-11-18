@@ -9,12 +9,13 @@ import {
   maybeAppendSkillsBeta,
 } from "./claudeCodeCompatible.ts";
 import { getClaudeCodeCompatibleRequestDefaults } from "@/lib/providers/requestDefaults";
-import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { buildClinepassHeaders } from "@/shared/utils/clineAuth";
 import { usesCcWireImage } from "./ccWireImageBuiltins.ts";
 
 const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
 const OPENAI_COMPATIBLE_ID_TYPES = [
   "responses",
+  "custom-json",
   "embeddings",
   "audio-transcriptions",
   "audio-speech",
@@ -64,7 +65,8 @@ export function getOpenAICompatibleType(
     configuredType === "embeddings" ||
     configuredType === "audio-transcriptions" ||
     configuredType === "audio-speech" ||
-    configuredType === "images-generations"
+    configuredType === "images-generations" ||
+    configuredType === "custom-json"
   ) {
     return configuredType;
   }
@@ -79,6 +81,8 @@ export function getOpenAICompatibleType(
 }
 
 function buildOpenAICompatibleUrl(baseUrl, apiType) {
+  // Custom JSON API nodes store the complete business endpoint URL.
+  if (apiType === "custom-json") return baseUrl;
   const normalized = baseUrl.replace(/\/$/, "");
   let path = "/chat/completions";
   if (apiType === "responses") {
@@ -420,11 +424,26 @@ export function buildProviderHeaders(provider, credentials, stream = true, body 
     if (!stream) {
       headers["Accept"] = "application/json";
     }
-  } else if (provider === "cline") {
-    // Cline's API requires the bearer token prefixed with `workos:` plus a set
-    // of Cline client-identification headers; plain `Bearer <token>` is rejected
-    // upstream. buildClineHeaders() emits both.
-    Object.assign(headers, buildClineHeaders(credentials.apiKey || credentials.accessToken));
+  } else if (provider === "cline" || provider === "clinepass") {
+    // Cline is dual-auth (#16298): an OAuth connection carries a WorkOS token in
+    // `accessToken` and MUST be sent as `Bearer workos:<token>`; a BYOK connection
+    // carries an `sk_...` key in `apiKey` and MUST be sent as a plain
+    // `Bearer <key>` — the `workos:` prefix is rejected upstream for BYOK keys.
+    //
+    // The decision is keyed off the CREDENTIAL SHAPE (`accessToken` present or not),
+    // not off `authType`, which can diverge from the real stored credential. The
+    // previous `credentials.apiKey || credentials.accessToken` order sent a BYOK key
+    // through buildClineHeaders() and prefixed it with `workos:`, so every BYOK
+    // Cline request was rejected. The `apiKey ||` order was copied generic
+    // boilerplate from the sibling branches (b9fdcfc006 / #4787), back when Cline
+    // was OAuth-only and had no BYOK path; it never meant an OAuth token lives in
+    // `apiKey` — every Cline OAuth write site persists to `accessToken` (see
+    // src/lib/oauth/providers/cline.ts mapTokens and
+    // src/lib/oauth/connectionPersistence.ts).
+    //
+    // buildClinepassHeaders() is the single source of truth for that decision and
+    // also emits the Cline client-identification headers.
+    Object.assign(headers, buildClinepassHeaders(credentials, credentials.apiKey));
   } else if (entry) {
     // Registry-driven auth
     const authHeader = entry.authHeader || "bearer";
@@ -465,9 +484,14 @@ export function buildProviderHeaders(provider, credentials, stream = true, body 
 }
 
 // Get target format for provider
-export function getTargetFormat(provider, providerSpecificData = null) {
+export function getTargetFormat(provider, providerSpecificData: unknown = null) {
   if (isOpenAICompatible(provider)) {
-    return getOpenAICompatibleType(provider, providerSpecificData) === "responses"
+    // Callers pass connection.providerSpecificData, which is untyped JSON from the DB.
+    const settings =
+      providerSpecificData && typeof providerSpecificData === "object"
+        ? (providerSpecificData as Record<string, unknown>)
+        : null;
+    return getOpenAICompatibleType(provider, settings) === "responses"
       ? "openai-responses"
       : "openai";
   }
@@ -501,11 +525,16 @@ export function hasThinkingConfig(body) {
 }
 
 // Normalize thinking config based on last message role
-// - If lastMessage is not user → remove Claude/Gemini-style thinking config
+// - Only an assistant/model prefill (last turn) removes Claude/Gemini-style thinking config
+// - Tool-result turns (OpenAI role "tool", Claude user tool_result, Gemini role "function")
+//   keep thinking, so agentic loops do not silently degrade to non-thinking mode
 // - Preserve an explicit Claude opt-out; it is request-level intent, not a thinking turn
 // - Keep OpenAI Chat Completions reasoning_effort as a request-level option.
 export function normalizeThinkingConfig(body) {
-  if (!isLastMessageFromUser(body) && body.thinking?.type !== "disabled") {
+  const messages = body.messages || body.contents;
+  const lastRole = messages?.length ? messages[messages.length - 1]?.role : undefined;
+  const isPrefill = lastRole === "assistant" || lastRole === "model";
+  if (isPrefill && body.thinking?.type !== "disabled") {
     delete body.thinking;
   }
   return body;

@@ -286,7 +286,8 @@ test("a key can never route through a Claude connection that belongs to a differ
         "(and this must be a fresh row produced by this request, not 2a's stale connA row)"
     );
   } else {
-    assert.equal(pinnedResponse.status, 401, "an ineligible pinned connection is rejected as 401");
+    // v3.8.53+ answers 403 (forbidden) instead of 401 for a pinned connection the key may not use.
+    assert.equal(pinnedResponse.status, 403, "an ineligible pinned connection is rejected as 403");
   }
 
   // 2c. A key with NO allowed Claude connection at all cannot be tricked
@@ -311,11 +312,11 @@ test("a key can never route through a Claude connection that belongs to a differ
       },
     })
   );
-  assert.equal(rejectedResponse.status, 401);
+  assert.equal(rejectedResponse.status, 403);
   const rejectedBody = (await rejectedResponse.json()) as { error?: { message?: string } };
   assert.match(
     String(rejectedBody?.error?.message ?? ""),
-    /No active credentials for provider: claude/
+    /excluded by the API key's connection allowlist|No active credentials for provider: claude/
   );
 });
 

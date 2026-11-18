@@ -8,16 +8,22 @@ Thank you for your interest in contributing! This guide covers everything you ne
 
 ---
 
-## การตั้งค่าสภาพแวดล้อมสำหรับการพัฒนา
+## การตั้งค่าสำหรับการพัฒนา
 
 ### ข้อกำหนดเบื้องต้น
 
 - **Node.js** `>=22.22.2 <23` หรือ `>=24.0.0 <27` (แนะนำ: 24 LTS)
 - **npm** 10+
 
-> **สำหรับผู้ใช้ npm v11+ (Node 24+):** หลังจากรัน `npm install` ให้ตรวจสอบว่าโมดูลเนทีฟได้รับการติดตั้งแล้ว:
-> `node -e "require('better-sqlite3')"`. หากคำสั่งล้มเหลวพร้อมข้อผิดพลาด `MODULE_NOT_FOUND`
-> ให้รัน `npm approve-scripts better-sqlite3 && npm install` ดูข้อมูลเพิ่มเติมที่
+> **Windows ที่ใช้ Node 24:** ให้ใช้รุ่นแพตช์ 24 LTS ปัจจุบัน (อย่างน้อย 24.20.0)
+> รุ่นก่อนหน้าอาจยุติการทำงานหลังการทดสอบสำเร็จ เมื่อ `--test-force-exit` ปิด
+> กระบวนการ แพตช์แก้ไข Windows libuv ของ Node
+> [นี้](https://github.com/nodejs/node/pull/61999) ช่วยแก้ปัญหาโปรแกรมทำงานล้มเหลวขณะรันไทม์
+> ดังกล่าว โปรดเปิดใช้การตรวจสอบ assertion ของการทดสอบและการออกจาก runner ต่อไป
+
+> **ผู้ใช้ npm v11+ (Node 24+):** หลังจาก `npm install` ให้ตรวจสอบว่าโมดูล native ได้รับการติดตั้งแล้ว:
+> `node -e "require('better-sqlite3')"`. หากคำสั่งล้มเหลวด้วย `MODULE_NOT_FOUND`,
+> ให้เรียกใช้ `npm approve-scripts better-sqlite3 && npm install` ดู
 > [การแก้ไขปัญหา](docs/guides/TROUBLESHOOTING.md#npm-v11-better-sqlite3-not-installed-cannot-find-module)
 
 - **Git**
@@ -33,10 +39,10 @@ npm install
 ### ตัวแปรสภาพแวดล้อม
 
 ```bash
-# สร้างไฟล์ .env จากเทมเพลต
+# สร้าง .env ของคุณจากเทมเพลต
 cp .env.example .env
 
-# สร้างค่าลับที่จำเป็น
+# สร้าง secrets ที่จำเป็น
 echo "JWT_SECRET=$(openssl rand -base64 48)" >> .env
 echo "API_KEY_SECRET=$(openssl rand -hex 32)" >> .env
 ```
@@ -45,75 +51,74 @@ echo "API_KEY_SECRET=$(openssl rand -hex 32)" >> .env
 
 | ตัวแปร                 | ค่าเริ่มต้นสำหรับการพัฒนา | คำอธิบาย                             |
 | ---------------------- | ------------------------- | ------------------------------------ |
-| `PORT`                 | `20128`                   | พอร์ตของเซิร์ฟเวอร์                  |
-| `NEXT_PUBLIC_BASE_URL` | `http://localhost:20128`  | URL ฐานสำหรับฟรอนต์เอนด์             |
-| `JWT_SECRET`           | (สร้างตามขั้นตอนด้านบน)   | ค่าลับสำหรับลงนาม JWT                |
+| `PORT`                 | `20128`                   | พอร์ตเซิร์ฟเวอร์                     |
+| `NEXT_PUBLIC_BASE_URL` | `http://localhost:20128`  | URL พื้นฐานสำหรับ frontend           |
+| `JWT_SECRET`           | (สร้างด้านบน)             | secret สำหรับลงลายเซ็น JWT           |
 | `INITIAL_PASSWORD`     | `CHANGEME`                | รหัสผ่านสำหรับการเข้าสู่ระบบครั้งแรก |
-| `APP_LOG_LEVEL`        | `info`                    | ระดับความละเอียดของบันทึก            |
+| `APP_LOG_LEVEL`        | `info`                    | ระดับรายละเอียดของบันทึก             |
 
 ### การตั้งค่าแดชบอร์ด
 
-แดชบอร์ดมีตัวเลือก UI สำหรับเปิดหรือปิดฟีเจอร์ต่าง ๆ ซึ่งสามารถกำหนดค่าผ่านตัวแปรสภาพแวดล้อมได้เช่นกัน:
+แดชบอร์ดมีสวิตช์ UI สำหรับฟีเจอร์ที่สามารถกำหนดค่าผ่านตัวแปรสภาพแวดล้อมได้เช่นกัน:
 
-| ตำแหน่งการตั้งค่า    | ตัวเลือก           | คำอธิบาย                                |
-| -------------------- | ------------------ | --------------------------------------- |
-| การตั้งค่า → ขั้นสูง | โหมดดีบัก          | เปิดใช้งานบันทึกคำขอสำหรับการดีบัก (UI) |
-| การตั้งค่า → ทั่วไป  | การแสดงแถบด้านข้าง | แสดง/ซ่อนส่วนต่าง ๆ ของแถบด้านข้าง      |
+| ตำแหน่งการตั้งค่า   | สวิตช์             | คำอธิบาย                             |
+| ------------------- | ------------------ | ------------------------------------ |
+| Settings → Advanced | โหมดดีบัก          | เปิดใช้บันทึกคำขอสำหรับการดีบัก (UI) |
+| Settings → General  | การแสดงแถบด้านข้าง | แสดง/ซ่อนส่วนต่าง ๆ ของแถบด้านข้าง   |
 
-การตั้งค่าเหล่านี้จะถูกจัดเก็บไว้ในฐานข้อมูลและยังคงอยู่หลังการรีสตาร์ต โดยจะแทนที่ค่าเริ่มต้นจากตัวแปรสภาพแวดล้อมเมื่อมีการกำหนดค่า
+การตั้งค่าเหล่านี้จัดเก็บอยู่ในฐานข้อมูลและคงอยู่ข้ามการรีสตาร์ต โดยจะแทนที่ค่าเริ่มต้นของตัวแปรสภาพแวดล้อมเมื่อมีการกำหนดค่า
 
-### การรันภายในเครื่อง
+### การเรียกใช้ในเครื่อง
 
 ```bash
 # โหมดการพัฒนา (โหลดใหม่อัตโนมัติ)
 npm run dev
 
-# บิลด์สำหรับโปรดักชัน
+# บิลด์สำหรับการใช้งานจริง
 npm run build    # next build → .build/next/ จากนั้น assembleStandalone → dist/
+
 npm run start
 
-# คอมไพล์เฉพาะแบ็กเอนด์/API อย่างรวดเร็วสำหรับการเปลี่ยนแปลงของผู้ร่วมพัฒนา
+# คอมไพล์ backend/API เท่านั้นอย่างรวดเร็วสำหรับการเปลี่ยนแปลงของผู้มีส่วนร่วม
 npm run build:contributor
 
-# บิลด์สำหรับรีลีส (บิลด์ใหม่ทั้งหมด + ตัวตรวจสอบ HEAD — จำเป็นสำหรับการ deploy)
-npm run build:release   # rm -rf .build dist แล้วบิลด์ + เขียน dist/BUILD_SHA
+# บิลด์สำหรับรีลีส (บิลด์ใหม่ทั้งหมด + sentinel ของ HEAD — จำเป็นสำหรับการดีพลอย)
+npm run build:release   # rm -rf .build dist และบิลด์ + เขียน dist/BUILD_SHA
 
 # การกำหนดค่าพอร์ตทั่วไป
 PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run dev
 ```
 
-บิลด์สำหรับผู้ร่วมพัฒนาจะตรวจสอบเฉพาะการคอมไพล์ โดยจะไม่ประกอบชุดเผยแพร่แบบสแตนด์อโลน
-หรือบิลด์แอสเซตแพ็กเกจเนทีฟที่เป็นตัวเลือก ใช้บิลด์สำหรับโปรดักชันตามปกติเมื่อ
-ต้องการตรวจสอบชุดไฟล์ที่พร้อมเผยแพร่
+บิลด์สำหรับผู้มีส่วนร่วมจะตรวจสอบเฉพาะการคอมไพล์เท่านั้น โดยจะไม่ประกอบ
+ดิสทริบิวชันแบบ standalone หรือบิลด์ assets สำหรับแพ็กเกจ native ที่เป็นตัวเลือก ใช้บิลด์สำหรับการใช้งานจริงตามปกติเมื่อคุณต้องการตรวจสอบ bundle ที่พร้อมจัดส่ง
 
-### โครงสร้างผลลัพธ์ของบิลด์
+### โครงสร้างเอาต์พุตของบิลด์
 
-| ไดเรกทอรี | เนื้อหา                                                                                    | ติดตามในระบบควบคุมเวอร์ชัน |
-| --------- | ------------------------------------------------------------------------------------------ | -------------------------- |
-| `src/`    | ซอร์สของแอปพลิเคชัน (TypeScript / TSX)                                                     | ใช่                        |
-| `.build/` | ไฟล์ระหว่างกระบวนการ — ผลลัพธ์จาก `next build` (ถูกละเว้นโดย Git, `distDir = .build/next`) | ไม่                        |
-| `dist/`   | ชุดไฟล์ที่พร้อมเผยแพร่ — ประกอบโดย `assembleStandalone` (ถูกละเว้นโดย Git)                 | ไม่                        |
+| ไดเรกทอรี | เนื้อหา                                                                                 | ติดตามในระบบควบคุมเวอร์ชัน |
+| --------- | --------------------------------------------------------------------------------------- | -------------------------- |
+| `src/`    | ซอร์สโค้ดแอปพลิเคชัน (TypeScript / TSX)                                                 | ใช่                        |
+| `.build/` | ไฟล์ระหว่างการทำงาน — เอาต์พุตของ `next build` (ถูก gitignore, `distDir = .build/next`) | ไม่ใช่                     |
+| `dist/`   | bundle ที่พร้อมจัดส่ง — ประกอบโดย `assembleStandalone` (ถูก gitignore)                  | ไม่ใช่                     |
 
-ไปป์ไลน์การบิลด์ทำงานแบบรอบเดียว:
+ไปป์ไลน์ของบิลด์ทำงานในขั้นตอนเดียว:
 
 ```
 npm run build
-  └─ next build → .build/next/standalone  (ผลลัพธ์จาก Next.js)
-  └─ assembleStandalone()                 (คัดลอกไฟล์สแตนด์อโลน + static + public + แอสเซตเนทีฟ)
-       └─ ผลลัพธ์: dist/                   (server.js, .next/static/, public/, node_modules/)
+  └─ next build → .build/next/standalone  (เอาต์พุตของ Next.js)
+  └─ assembleStandalone()                 (คัดลอก standalone + static + public + native assets)
+       └─ เอาต์พุต: dist/                   (server.js, .next/static/, public/, node_modules/)
 ```
 
-นอกจากนี้ `npm run build:release` จะล้างทั้งสองไดเรกทอรีก่อน แล้วเขียน
-`dist/BUILD_SHA` (= `git rev-parse --short HEAD`) เพื่อใช้เป็นตัวตรวจสอบความถูกต้องในการ deploy
+`npm run build:release` จะล้างไดเรกทอรีทั้งสองก่อนเพิ่มเติม และเขียน
+`dist/BUILD_SHA` (= `git rev-parse --short HEAD`) เพื่อใช้เป็น sentinel สำหรับตรวจสอบความสมบูรณ์ของการดีพลอย
 
-`npm run build:contributor` ใช้โปรไฟล์การบิลด์เฉพาะแบ็กเอนด์ โดยจะแทนที่ไฟล์
-UI ของแดชบอร์ดด้วยไฟล์ชั่วคราวระหว่างการบิลด์ เก็บตัวจัดการเส้นทาง API ไว้ และคืนค่าไฟล์ต้นฉบับ
-หลังจากบิลด์เสร็จ ใช้ `npm run build` สำหรับการเปลี่ยนแปลงที่ส่งผลต่อ UI ของแดชบอร์ด หรือสำหรับ
-การตรวจสอบรีลีสแบบเต็มรูปแบบ โปรไฟล์สำหรับผู้ร่วมพัฒนาไม่สามารถใช้แทนบิลด์สำหรับรีลีสได้
+`npm run build:contributor` ใช้โปรไฟล์บิลด์เฉพาะ backend โดยจะแทนที่ไฟล์ UI ของแดชบอร์ดด้วย stub ชั่วคราว
+ระหว่างการบิลด์ คงตัวจัดการเส้นทาง API ไว้ และกู้คืนไฟล์ต้นฉบับ
+หลังจากบิลด์เสร็จ ใช้ `npm run build` สำหรับการเปลี่ยนแปลงที่มีผลต่อ UI ของแดชบอร์ด หรือสำหรับการตรวจสอบรีลีสทั้งหมด โปรไฟล์สำหรับผู้มีส่วนร่วมไม่ใช่สิ่งทดแทนบิลด์สำหรับรีลีส
 
-> **หมายเหตุเกี่ยวกับการ deploy บน VPS:** ไดเรกทอรีอิมเมจระยะไกล `/usr/lib/node_modules/omniroute/app/`
-> ยังคงไม่เปลี่ยนแปลง เครื่องมือสำหรับ deploy จะใช้ rsync เพื่อซิงค์เนื้อหาของ `dist/` ไปยังไดเรกทอรีดังกล่าว
-> มีเพียงพาธผลลัพธ์ของบิลด์ภายในรีโพซิทอรีเท่านั้นที่เปลี่ยนแปลง (`app/` → `dist/`)
+> **หมายเหตุเกี่ยวกับการดีพลอย VPS:** ไดเรกทอรีอิมเมจระยะไกล `/usr/lib/node_modules/omniroute/app/`
+> ไม่มีการเปลี่ยนแปลง ทักษะการดีพลอยจะ rsync เนื้อหาของ `dist/` ไปยังไดเรกทอรีดังกล่าว
+> มีเพียงเส้นทางเอาต์พุตของบิลด์ภายในรีโพซิทอรีเท่านั้นที่เปลี่ยน (`app/` → `dist/`)
 
 URL เริ่มต้น:
 
@@ -170,18 +175,18 @@ Scopes (v3.8): `db`, `sse`, `oauth`, `dashboard`, `api`, `cli`, `docker`, `ci`, 
 ## การรันการทดสอบ
 
 ```bash
-# การทดสอบทั้งหมด (unit + vitest + ecosystem + e2e)
+# การทดสอบทั้งหมด (ยูนิต + vitest + ระบบนิเวศ + e2e)
 npm run test:all
 
-# ไฟล์ทดสอบเดียว (ตัวรันการทดสอบแบบเนทีฟของ Node.js — การทดสอบส่วนใหญ่ใช้วิธีนี้)
+# ไฟล์ทดสอบไฟล์เดียว (ตัวรันการทดสอบดั้งเดิมของ Node.js — การทดสอบส่วนใหญ่ใช้วิธีนี้)
 node --import tsx/esm --test tests/unit/your-file.test.ts
 
-# เฉพาะการทดสอบหน่วยที่ได้รับผลกระทบจากการเปลี่ยนแปลงของคุณ (ใช้ตัวเลือก TIA เดียวกับเกต CI, #8084)
-npm run test:scoped            # การเปลี่ยนแปลงในคอมมิตล่าสุด (หรือ working tree)
-npm run test:scoped:staged     # เฉพาะการเปลี่ยนแปลงที่ staged — เหมาะสำหรับใช้คู่กับการรันก่อนคอมมิต
+# เฉพาะการทดสอบยูนิตที่ได้รับผลกระทบจากการเปลี่ยนแปลงของคุณ (ใช้ตัวเลือก TIA เดียวกับเกต CI, #8084)
+npm run test:scoped            # การเปลี่ยนแปลงในคอมมิตล่าสุด (หรือแผนผังการทำงาน)
+npm run test:scoped:staged     # เฉพาะการเปลี่ยนแปลงที่จัดเตรียมไว้ — เหมาะสำหรับใช้ร่วมกับการรันก่อนคอมมิต
 npm run test:scoped:full       # สร้างแผนผังกราฟการนำเข้าใหม่ก่อน (หลังจากเพิ่ม/ย้ายไฟล์)
-# Exit 1 + "run the full suite" หมายความว่าไฟล์ศูนย์กลาง (tsconfig, package.json, …) หรือซอร์ส
-# ที่ไม่ได้แมปมีการเปลี่ยนแปลง — ตัวเลือกจะล้มเหลวอย่างปลอดภัย โดยจะไม่ข้ามการทดสอบอย่างเงียบ ๆ
+# Exit 1 + "รันชุดการทดสอบทั้งหมด" หมายความว่าไฟล์ศูนย์กลาง (tsconfig, package.json, …) หรือซอร์ส
+# ที่ไม่มีการแมปมีการเปลี่ยนแปลง — ตัวเลือกจะหยุดอย่างปลอดภัยและจะไม่ข้ามโดยไม่แจ้งให้ทราบ
 
 # Vitest (เซิร์ฟเวอร์ MCP, autoCombo, แคช)
 npm run test:vitest
@@ -189,13 +194,13 @@ npm run test:vitest
 # การทดสอบ E2E (ต้องใช้ Playwright)
 npm run test:e2e
 
-# E2E สำหรับไคลเอนต์โปรโตคอล (การขนส่ง MCP, A2A)
+# E2E สำหรับไคลเอนต์โปรโตคอล (ทรานสปอร์ต MCP, A2A)
 npm run test:protocols:e2e
 
-# การทดสอบความเข้ากันได้กับระบบนิเวศ
+# การทดสอบความเข้ากันได้ของระบบนิเวศ
 npm run test:ecosystem
 
-# เกตความครอบคลุม: statements/lines/functions/branches 60%
+# เกตความครอบคลุม: คำสั่ง/บรรทัด/ฟังก์ชัน/สาขา 60%
 npm run test:coverage
 npm run coverage:report
 
@@ -203,51 +208,52 @@ npm run coverage:report
 npm run lint
 npm run check
 
-# การทดสอบ smoke ของคอมโบกับ upstream จริงแบบมีเกต (ต้องมีสิทธิ์เข้าถึง VPS + เครดิตของผู้ให้บริการจริง)
-# เรียกใช้ผู้ให้บริการจริง — มีค่าใช้จ่ายเล็กน้อย ไม่เคยรันใน CI และจะข้ามอย่างเรียบร้อยหากไม่มีเกต
+# การทดสอบ smoke ของคอมโบกับ upstream จริงที่มีเกตควบคุม (ต้องมีสิทธิ์เข้าถึง VPS + เครดิตจากผู้ให้บริการจริง)
+# เรียกใช้ผู้ให้บริการจริง — มีค่าใช้จ่ายเล็กน้อย ห้ามรันใน CI เด็ดขาด ข้ามอย่างเรียบร้อยหากไม่มีเกต
 # ต้องมี: สิทธิ์เข้าถึง ssh root@192.168.0.15 (โหลดสแนปช็อต DB แบบอ่านอย่างเดียวจาก VPS)
 RUN_COMBO_LIVE=1 npm run test:combo:live
 
-# การทดสอบ smoke แบบไลฟ์บน VPS ระยะที่ 3 — สคริปต์ Node ESM ธรรมดาที่เรียกเซิร์ฟเวอร์ .15 โดยตรง
-# ต้องมี: สิทธิ์เข้าถึง ssh root@192.168.0.15 (สร้าง/รื้อคอมโบผ่าน SSH sqlite)
-# เรียกใช้ผู้ให้บริการจริง (มีค่าใช้จ่ายเล็กน้อย) สร้าง/ลบเฉพาะคอมโบ __live_test__* เท่านั้น และไม่เคยรันใน CI
-# REQUIRE_API_KEY=false บน .15 จึงไม่ต้องใช้ API key แต่จะใช้ COMBO_LIVE_BASE_URL / COMBO_LIVE_API_KEY หากตั้งค่าไว้
-npm run test:combo:live:vps              # สถานการณ์ HTTP 7 แบบ (priority/round-robin/weighted/cost/fusion/auto + health)
-npm run test:combo:live:vps:failover     # เพิ่มสถานการณ์ failover ข้ามผู้ให้บริการจริง (รวมทั้งหมด 8 แบบ)
+# การทดสอบ smoke แบบสดบน VPS ระยะที่ 3 — สคริปต์ Node ESM ธรรมดาที่เรียกใช้เซิร์ฟเวอร์ .15 โดยตรง
+# ต้องมี: สิทธิ์เข้าถึง ssh root@192.168.0.15 (สร้าง/รื้อถอนคอมโบผ่าน SSH sqlite)
+# เรียกใช้ผู้ให้บริการจริง (มีค่าใช้จ่ายเล็กน้อย) สร้าง/ลบเฉพาะคอมโบ __live_test__* เท่านั้น ห้ามรันใน CI เด็ดขาด
+# REQUIRE_API_KEY=false บน .15 จึงไม่ต้องใช้คีย์ API แต่จะใช้ COMBO_LIVE_BASE_URL / COMBO_LIVE_API_KEY หากกำหนดไว้
+npm run test:combo:live:vps              # 7 สถานการณ์ HTTP (ลำดับความสำคัญ/วนรอบ/ถ่วงน้ำหนัก/ต้นทุน/ฟิวชัน/อัตโนมัติ + สถานะระบบ)
+npm run test:combo:live:vps:failover     # เพิ่มสถานการณ์ failover ข้ามผู้ให้บริการจริง (รวมทั้งหมด 8 สถานการณ์)
 ```
 
 หมายเหตุเกี่ยวกับความครอบคลุม:
 
-- `npm run test:coverage` วัดความครอบคลุมของซอร์สสำหรับชุดการทดสอบหน่วยหลัก ไม่รวม `tests/**` และรวม `open-sse/**`
-- Pull request ต้องรักษาเกตความครอบคลุมไว้ที่ **60%+** สำหรับ statements/lines/functions/branches
-- หาก PR เปลี่ยนแปลงโค้ดที่ใช้จริงใน `src/`, `open-sse/`, `electron/` หรือ `bin/` ต้องเพิ่มหรืออัปเดตการทดสอบอัตโนมัติใน PR เดียวกัน
-- `npm run coverage:report` แสดงรายงานโดยละเอียดแยกตามไฟล์จากการรันความครอบคลุมครั้งล่าสุด
-- `npm run test:coverage:legacy` เก็บเมตริกแบบเดิมไว้เพื่อการเปรียบเทียบย้อนหลัง
-- ดูแผนงานการปรับปรุงความครอบคลุมแบบเป็นระยะได้ที่ `docs/ops/COVERAGE_PLAN.md`
+- `npm run test:coverage` วัดความครอบคลุมของซอร์สสำหรับชุดการทดสอบยูนิตหลัก ไม่รวม `tests/**` และรวม `open-sse/**`
+- Pull request ต้องรักษาเกตความครอบคลุมของคำสั่ง/บรรทัด/ฟังก์ชัน/สาขาไว้ที่ **60%+**
+- หาก PR เปลี่ยนแปลงโค้ดสำหรับการใช้งานจริงใน `src/`, `open-sse/`, `electron/` หรือ `bin/` จะต้องเพิ่มหรืออัปเดตการทดสอบอัตโนมัติใน PR เดียวกัน
+- `npm run coverage:report` แสดงรายงานโดยละเอียดแบบแยกตามไฟล์จากการรันความครอบคลุมครั้งล่าสุด
+- `npm run test:coverage:legacy` เก็บรักษาเมตริกรุ่นเก่าไว้เพื่อการเปรียบเทียบย้อนหลัง
+- ดูแผนงานการปรับปรุงความครอบคลุมแบบแบ่งระยะได้ที่ `docs/ops/COVERAGE_PLAN.md`
 
 ### ข้อกำหนดสำหรับ Pull Request
 
 ก่อนเปิด PR ให้ใช้
 [แนวทางมาตรฐานสำหรับการมีส่วนร่วม](docs/ops/CONTRIBUTION_GOLDEN_PATH.md) เพื่อรันวงจรแบบเจาะจงสำหรับ
-สิ่งที่คุณเปลี่ยนแปลง ชุดการทดสอบหน่วยทั้งหมด (4 ชาร์ดของ CI), Vitest, เกตความครอบคลุม **60%+** และ
-บิลด์สำหรับใช้งานจริงเป็นความรับผิดชอบของ CI — การรันสิ่งเหล่านี้ในเครื่องไม่ได้ให้สัญญาณเพิ่มเติมนอกเหนือจากที่การตรวจสอบ PR
-จะให้คุณอยู่แล้ว และบนเครื่องขนาดเล็กอาจทำให้โฮสต์ใช้ทรัพยากรเต็มขีดจำกัดได้ (#8084):
+สิ่งที่คุณเปลี่ยนแปลง ชุดการทดสอบยูนิตทั้งหมด (4 ชาร์ดของ CI), Vitest, เกตความครอบคลุม **60%+** และ
+บิลด์สำหรับการใช้งานจริงเป็นความรับผิดชอบของ CI — การรันสิ่งเหล่านี้ในเครื่องไม่ได้ให้ข้อมูลเพิ่มเติมนอกเหนือจากที่การตรวจสอบ PR
+จะแจ้งให้คุณทราบอยู่แล้ว และบนเครื่องขนาดเล็กอาจใช้ทรัพยากรของโฮสต์จนเต็มได้ (#8084):
 
 - รันไฟล์ทดสอบที่ครอบคลุมการเปลี่ยนแปลงของคุณ: `node --import tsx/esm --test tests/unit/<file>.test.ts`
 - รัน `npm run lint`
-- เพิ่มหรืออัปเดตการทดสอบอัตโนมัติใน PR เดียวกันทุกครั้งที่โค้ดสำหรับใช้งานจริงมีการเปลี่ยนแปลง
-- ระบุไฟล์ทดสอบที่เปลี่ยนแปลงหรือเพิ่มเข้ามาในคำอธิบาย PR เมื่อโค้ดสำหรับใช้งานจริงมีการเปลี่ยนแปลง
-- ตรวจสอบผลลัพธ์ SonarQube บน PR เมื่อมีการกำหนดค่าความลับของโปรเจกต์ใน CI
+- เพิ่มหรืออัปเดตการทดสอบอัตโนมัติใน PR เดียวกันทุกครั้งที่มีการเปลี่ยนแปลงโค้ดสำหรับการใช้งานจริง
+- ในไฟล์ `node:test` ให้วาง `await` ระดับบนสุดทั้งหมด (เช่น `await import(...)`) ไว้ก่อน `test()` / `describe()` รายการแรก: ภายใต้ `--test-force-exit` การทดสอบที่ลงทะเบียนหลังจากนั้นอาจไม่ถูกรันโดยไม่มีการแจ้งเตือน (#18045; บังคับใช้โดย `npm run check:test-tla-order`)
+- ระบุไฟล์ทดสอบที่เปลี่ยนแปลงหรือเพิ่มเข้ามาในคำอธิบาย PR เมื่อมีการเปลี่ยนแปลงโค้ดสำหรับการใช้งานจริง
+- ตรวจสอบผลลัพธ์ SonarQube ใน PR เมื่อมีการกำหนดค่าความลับของโปรเจกต์ใน CI
 
-สถานะการทดสอบปัจจุบัน: **ไฟล์การทดสอบหน่วย 122 ไฟล์** ซึ่งครอบคลุม:
+สถานะการทดสอบปัจจุบัน: **ไฟล์ทดสอบยูนิต 122 ไฟล์** ซึ่งครอบคลุม:
 
 - ตัวแปลของผู้ให้บริการและการแปลงรูปแบบ
-- การจำกัดอัตรา, circuit breaker และความทนทาน
+- การจำกัดอัตรา, circuit breaker และความยืดหยุ่นต่อความล้มเหลว
 - แคชเชิงความหมาย, idempotency และการติดตามความคืบหน้า
 - การดำเนินการกับฐานข้อมูลและสคีมา (โมดูล DB 21 โมดูล)
 - โฟลว์ OAuth และการยืนยันตัวตน
-- การตรวจสอบความถูกต้องของ API endpoint (Zod v4)
-- เครื่องมือเซิร์ฟเวอร์ MCP และการบังคับใช้ขอบเขต
+- การตรวจสอบความถูกต้องของ endpoint API (Zod v4)
+- เครื่องมือเซิร์ฟเวอร์ MCP และการบังคับใช้ขอบเขตสิทธิ์
 - ระบบ Memory และ Skills
 
 ---
@@ -288,72 +294,72 @@ npm run test:combo:live:vps:failover     # เพิ่มสถานการ�
 
 ---
 
-## โครงสร้างโปรเจกต์
+## โครงสร้างโครงการ
 
 ```
 src/                        # TypeScript (.ts / .tsx)
 ├── app/                    # Next.js 16 App Router
-│   ├── (dashboard)/        # หน้าแดชบอร์ด (23 ส่วน)
-│   ├── api/                # เส้นทาง API (51 ไดเรกทอรี)
-│   └── login/              # หน้าการยืนยันตัวตน (.tsx)
-├── domain/                 # กลไกนโยบาย (policyEngine, comboResolver, costRules ฯลฯ)
-├── lib/                    # ตรรกะธุรกิจหลัก (.ts)
-│   ├── a2a/                # เซิร์ฟเวอร์โปรโตคอล Agent-to-Agent v0.3
-│   ├── acp/                # รีจิสทรี Agent Communication Protocol
-│   ├── compliance/         # กลไกนโยบายการปฏิบัติตามข้อกำหนด
-│   ├── db/                 # โมดูลโดเมน SQLite + การย้ายฐานข้อมูล 130 รายการ
-│   ├── memory/             # หน่วยความจำการสนทนาแบบถาวร
-│   ├── oauth/              # ผู้ให้บริการ บริการ และยูทิลิตี OAuth
-│   ├── skills/             # เฟรมเวิร์กทักษะที่ขยายได้
-│   ├── usage/              # การติดตามการใช้งานและการคำนวณต้นทุน
-│   └── localDb.ts          # ชั้น re-export เท่านั้น — ห้ามเพิ่มตรรกะที่นี่
-├── middleware/              # มิดเดิลแวร์คำขอ (promptInjectionGuard)
-├── mitm/                   # พร็อกซี MITM (ใบรับรอง, DNS, การกำหนดเส้นทางเป้าหมาย)
+│   ├── (dashboard)/        # Dashboard pages (23 sections)
+│   ├── api/                # API routes (51 directories)
+│   └── login/              # Auth pages (.tsx)
+├── domain/                 # Policy engine (policyEngine, comboResolver, costRules, etc.)
+├── lib/                    # Core business logic (.ts)
+│   ├── a2a/                # Agent-to-Agent v0.3 protocol server
+│   ├── acp/                # Agent Communication Protocol registry
+│   ├── compliance/         # Compliance policy engine
+│   ├── db/                 # SQLite domain modules + 130 migrations
+│   ├── memory/             # Persistent conversational memory
+│   ├── oauth/              # OAuth providers, services, and utilities
+│   ├── skills/             # Extensible skill framework
+│   ├── usage/              # Usage tracking and cost calculation
+│   └── localDb.ts          # Re-export layer only — never add logic here
+├── middleware/              # Request middleware (promptInjectionGuard)
+├── mitm/                   # MITM proxy (cert, DNS, target routing)
 ├── shared/
-│   ├── components/         # คอมโพเนนต์ React (.tsx)
-│   ├── constants/          # นิยามผู้ให้บริการ (329), ขอบเขต MCP, กลยุทธ์การกำหนดเส้นทาง 20 รายการ
-│   ├── utils/              # เซอร์กิตเบรกเกอร์, ตัวทำความสะอาดข้อมูล, ตัวช่วยการยืนยันตัวตน
-│   └── validation/         # สคีมา Zod v4
-└── sse/                    # ไปป์ไลน์พร็อกซี SSE
+│   ├── components/         # React components (.tsx)
+│   ├── constants/          # Provider definitions (329), MCP scopes, 22 routing strategies
+│   ├── utils/              # Circuit breaker, sanitizer, auth helpers
+│   └── validation/         # Zod v4 schemas
+└── sse/                    # SSE proxy pipeline
 
-open-sse/                   # เวิร์กสเปซ @omniroute/open-sse
-├── executors/              # โมดูลตัวดำเนินการ 150 รายการ (คลาสตัวดำเนินการ + ตัวช่วยสำหรับผู้ให้บริการแต่ละราย)
-├── handlers/               # ตัวจัดการคำขอ 11 รายการ (แชต, การตอบกลับ, embeddings, รูปภาพ ฯลฯ)
-├── mcp-server/             # เซิร์ฟเวอร์ MCP (เครื่องมือที่ไม่ซ้ำกัน 110 รายการ, การขนส่ง 3 รูปแบบ, ขอบเขต 33 รายการ)
-├── services/               # บริการระดับบนสุด 178 รายการ (combo, autoCombo, rateLimitManager ฯลฯ)
-├── translator/             # ตัวแปลรูปแบบ (OpenAI ↔ Claude ↔ Gemini ↔ Responses ↔ Ollama)
-├── transformer/            # ตัวแปลง Responses API
-└── utils/                  # โมดูลยูทิลิตี 22 รายการ (สตรีม, TLS, พร็อกซี, การบันทึกล็อก)
+open-sse/                   # @omniroute/open-sse workspace
+├── executors/              # 150 executor modules (executor classes + per-provider helpers)
+├── handlers/               # 11 request handlers (chat, responses, embeddings, images, etc.)
+├── mcp-server/             # MCP server (110 unique tools, 3 transports, 33 scopes)
+├── services/               # 178 top-level services (combo, autoCombo, rateLimitManager, etc.)
+├── translator/             # Format translators (OpenAI ↔ Claude ↔ Gemini ↔ Responses ↔ Ollama)
+├── transformer/            # Responses API transformer
+└── utils/                  # 22 utility modules (stream, TLS, proxy, logging)
 
-electron/                   # แอปเดสก์ท็อป Electron (ข้ามแพลตฟอร์ม)
+electron/                   # Electron desktop app (cross-platform)
 
 tests/
-├── unit/                   # ตัวรันการทดสอบ Node.js (ไฟล์ทดสอบ 1,574 ไฟล์)
-├── integration/            # การทดสอบการทำงานร่วมกัน
-├── e2e/                    # การทดสอบ Playwright
-├── security/               # การทดสอบความปลอดภัย
-├── translator/             # การทดสอบเฉพาะตัวแปล
-└── load/                   # การทดสอบโหลด
+├── unit/                   # Node.js test runner (1,574 test files)
+├── integration/            # Integration tests
+├── e2e/                    # Playwright tests
+├── security/               # Security tests
+├── translator/             # Translator-specific tests
+└── load/                   # Load tests
 
 docs/
-├── adr/                     # บันทึกการตัดสินใจด้านสถาปัตยกรรม
-├── architecture/            # สถาปัตยกรรมระบบและความยืดหยุ่น
-├── comparison/              # การเปรียบเทียบ OmniRoute กับทางเลือกอื่น
-├── compression/             # คู่มือและกฎการบีบอัด
-├── dev/                     # คู่มือการพัฒนา
-├── diagrams/                # แผนภาพสถาปัตยกรรม
+├── adr/                     # Architecture Decision Records
+├── architecture/            # System architecture & resilience
+├── comparison/              # OmniRoute vs alternatives
+├── compression/             # Compression guides & rules
+├── dev/                     # Development guides
+├── diagrams/                # Architecture diagrams
 ├── frameworks/              # MCP, A2A, OpenCode, Memory, Skills
-├── guides/                  # คู่มือผู้ใช้, Docker, การตั้งค่า, การแก้ไขปัญหา
-├── i18n/                    # คำแปล README เป็นภาษาต่างๆ
-├── marketing/               # สื่อการตลาด
-├── ops/                     # การปรับใช้, พร็อกซี, ความครอบคลุม, การเผยแพร่
-├── providers/               # เอกสารเฉพาะผู้ให้บริการ
-├── reference/               # เอกสารอ้างอิง API, ตัวแปรสภาพแวดล้อม, เครื่องมือ CLI, ระดับบริการฟรี
-├── releases/                # บันทึกประจำรุ่น
-├── routing/                 # กลไก auto-combo, การเล่นซ้ำกระบวนการให้เหตุผล
-├── screenshots/             # ภาพหน้าจอแดชบอร์ด
-├── security/                # มาตรการป้องกัน, การปฏิบัติตามข้อกำหนด, การพรางตัว, โทเค็น
-└── specs/                   # ข้อกำหนดการออกแบบ
+├── guides/                  # User guide, Docker, setup, troubleshooting
+├── i18n/                    # Internationalized README translations
+├── marketing/               # Marketing materials
+├── ops/                     # Deployment, proxy, coverage, releases
+├── providers/               # Provider-specific docs
+├── reference/               # API reference, env vars, CLI tools, free tiers
+├── releases/                # Release notes
+├── routing/                 # Auto-combo engine, reasoning replay
+├── screenshots/             # Dashboard screenshots
+├── security/                # Guardrails, compliance, stealth, tokens
+└── specs/                   # Design specs
 ```
 
 ---

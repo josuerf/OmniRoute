@@ -62,6 +62,7 @@ const MODEL_TO_PROVIDERS = new Map<string, string[]>();
 for (const [aliasOrId, models] of Object.entries(PROVIDER_MODELS)) {
   const providerId = ALIAS_TO_PROVIDER_ID[aliasOrId] || aliasOrId;
   for (const modelEntry of models || []) {
+    if (modelEntry?.requiresProviderPrefix) continue;
     // Registry aliases are routable ids too: a client pinned to a legacy id must
     // still infer the provider that declares it, even when the catalog dropped
     // the standalone row (e.g. opencode-zen's deepseek-v4-flash-free alias).
@@ -265,6 +266,12 @@ export function hasKnownProviderModel(
 
 function resolveInferredProviderModel(provider: string, modelId: string) {
   return resolveProviderModelAlias(provider, modelId);
+}
+
+function normalizeProviderScopedModelId(provider: string | null, modelId: string | null) {
+  // Compatibility dialects must not rewrite an ID this provider already serves.
+  if (hasKnownProviderModel(provider, modelId)) return modelId;
+  return normalizeCrossProxyModelId(modelId).modelId;
 }
 
 function getInferredProvidersForModel(modelId: string, dynamicProviders: string[] = []) {
@@ -569,7 +576,7 @@ function resolveModelAliasTarget(
 
     return {
       provider: resolveProviderAlias(resolved.provider),
-      model: normalizeCrossProxyModelId(resolved.model).modelId || resolved.model,
+      model: normalizeProviderScopedModelId(resolved.provider, resolved.model) || resolved.model,
     };
   }
 
@@ -752,6 +759,9 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
 
   // Auto-pick:
   // 1. If active providers match, pick from active candidates (first active provider).
+  //    The other active candidates serve the same id; they are returned as
+  //    `failoverTargets` so the chat handler can fail over to them instead of
+  //    failing the request on the first provider's quota or outage.
   // 2. If no active providers filter applied, but canonical candidates deduplicate to 1 provider, pick it.
   const effectiveCandidates = activeCandidates.length > 0 ? activeCandidates : canonicalCandidates;
 
@@ -759,7 +769,15 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
     if (activeCandidates.length > 0 || effectiveCandidates.length === 1) {
       const provider = effectiveCandidates[0];
       const canonicalModel = resolveInferredProviderModel(provider, modelId);
-      return { provider, model: canonicalModel, extendedContext };
+      const failoverTargets = activeCandidates
+        .slice(1)
+        .map((p) => `${p}/${resolveInferredProviderModel(p, modelId)}`);
+      return {
+        provider,
+        model: canonicalModel,
+        extendedContext,
+        ...(failoverTargets.length > 0 ? { failoverTargets } : {}),
+      };
     }
   }
 
@@ -830,7 +848,7 @@ export async function getModelInfoCore(
   const { extendedContext } = parsed;
 
   if (!parsed.isAlias) {
-    const normalizedModel = normalizeCrossProxyModelId(parsed.model).modelId;
+    const normalizedModel = normalizeProviderScopedModelId(parsed.provider, parsed.model);
     const canonicalModel = resolveProviderModelAlias(parsed.provider, normalizedModel);
     return {
       provider: parsed.provider,

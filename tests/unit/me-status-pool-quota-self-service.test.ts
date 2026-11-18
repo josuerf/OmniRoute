@@ -47,6 +47,8 @@ function makeBaseDeps(overrides: Record<string, unknown> = {}) {
         }),
       }),
     }),
+    listApiKeyUsageSlices: () => [],
+    getPricingTable: async () => ({}),
     getProviderConnectionById: async () => null,
     getProviderConnections: async () => [],
     fetchAndPersistProviderLimits: async () => {

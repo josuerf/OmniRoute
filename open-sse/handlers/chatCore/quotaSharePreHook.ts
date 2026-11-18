@@ -10,8 +10,11 @@
  * handler (`finalizePendingRequest`) so this engine leaf takes no new open-sse → src import edge.
  */
 
-import type { EnforceDecision, EnforceInput } from "@/lib/quota/types";
-import { createErrorResult } from "../../utils/error.ts";
+import type { EnforceDecision } from "@/lib/quota/types";
+// Type-only reference for the structured error result this hook's block path
+// returns (see the `block` branch below). No runtime edge is created —
+// createErrorResult is still loaded through the dynamic import there.
+import type { createErrorResult } from "../../utils/error.ts";
 
 type LoggerLike =
   { info?: (...args: unknown[]) => void; warn?: (...args: unknown[]) => void } | null | undefined;
@@ -37,8 +40,6 @@ export async function runQuotaSharePreHook({
   comboExecutionKey: string | null;
   finalizePendingRequest: () => void;
   log?: LoggerLike;
-  /** Test seam; defaults to enforceQuotaShare. */
-  enforce?: (input: EnforceInput) => Promise<EnforceDecision>;
 }): Promise<ReturnType<typeof createErrorResult> | null> {
   let quotaSoftDeprioritize = false;
   if (apiKeyInfo?.id && credentials?.connectionId) {
@@ -61,6 +62,7 @@ export async function runQuotaSharePreHook({
       });
 
       if (decision.kind === "block") {
+        const { createErrorResult } = await import("../../utils/error.ts");
         log?.warn?.(
           "QUOTA_SHARE",
           `[quotaShare] blocked apiKeyId=${apiKeyInfo.id} provider=${provider ?? "unknown"}: ${decision.reason}`
@@ -70,14 +72,20 @@ export async function runQuotaSharePreHook({
         // pending detail lingers as an orphaned status-0 call-log row until the
         // reaper sweeps it (mirrors the other pre-upstream error returns).
         finalizePendingRequest();
-        // Same result shape as every other pre-upstream rejection in handleChatCore.
-        // A bare Response here made callers read `result.response.headers` off
-        // undefined, turning this 429 into a 502 that the combo treated as a
-        // provider failure (skipping every remaining target of the provider).
+        // #17132: return the SAME structured error shape as every other early
+        // exit of handleChatCore — NOT a bare Response. The caller
+        // (handleSingleModelChat) consumes this as a result object and reads
+        // `result.response.headers`; a bare Response made that access throw a
+        // TypeError and crashed the request as a 500/502 before the clean 429
+        // could reach the client. `errorCode: "quota_share_blocked"` is the
+        // per-key signal the 429 account-fallback machinery keys on: a key
+        // hitting its own cap must never cool down the shared connection,
+        // poison the quota cache or trip the provider breaker.
         return createErrorResult(
           429,
           decision.reason,
-          decision.retryAfterSeconds ? decision.retryAfterSeconds * 1000 : null
+          decision.retryAfterSeconds ? decision.retryAfterSeconds * 1000 : undefined,
+          "quota_share_blocked"
         );
       }
 

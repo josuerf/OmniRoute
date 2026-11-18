@@ -25,71 +25,108 @@ omniroute launch --profile glm52  # Claude Code käyttää mallia glm/glm-5.2 Om
 
 ---
 
-## Miten Claude Code muodostaa yhteyden yhdyskäytävään
+## Kuinka Claude Code muodostaa yhteyden yhdyskäytävään
 
-Claude Code käyttää **Anthropic Messages API** -rajapintaa, ja se ohjataan mukautettuun
-päätepisteeseen ympäristömuuttujilla (sillä ei ole `--base-url`-valitsinta):
+Claude Code puhuu**Anthropic Viestit API** ja se on suunnattu mukautettuun päätepisteeseen ympäristömuuttujilla (sillä ei ole `--base-url` -lippua):
 
-| Muuttuja                                     | Tarkoitus                                                                                                     |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_BASE_URL`                         | Yhdyskäytävän juuren URL-osoite (Claude Code lisää `/v1/messages`). **Ei `/v1`-päätettä.**                    |
-| `ANTHROPIC_AUTH_TOKEN`                       | Lähetetään muodossa `Authorization: Bearer …` — käytä OmniRoute-käyttöoikeustunnustasi / API-avaintasi        |
-| `ANTHROPIC_API_KEY`                          | Vaihtoehto: lähetetään muodossa `x-api-key`. Jos molemmat on asetettu, `ANTHROPIC_AUTH_TOKEN` on ensisijainen |
-| `ANTHROPIC_MODEL`                            | Pakota tietty malli (ohittaa `/model`-valitsimen oletusarvon)                                                 |
-| `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` | `1` → natiivi `/model`-valitsin luettelee `/v1/models`-päätepisteen `claude*`/`anthropic*`-mallit             |
-| `CLAUDE_CODE_MAX_OUTPUT_TOKENS`              | Rajoita tulostunnusten määrä vastausta kohden (esim. `65536`)                                                 |
-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW`            | Tunnusraja automaattiselle tiivistykselle                                                                     |
+| Muuttuva                                     | Tarkoitus                                                                                           |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_BASE_URL`                         | Yhdyskäytävän juuri URL (Claude koodi liittää `/v1/messages`).** Ei `/v1` -liitettä.**              |
+| `ANTHROPIC_AUTH_TOKEN`                       | Lähetetty muodossa `Authorization: Bearer …` — käytä OmniRoute käyttötunnustasi / API -avainta      |
+| `ANTHROPIC_API_KEY`                          | Vaihtoehto: lähetetään muodossa `x-api-key`. Jos molemmat asettuvat, `ANTHROPIC_AUTH_TOKEN` voittaa |
+| `ANTHROPIC_MODEL`                            | Pakota tietty malli (ohittaa `/model` valitsimen oletusasetuksen)                                   |
+| `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` | `1` → alkuperäinen `/model` -valitsin luettelee `claude*`/`anthropic*` -malleja `/v1/models`        |
+| `CLAUDE_CODE_MAX_OUTPUT_TOKENS`              | Korjaa lähtötunnisteet vastausta kohden (esim. `65536`)                                             |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW`            | Automaattisen tiivistyksen tunnuskynnys                                                             |
 
-> Ympäristömuuttujat luetaan **vain kerran käynnistyksen yhteydessä** — käynnistä Claude Code uudelleen niiden muuttamisen jälkeen.
+> Env vars luetaan** kerran käynnistyksen yhteydessä** — käynnistä Claude koodi uudelleen niiden vaihtamisen jälkeen.
 
-`omniroute launch` asettaa nämä kaikki puolestasi: se selvittää perus-URL-osoitteen ja tunnuksen
-aktiivisesta kontekstista (joten `omniroute connect <vps>` ja sen jälkeen `omniroute launch`
-toimii suoraan), tarkistaa palvelimen kunnon ja suorittaa `claude`-komennon.
+Jos valtuustieto pyörii kiinteän merkkijonon sijaan, aseta `apiKeyHelper` :ksi `~/.claude/settings.json` komento, joka tulostaa nykyisen tunnistetiedot stdout-tiedostoon. Claude koodi tallentaa tulostensa oletuksena välimuistiin viiden minuutin ajan (`CLAUDE_CODE_API_KEY_HELPER_TTL_MS` ohittaa sen) ja lähettää arvon sekä `Authorization: Bearer` että `x-api-key`-muodossa. Komentosarjan on tulostettava valtuustiedot eikä mikään muu — banneri sen rinnalla epäonnistuu apuohjelmassa v2.1.227 +.
+
+Näin Entra ID SSO toimii: `scripts/cli/omniroute-sso.mjs token` tulostaa lyhytikäisen Entra-käyttötunnuksen, jonka OmniRoute vahvistaa API avaimen sijaan. Katso [`docs/security/ENTRA_SSO.md`](../security/ENTRA_SSO.md).
+
+`omniroute launch` asettaa nämä kaikki puolestasi: se ratkaisee URL + -perustunnisteen aktiivisesta kontekstista (joten `omniroute connect <vps>` sitten `omniroute launch` vain toimii), tarkistaa palvelimen kunto ja suorittaa `claude`.
 
 ---
 
-## Löytämisaliakset — tuo muut kuin Claude-mallit näkyviin `/model`-valitsimessa
+## Käyttötarkoitus: istunnot ja projektit
 
-Claude Coden yhdyskäytävän mallien etsintä luettelee vain tunnisteet, jotka alkavat merkkijonolla `claude`
-tai `anthropic`. Siksi, kun `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`, natiivi
-`/model`-valitsin näyttää tavallisesti **vain** OmniRouten Claude-/Anthropic-mallit —
-`kimi/kimi-k2.6` tai `glm/glm-5.2` ei koskaan näy, vaikka sen reititys toimii oikein.
+OmniRoute ryhmittelee jokaisen API -avaimen pyynnöt** agenttiistunnot** ja tallentaa mitkä** hanke** jokainen istunto työskenteli (`agent_sessions` taulukko), joten käyttö ja kustannukset voidaan raportoida ryhmän jäsentä, projektia ja istuntoa kohti.
 
-OmniRoute voi peilata minkä tahansa käytössä olevan mallin (ja yhdistelmän) `claude/…`-tunnisteen alle,
-jotta se läpäisee suodatuksen ja näkyy valitsimessa:
+Mitä tallennetaan ilman asiakasasetuksia:
+
+| Ala      | Lähde                                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Istunto  | `x-claude-code-session-id` otsikko (sama arvo kuin `metadata.user_id.session_id`), vakaa istuntoa kohti                                     |
+| Projekti | `Primary working directory:` -rivi Claude -koodi lähettää ympäristösanoman; `.claude/worktrees/` n työpuukansiot ratkaisevat arkiston nimen |
+| Haara    | `Current branch:` git-tilasta Claude Koodi lähettää ensimmäisen viestin kanssa                                                              |
+| Asiakas  | `user-agent` (`claude-cli/<version>`)                                                                                                       |
+
+Codex (`<environment_context><cwd>`) ja OpenCode (`x-opencode-session`) tunnistetaan samalla tavalla. Avaimet kanssa** ei lokia** käytössä säilyttää vain istunnon tunnuksen ja otsikon toimittamat projektikentät; mitään kehotteesta luettua (polku, haara) ei tallenneta.
+
+### Projektin nimeäminen selkeästi (suositus)
+
+Työhakemisto vaihtelee koneiden välillä, joten sama arkisto voi näkyä eri poluilla. Lähetä projekti sen sijaan nimenomaisesti: Claude Code lisää kaikki `ANTHROPIC_CUSTOM_HEADERS` ssä luetellut otsikot jokaiseen mallipyyntöön, ja OmniRoute lukee niistä kaksi:
+
+| Otsikko                    | Arvo                                                               |
+| -------------------------- | ------------------------------------------------------------------ |
+| `x-omniroute-project`      | Projektin nimi, esim `omniroute`                                   |
+| `x-omniroute-project-repo` | Normalisoitu kaukosäädin, esim `github.com/diegosouzapw/OmniRoute` |
+
+Molemmat luetaan vain nimeämistä varten; niitä ei koskaan välitetä eteenpäin toimittajalle.
+
+`ANTHROPIC_CUSTOM_HEADERS` luetaan kerran käynnistyksen yhteydessä, ja asetustiedostot tallentavat kirjaimellisia arvoja, joten laske se, kun Claude Code käynnistyy. Lisää tämä tiedostoon `~/.zshrc` tai `~/.bashrc` ja jatka `claude` aloittamista projektikansiosta:
+
+```bash
+claude() {
+  local common name repo
+  if common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+    case $common in
+      */.git) name=$(basename "$(dirname "$common")") ;;  # repository name, also in worktrees
+      *) name=$(basename "$common" .git) ;;                # bare repository (/srv/foo.git)
+    esac
+    repo=$(git remote get-url origin 2>/dev/null \
+      | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://([^@/]*@)?##; s#^[^@/]+@([^:]+):#\1/#; s|[?#].*$||; s#\.git$##')
+  else
+    name=$(basename "$PWD")                                # not a git repository: folder name
+  fi
+  ANTHROPIC_CUSTOM_HEADERS="${ANTHROPIC_CUSTOM_HEADERS:+${ANTHROPIC_CUSTOM_HEADERS}
+}x-omniroute-project: ${name}${repo:+
+x-omniroute-project-repo: ${repo}}" command claude "$@"
+}
+```
+
+`sed` -lauseke poistaa kaikki etä- URL hen upotetut tunnistetiedot, kyselymerkkijonot ja fragmentit, ja `ANTHROPIC_CUSTOM_HEADERS` ssä jo olevat otsikot säilytetään. IDE laajennukset käynnistävät Claude koodin ilman komentotulkkiasi, joten niiden istunnot palaavat työhakemistoon.
+
+---
+
+## Discovery-aliakset — muut kuin Claude-mallit näkyviin `/model`-valitsimeen
+
+Claude Coden gateway-mallidiscovery listaa vain tunnisteet, jotka alkavat `claude`- tai `anthropic`-etuliitteellä, joten kun `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` on asetettu, natiivi `/model`-valitsin näyttää normaalisti **vain** OmniRouten Claude/Anthropic-mallit — esimerkiksi `kimi/kimi-k2.6` tai `glm/glm-5.2` ei koskaan ilmesty listaan, vaikka reititys toimisikin moitteettomasti.
+
+OmniRoute voi peilata minkä tahansa käytössä olevan mallin (ja kombon) `claude/…`-tunnisteen alle, jotta se läpäisee kyseisen suodattimen ja näkyy valitsimessa:
 
 ```
 kimi/kimi-k2.6            →  claude/kimi/kimi-k2.6      "Kimi K2.6 (OmniRoute)"
 glm/glm-5.2              →  claude/glm/glm-5.2         "GLM 5.2 (OmniRoute)"
-<yhdistelmä "custo-otimizado"> →  claude/combo/custo-otimizado
+<combo "custo-otimizado"> →  claude/combo/custo-otimizado
 ```
 
-Kun valitset jonkin näistä Claude Codessa, OmniRoute poistaa `claude/`-kääreen
-ja palauttaa todellisen tunnisteen ennen reititystä — aito `claude/<real-claude-model>`-tunniste
-(varsinainen Claude OAuth -palveluntarjoaja) jätetään aina koskemattomaksi.
+Kun valitset jonkin näistä Claude Codessa, OmniRoute kuorii `claude/`-kääreen pois ja palauttaa todellisen tunnisteen ennen reititystä — aito `claude/<real-claude-model>`-tunniste (varsinainen Claude OAuth -palveluntarjoaja) jätetään aina koskemattomaksi.
 
-**Tämä on oletusarvoisesti pois käytöstä**, ja sitä hallitaan kolmitasoisella portilla (tarkin
-asetus on ensisijainen), joten tavallinen OmniRoute ei koskaan kaksinkertaista luetteloaan asiakkaille,
-jotka eivät käytä Claude Codea:
+Oletuksena vain perustunnisteet peilataan. Kun valinnainen ominaisuuslippu `CATALOG_MIRROR_REFINEMENTS_ENABLED` on päällä, katalogin jo listaamat päättelyteho-variantit (esim. `codex/gpt-6-sol-high`) peilataan kuten muutkin tunnisteet, jolloin Claude Code voi valita eksplisiittisen tehotason, eikä sisäänrakennettuja `auto/*`-tunnisteita, joita pyyntöpolku ei pysty materialisoimaan, peilata. Sitä, listataanko teho-variantteja lainkaan, määrää edelleen `OMNIROUTE_DISABLE_THINKING_LEVEL_VARIANTS` — peili ei koskaan lisää varianttia, jota peruskatalogissa ei ole.
 
-| Taso     | Sijainti                                                                                     |
-| -------- | -------------------------------------------------------------------------------------------- |
-| Malli    | Palveluntarjoajan tietosivu → mallikohtainen "Näytä Claude Codessa" -valitsin                |
-| Tarjoaja | Palveluntarjoajan tietosivu → tarjoajakohtainen valitsin (koskee kaikkia sen malleja)        |
-| Globaali | Asetukset → Ominaisuusliput → `EXPOSE_CC_DISCOVERY_ALIASES` (oletusarvoisesti pois käytöstä) |
+**Tämä on oletuksena pois päältä**, ja sitä ohjataan kolmitasoisella portilla (tarkin asetus voittaa), jotta tavallinen OmniRoute ei koskaan tuplaa katalogiaan asiakasohjelmille, jotka eivät käytä Claude Codea:
 
-Ympäristömuuttuja `EXPOSE_CC_DISCOVERY_ALIASES` pakottaa globaalin tason käyttöön
-ja ohittaa hallintapaneelin asetuksen (Ominaisuusliput-näyttö näyttää
-huomautuksen "aktiivinen ympäristömuuttujan kautta", kun näin tapahtuu). Tarjoaja- ja
-mallikohtaiset valitsimet tarkentavat asetusta edelleen — esimerkiksi globaali asetus pois käytöstä + Kimi-tarjoaja käytössä tuo
-näkyviin vain Kimin mallit.
+| Taso             | Sijainti                                                                                  |
+| ---------------- | ----------------------------------------------------------------------------------------- |
+| Malli            | Palveluntarjoajan yksityiskohtasivu → mallikohtainen "Expose in Claude Code" -kytkin      |
+| Palveluntarjoaja | Palveluntarjoajan yksityiskohtasivu → palveluntarjoajatason kytkin (kattaa kaikki mallit) |
+| Globaali         | Asetukset → Feature Flags → `EXPOSE_CC_DISCOVERY_ALIASES` (oletuksena pois päältä)        |
 
-> ⚠️ **Ikkunakoon ristiriita muissa kuin Claude-malleissa.** Claude Code olettaa 200K:n konteksti-ikkunan
-> kaikille tunnisteille, joita se ei tunnista (se ei voi lukea todellista ikkunakokoa
-> `/v1/models`-päätepisteestä). Jos mallin ikkuna on suurempi (esim. Kimi K2:n 256K), aseta
-> `CLAUDE_CODE_AUTO_COMPACT_WINDOW` arvoon, joka on mallin todellista ikkunaa pienempi, jotta
-> automaattinen tiivistys ei käynnisty ennenaikaisesti. Edellä luodut profiilit tekevät
-> tämän jo mallikohtaisesti.
+`EXPOSE_CC_DISCOVERY_ALIASES`-ympäristömuuttuja pakottaa globaalin tason päälle ja ohittaa hallintapaneelin asetuksen (Feature Flags -näyttö näyttää tällöin "active via environment variable" -huomautuksen). Palveluntarjoaja- ja mallikohtaiset kytkimet tarkentavat asetusta tästä eteenpäin — esimerkiksi globaali pois päältä + Kimi-palveluntarjoaja päällä paljastaa vain Kimin mallit.
+
+> ⚠️ **Kontekstiikkunan epäsuhta muissa kuin Claude-malleissa.** Claude Code olettaa 200K:n kontekstiikkunan kaikille tunnisteille, joita se ei tunnista (se ei pysty lukemaan todellista ikkunakokoa `/v1/models`-päätepisteestä). Jos mallin ikkuna on suurempi (esim. Kimi K2:n 256K), aseta `CLAUDE_CODE_AUTO_COMPACT_WINDOW` arvoon, joka on pienempi kuin mallin todellinen ikkuna, jotta automaattinen tiivistäminen (auto-compaction) ei käynnisty ennenaikaisesti. Yllä olevat generoidut profiilit tekevät tämän jo mallikohtaisesti.
 
 ---
 

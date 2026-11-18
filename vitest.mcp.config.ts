@@ -1,10 +1,14 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
+import { isolatedDataDirEnv } from "./tests/_setup/vitestDataDir";
 
 export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // A throwaway DATA_DIR for the run, so no suite can reach the developer's ~/.omniroute.
+    env: isolatedDataDirEnv(),
+    globalSetup: ["./tests/_setup/vitestDataDir.ts"],
     pool: "threads",
     // MCP suites initialize isolated SQLite databases; Vitest 5 at 20 workers
     // makes native migration/close operations contend and flakes audit tests.
@@ -40,6 +44,10 @@ export default defineConfig({
       // resolves to undefined instead of failing loudly — which silently made
       // every provider look credentialed in the free-tier card tests.
       "@omniroute/open-sse": path.resolve(__dirname, "./open-sse"),
+      // Same mapping as vitest.config.ts and tsconfig `@omniroute/ui-kit/*`: the kit adapters
+      // import component subpaths (`@omniroute/ui-kit/button`) that the package `exports`
+      // map does not list, so without the alias any component suite here fails to resolve.
+      "@omniroute/ui-kit": path.resolve(__dirname, "./packages/ui-kit/src"),
     },
   },
 });

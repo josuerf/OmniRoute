@@ -1,3 +1,4 @@
+import type { PendingUsageTokens } from "./storedUsageEvidence";
 /**
  * Usage History — extracted from usageDb.js (T-15)
  *
@@ -8,8 +9,9 @@
  */
 
 import { getDbInstance } from "../db/core";
+import type { UsageEntry } from "./usageEntry";
+export type { UsageEntry } from "./usageEntry";
 import { normalizePayloadForLog, protectPayloadForLog } from "../logPayloads";
-import { estimateRetainedBytes } from "./retainedBytes";
 import {
   redactUrlQuerySecrets,
   sanitizeErrorMessage,
@@ -20,6 +22,7 @@ import {
   buildLatencyStatsEntry,
   createLatencyBucket,
   mapUsageHistoryRow,
+  normalizeServiceTier,
   resolvePositiveOption,
   toNumber,
   toStringOrNull,
@@ -34,8 +37,14 @@ import {
   storeCompletedDetail,
   getCompletedDetails,
 } from "./completedRequestDetails";
+import * as sessions from "./usageHistory/agentSessionUsage";
 import { shouldPersistToDisk } from "./migrations";
-import { attemptWrite, isWriteLockError, scheduleWriteRetry } from "./usageWriteRetry";
+import {
+  attemptWrite,
+  isWriteLockError,
+  scheduleWriteRetry,
+  type UsageWriteOptions,
+} from "./usageWriteRetry";
 import { getCallLogApiKeyContext } from "./callLogApiKeyContext";
 
 export type PendingRequestMetadata = {
@@ -54,15 +63,12 @@ export type PendingRequestMetadata = {
   sessionTag?: string | null;
 };
 export type PendingRequestDetail = {
-  tokens?: {
-    in: number;
-    out: number;
-    cacheRead: number | null;
-    cacheCreation: number | null;
-    reasoning: number | null;
-    compressed: number | null;
-  };
+  tokens?: PendingUsageTokens;
   id: string;
+  /** Actual durable ID, assigned only after a successful insert. */
+  persistedLogId?: string;
+  /** Private identity for each attempt sharing a public preview ID. */
+  attemptGeneration?: string;
   model: string;
   provider: string;
   connectionId: string | null;
@@ -90,6 +96,11 @@ export type PendingRequestDetail = {
     client?: string[];
   } | null;
 };
+
+export type PendingRequestOwner = Readonly<{
+  detailRef: WeakRef<PendingRequestDetail> | null;
+}>;
+export type PendingRequestIdentity = string | PendingRequestOwner;
 
 // The preview is bounded (MAX_PREVIEW_*), the payload is not: chatCore pushes
 // the full provider body through here at every stage of a request, and
@@ -170,6 +181,8 @@ declare global {
           byAccount: Record<string, Record<string, number>>;
           details: Record<string, Record<string, PendingRequestDetail[]>>;
         };
+        // Absent/non-finite on state created by older module instances; recounted once below.
+        totalPendingDetailBytes: number;
         pendingById: Map<string, PendingRequestDetail>;
         pendingIdByCorrelation: Map<string, { id: string; touchedAt: number }>;
       }
@@ -190,6 +203,7 @@ const pendingState = (globalThis.__omnirouteUsageHistoryPendingState ??= {
     byAccount: Object.create(null) as Record<string, Record<string, number>>,
     details: Object.create(null) as Record<string, Record<string, PendingRequestDetail[]>>,
   },
+  totalPendingDetailBytes: 0,
   pendingById: new Map<string, PendingRequestDetail>(),
   pendingIdByCorrelation: new Map<string, { id: string; touchedAt: number }>(),
 });
@@ -218,28 +232,114 @@ const pendingById = pendingState.pendingById;
 const pendingIdByCorrelation = pendingState.pendingIdByCorrelation;
 
 const DEFAULT_MAX_PENDING_REQUEST_AGE_MS = 60 * 60 * 1000;
-const MAX_PENDING_DETAILS = 5000;
+const DEFAULT_MAX_PENDING_DETAILS = 5000;
 const PENDING_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
-/** Monotonic suffix making pending ids unique even inside one millisecond (upstream #15640). */
+const MAX_PENDING_DETAIL_BYTES = 256 * 1024 * 1024;
+
+/** Monotonic suffix making pending ids unique even inside one millisecond. */
 let pendingIdSequence = 0;
 
+/** Recursive retained-size estimate (string bytes + fixed per-node overhead). */
+function estimatePendingBytes(value: unknown, seen = new WeakSet<object>()): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "string") return Buffer.byteLength(value, "utf8");
+  if (typeof value === "number" || typeof value === "bigint") return 8;
+  if (typeof value === "boolean") return 4;
+  if (typeof value !== "object" || seen.has(value)) return 0;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return 32 + value.reduce((total, entry) => total + estimatePendingBytes(entry, seen), 0);
+  }
+  let bytes = 64;
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    bytes += Buffer.byteLength(key, "utf8") + estimatePendingBytes(entry, seen);
+  }
+  return bytes;
+}
+
 /**
- * IAF-492: the pending store had an age cap and a COUNT cap, never a size cap.
- * One detail carries up to four truncated payload previews plus the live
- * streamChunks arrays the request logger writes straight into it (bounded at
- * 128 KiB per stream by `appendBoundedChunk`), so MAX_PENDING_DETAILS alone
- * admits gigabytes. 64 MiB keeps thousands of ordinary in-flight entries while
- * bounding the structure well under the container limit. Like the completed
- * cache's budget, it accounts estimated payload bytes, not process memory.
+ * Payload fields whose size counts against the pending-map byte ceiling. Stream
+ * captures are charged too: updatePendingRequestStreamChunksById stores an owned
+ * snapshot and re-measures it, so removal must subtract the same field.
  */
-export const MAX_PENDING_DETAILS_BYTES = 64 * 1024 * 1024;
+const PENDING_PAYLOAD_FIELDS = [
+  "clientRequest",
+  "providerRequest",
+  "providerResponse",
+  "clientResponse",
+  "streamChunks",
+] as const;
+
+function pendingDetailBytes(detail: PendingRequestDetail): number {
+  let bytes = 256; // scalars: id/model/provider/correlationId/tokens
+  for (const field of PENDING_PAYLOAD_FIELDS) {
+    bytes += estimatePendingBytes(detail[field]);
+  }
+  return bytes;
+}
+
+function removePendingCorrelationFor(detail: PendingRequestDetail): void {
+  if (!detail.correlationId) return;
+  const correlationEntry = pendingIdByCorrelation.get(detail.correlationId);
+  if (correlationEntry?.id === detail.id) {
+    pendingIdByCorrelation.delete(detail.correlationId);
+  }
+}
+
 /**
- * The reaper only runs every PENDING_SWEEP_INTERVAL_MS. Re-checking the budget
- * every N inserts keeps a burst from parking gigabytes for five minutes, while
- * amortizing the full-store estimate that the check costs.
+ * Accounted pending-preview byte total for `pendingById`
+ * (`pendingState.totalPendingDetailBytes`, shared across module reloads). The
+ * 5000-entry cap bounds COUNT but not preview bytes: each entry retains up to
+ * four payloads (clientRequest + providerRequest + providerResponse +
+ * clientResponse, see pendingRequestScope.ts::PENDING_PAYLOAD_KEYS). Payloads
+ * are preview-truncated first, so a worst-case entry measures ~50 KB and the
+ * 5000 cap lands near 250 MB — close enough to the process ceiling that a byte
+ * ceiling is the safer invariant, and it bounds those previews within a single
+ * burst instead of waiting for the 5-minute age sweep. Mirrors the accounting
+ * completedRequestDetails.ts already does for the same payloads.
  */
-const PENDING_BYTE_BUDGET_CHECK_EVERY = 64;
-let _pendingInsertsSinceByteCheck = 0;
+// Older module instances preserved the map without a shared byte total. Recount
+// that legacy state once, after the payload-size helpers are initialized.
+if (!Number.isFinite(pendingState.totalPendingDetailBytes)) {
+  pendingState.totalPendingDetailBytes = 0;
+  for (const detail of pendingById.values()) {
+    pendingState.totalPendingDetailBytes += pendingDetailBytes(detail);
+  }
+}
+
+/**
+ * Hard byte ceiling on the pending map. Runs after every insert so a burst of
+ * large-context requests cannot push the process past the 85% heap guard before
+ * the 5-minute age sweep runs. Eviction order matches the count-cap path
+ * (stale-marked first, then oldest) so the dashboard's pending counters self-heal.
+ */
+function enforcePendingByteCeiling(): void {
+  if (pendingState.totalPendingDetailBytes <= MAX_PENDING_DETAIL_BYTES) return;
+  const victims = [...pendingById.values()].sort((a, b) => {
+    if (Boolean(a.stale) !== Boolean(b.stale)) return a.stale ? -1 : 1;
+    return a.startedAt - b.startedAt;
+  });
+  for (const detail of victims) {
+    if (pendingState.totalPendingDetailBytes <= MAX_PENDING_DETAIL_BYTES) break;
+    const modelKey = detail.provider ? `${detail.model} (${detail.provider})` : detail.model;
+    forgetPendingDetail(detail);
+    removePendingCorrelationFor(detail);
+    if (detail.connectionId && isSafeKey(modelKey)) {
+      const bucket = pendingRequests.details[detail.connectionId]?.[modelKey];
+      if (bucket) {
+        const index = bucket.indexOf(detail);
+        if (index >= 0) bucket.splice(index, 1);
+      }
+      cleanupPendingDetails(detail.connectionId, modelKey);
+      decrementPendingCounters(modelKey, detail.connectionId);
+    }
+  }
+}
+
+/** Retained bytes currently held by the pending map (diagnostics + tests). */
+export function getPendingRetainedBytes(): number {
+  return pendingState.totalPendingDetailBytes;
+}
 let _pendingSweepTimer: ReturnType<typeof setInterval> | null = null;
 
 export function getMaxPendingRequestAgeMs(
@@ -247,6 +347,21 @@ export function getMaxPendingRequestAgeMs(
 ): number {
   const parsed = Number.parseInt(rawValue ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_PENDING_REQUEST_AGE_MS;
+}
+
+export function getMaxPendingDetails(
+  rawValue: string | undefined = process.env.MAX_PENDING_DETAILS
+): number {
+  const parsed = Number(rawValue);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_PENDING_DETAILS;
+}
+
+function enforcePendingCorrelationLimit(maxEntries = getMaxPendingDetails()): void {
+  while (pendingIdByCorrelation.size > maxEntries) {
+    const oldest = pendingIdByCorrelation.keys().next();
+    if (oldest.done) return;
+    pendingIdByCorrelation.delete(oldest.value);
+  }
 }
 
 function ensurePendingSweepTimer(): void {
@@ -262,174 +377,83 @@ function ensurePendingSweepTimer(): void {
   (_pendingSweepTimer as { unref?: () => void })?.unref?.();
 }
 
-/** One pending detail plus the store coordinates needed to remove it. */
-type PendingDetailEntry = {
-  detail: PendingRequestDetail;
-  connectionId: string;
-  modelKey: string;
-};
-
-/**
- * Walk the pending STORE (`pendingRequests.details`), never the `pendingById`
- * index. IAF-492: every attempt of one client request reuses the first
- * attempt's id (see pendingIdByCorrelation), so a second attempt overwrites the
- * id-keyed view while its own bucket still holds the first detail. Anything
- * iterating the index therefore cannot see — and never reclaims — that first
- * detail. `pendingById` is a strict subset of the store (only connection-bound
- * details are ever indexed), so the store is the only complete view.
- * @returns Every live pending detail with its connection and model key.
- */
-function listPendingDetails(): PendingDetailEntry[] {
-  const entries: PendingDetailEntry[] = [];
-  for (const connectionId of Object.keys(pendingRequests.details)) {
-    const byModel = pendingRequests.details[connectionId];
-    if (!byModel) continue;
-    for (const modelKey of Object.keys(byModel)) {
-      for (const detail of byModel[modelKey] ?? []) {
-        entries.push({ detail, connectionId, modelKey });
-      }
-    }
-  }
-  return entries;
-}
-
-/**
- * Read the estimated payload bytes currently held by the pending-detail store.
- * @returns The store's estimated payload-byte total.
- */
-export function getPendingDetailsByteSize(): number {
-  let total = 0;
-  for (const { detail } of listPendingDetails()) total += estimateRetainedBytes(detail);
-  return total;
-}
-
-function removePendingDetail({ detail, connectionId, modelKey }: PendingDetailEntry): void {
-  // Drop the index entry ONLY when it still points at this exact detail. Two
-  // attempts of one client request share an id, so deleting blindly by id would
-  // evict the LIVE attempt while reclaiming its orphaned predecessor.
-  if (pendingById.get(detail.id) === detail) pendingById.delete(detail.id);
-  if (!isSafeKey(modelKey)) return;
-  const bucket = pendingRequests.details[connectionId]?.[modelKey];
-  if (bucket) {
-    const index = bucket.indexOf(detail);
-    if (index >= 0) bucket.splice(index, 1);
-  }
-  cleanupPendingDetails(connectionId, modelKey);
-  decrementPendingCounters(modelKey, connectionId);
-}
-
-function oldestFirst(a: PendingDetailEntry, b: PendingDetailEntry): number {
-  return a.detail.startedAt - b.detail.startedAt;
-}
-
-/**
- * Cap-eviction order: already-marked entries go first, then the oldest. A marked
- * entry has already been reported as stuck on the dashboard, so it is the one
- * whose removal costs the least information when the store overflows.
- */
-function markedFirstThenOldest(a: PendingDetailEntry, b: PendingDetailEntry): number {
-  if (Boolean(a.detail.stale) !== Boolean(b.detail.stale)) return a.detail.stale ? -1 : 1;
-  return oldestFirst(a, b);
-}
-
-/**
- * Drop the oldest pending details until the store fits the estimated byte
- * budget. The entry cap says nothing about how heavy each entry is: one detail
- * carries up to four payload previews plus the live streamChunks arrays.
- * @param maxBytes - Estimated payload-byte budget for the whole store.
- * @returns number of entries removed.
- */
-function evictPendingBeyondByteBudget(maxBytes: number): number {
-  if (!Number.isFinite(maxBytes) || maxBytes <= 0) return 0;
-  const sized = listPendingDetails()
-    .map((entry) => ({ entry, bytes: estimateRetainedBytes(entry.detail) }))
-    .sort((a, b) => oldestFirst(a.entry, b.entry));
-  let total = sized.reduce((sum, item) => sum + item.bytes, 0);
-  let removed = 0;
-  for (const item of sized) {
-    if (total <= maxBytes) break;
-    removePendingDetail(item.entry);
-    total -= item.bytes;
-    removed += 1;
-  }
-  _pendingInsertsSinceByteCheck = 0;
-  return removed;
-}
-
-/**
- * Re-check the byte budget every PENDING_BYTE_BUDGET_CHECK_EVERY inserts. The
- * reaper only runs every PENDING_SWEEP_INTERVAL_MS, so without this a burst
- * could park an oversized store for five minutes.
- */
-function enforcePendingByteBudgetPeriodically(): void {
-  _pendingInsertsSinceByteCheck += 1;
-  if (_pendingInsertsSinceByteCheck < PENDING_BYTE_BUDGET_CHECK_EVERY) return;
-  evictPendingBeyondByteBudget(MAX_PENDING_DETAILS_BYTES);
-}
-
 /**
  * Marks over-age pending-request details so a stuck request stays visible on the
- * dashboard, then enforces the entry cap and the estimated byte budget. Marked
- * entries keep their map, detail bucket and counters; only the cap and
- * byte-budget paths remove entries (marked first, oldest first), mirroring the
- * normal removal path so the dashboard's pending counts self-heal.
- *
- * The marking pass walks the pending STORE, not `pendingById`: the index is a
- * strict subset of the store, so a first attempt orphaned by a retry that reused
- * its id is invisible there and would be neither marked nor ever reclaimed
- * (IAF-492). Because over-age entries are now marked instead of dropped, the
- * byte budget is what keeps a long stretch of stuck requests from growing the
- * store without bound. Exported for deterministic testing.
- * @param now - Clock reading used for the age comparison.
- * @param maxAgeMs - Age beyond which an entry counts as over-age.
- * @param maxBytes - Estimated payload-byte budget for the whole store.
+ * dashboard for one sweep interval, then removes the payload-free detail and
+ * enforces a hard size cap. Exported for deterministic testing.
  * @returns number of entries removed.
  */
 export function sweepStalePendingRequests(
   now: number = Date.now(),
-  maxAgeMs: number = getMaxPendingRequestAgeMs(),
-  maxBytes: number = MAX_PENDING_DETAILS_BYTES
+  maxAgeMs: number = getMaxPendingRequestAgeMs()
 ): number {
   let removed = 0;
 
-  const remove = (entry: PendingDetailEntry): void => {
-    removePendingDetail(entry);
+  const remove = (detail: PendingRequestDetail): void => {
+    const modelKey = detail.provider ? `${detail.model} (${detail.provider})` : detail.model;
+    forgetPendingDetail(detail);
+    if (detail.connectionId && isSafeKey(modelKey)) {
+      const bucket = pendingRequests.details[detail.connectionId]?.[modelKey];
+      if (bucket) {
+        const index = bucket.indexOf(detail);
+        if (index >= 0) bucket.splice(index, 1);
+      }
+      cleanupPendingDetails(detail.connectionId, modelKey);
+      decrementPendingCounters(modelKey, detail.connectionId);
+    }
+    removePendingCorrelationFor(detail);
     removed++;
   };
 
-  for (const { detail } of listPendingDetails()) {
-    if (detail.stale) continue;
+  for (const detail of pendingById.values()) {
+    if (detail.stale) {
+      if (typeof detail.sweptAt === "number" && now - detail.sweptAt >= PENDING_SWEEP_INTERVAL_MS) {
+        remove(detail);
+      }
+      continue;
+    }
     if (now - detail.startedAt > maxAgeMs) {
-      detail.stale = true;
+      // Prune heavyweight payloads while preserving lightweight metadata
+      // needed for dashboard visibility: model, provider, correlationId, tokens,
+      // and the counters. The full request/response bodies are discarded so they
+      // no longer accumulate in RSS.
+      const before = pendingDetailBytes(detail);
+      detail.clientRequest = undefined;
+      detail.providerRequest = undefined;
+      detail.providerResponse = undefined;
+      detail.clientResponse = undefined;
+      detail.streamChunks = undefined;
+      detail.stage = undefined;
+      detail.stageUpdatedAt = undefined;
+      detail.error = undefined;
+      detail.errorCode = undefined;
+      pendingState.totalPendingDetailBytes += pendingDetailBytes(detail) - before;
       detail.sweptAt = now;
+      detail.stale = true;
     }
   }
 
   // Hard backstop: if entries are still piling up faster than they age out, drop the oldest
   // beyond the cap.
-  const survivors = listPendingDetails();
-  if (survivors.length > MAX_PENDING_DETAILS) {
-    const overflow = survivors.length - MAX_PENDING_DETAILS;
-    for (const entry of [...survivors].sort(markedFirstThenOldest).slice(0, overflow)) {
-      remove(entry);
-    }
+  const maxPendingDetails = getMaxPendingDetails();
+  if (pendingById.size > maxPendingDetails) {
+    const overflow = pendingById.size - maxPendingDetails;
+    const oldest = [...pendingById.values()]
+      .sort((a, b) => {
+        if (Boolean(a.stale) !== Boolean(b.stale)) return a.stale ? -1 : 1;
+        return a.startedAt - b.startedAt;
+      })
+      .slice(0, overflow);
+    for (const detail of oldest) remove(detail);
   }
-
-  removed += evictPendingBeyondByteBudget(maxBytes);
 
   // pendingIdByCorrelation entries are correlation ids, never reused across
   // separate client requests, so nothing else ever removes them — same
-  // age/cap sweep as the pending store above, or the map grows unboundedly.
+  // age/cap sweep as pendingById above, or the map grows unboundedly.
   for (const [correlationId, entry] of pendingIdByCorrelation) {
     if (now - entry.touchedAt > maxAgeMs) pendingIdByCorrelation.delete(correlationId);
   }
-  if (pendingIdByCorrelation.size > MAX_PENDING_DETAILS) {
-    const overflow = pendingIdByCorrelation.size - MAX_PENDING_DETAILS;
-    const oldest = [...pendingIdByCorrelation.entries()]
-      .sort((a, b) => a[1].touchedAt - b[1].touchedAt)
-      .slice(0, overflow);
-    for (const [correlationId] of oldest) pendingIdByCorrelation.delete(correlationId);
-  }
+  enforcePendingCorrelationLimit(maxPendingDetails);
 
   return removed;
 }
@@ -438,6 +462,40 @@ export function sweepStalePendingRequests(
 const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 function isSafeKey(key: string): boolean {
   return !UNSAFE_KEYS.has(key);
+}
+
+/** Capture attempt ownership before an async boundary can replace the shared ID view. */
+export function capturePendingRequestOwner(id: string): PendingRequestOwner {
+  const detail = pendingById.get(id);
+  return { detailRef: detail ? new WeakRef(detail) : null };
+}
+
+function resolvePendingIdentity(identity: PendingRequestIdentity | null | undefined) {
+  if (typeof identity === "string") return pendingById.get(identity);
+  const detail = identity?.detailRef?.deref();
+  if (!detail?.connectionId) return undefined;
+  const modelKey = detail.provider ? `${detail.model} (${detail.provider})` : detail.model;
+  const bucket = pendingRequests.details[detail.connectionId]?.[modelKey];
+  return bucket?.includes(detail) ? detail : undefined;
+}
+
+function forgetPendingDetail(detail: PendingRequestDetail, bytes = pendingDetailBytes(detail)) {
+  if (pendingById.get(detail.id) === detail) pendingById.delete(detail.id);
+  pendingState.totalPendingDetailBytes -= bytes;
+}
+
+function removePendingDetail(detail: PendingRequestDetail): boolean {
+  if (!detail.connectionId) return false;
+  const modelKey = detail.provider ? `${detail.model} (${detail.provider})` : detail.model;
+  const bucket = pendingRequests.details[detail.connectionId]?.[modelKey];
+  const index = bucket?.indexOf(detail) ?? -1;
+  if (index < 0) return false;
+  const bytes = pendingDetailBytes(detail);
+  bucket.splice(index, 1);
+  forgetPendingDetail(detail, bytes);
+  cleanupPendingDetails(detail.connectionId, modelKey);
+  decrementPendingCounters(modelKey, detail.connectionId);
+  return true;
 }
 
 /**
@@ -449,16 +507,22 @@ export function trackPendingRequest(
   connectionId: string | null,
   started: boolean,
   metadata?: PendingRequestMetadata,
-  pendingRequestId?: string
+  pendingRequestId?: PendingRequestIdentity
 ) {
+  if (!started && pendingRequestId && typeof pendingRequestId !== "string") {
+    const detail = resolvePendingIdentity(pendingRequestId);
+    if (detail) removePendingDetail(detail);
+    return;
+  }
+  const legacyRequestId = typeof pendingRequestId === "string" ? pendingRequestId : undefined;
   const modelKey = provider ? `${model} (${provider})` : model;
   if (!isSafeKey(modelKey)) return;
   const normalizedMetadata = normalizePendingMetadata(metadata);
   // An id that is no longer listed was already withdrawn (completion and
   // disconnect both end the same request): leave every counter untouched.
-  if (!started && pendingRequestId && connectionId) {
+  if (!started && legacyRequestId && connectionId) {
     const listed = pendingRequests.details[connectionId]?.[modelKey];
-    if (!listed?.some((entry) => entry.id === pendingRequestId)) return;
+    if (!listed?.some((entry) => entry.id === legacyRequestId)) return;
   }
 
   // Ensure the orphaned-pending reaper is running once pending tracking is in use.
@@ -513,9 +577,19 @@ export function trackPendingRequest(
         // crypto RNG (not Math.random) to satisfy CodeQL js/insecure-randomness —
         // this pending-request id flows into attempt logging; it's a correlation
         // id, not a security secret.
+        // A pending id must be unique across CONCURRENT requests, and thousands can
+        // be tracked inside one millisecond. The old `${now}-${uuid.slice(0,6)}`
+        // form had only a 24-bit random suffix, so a 5,000-request burst collided
+        // ~52% of the time (birthday bound); `pendingById.set` then silently
+        // overwrote the earlier entry, so a live request's pending row vanished
+        // from the map while its bucket still listed it. Keep the timestamp for
+        // ordering/readability, and add a monotonic counter + full random bytes.
         id:
           reusableId ??
-          `${now}-${(globalThis.crypto.randomUUID() as string).replace(/-/g, "").slice(0, 12)}-${(++pendingIdSequence).toString(36)}`,
+          `${now}-${(globalThis.crypto.randomUUID() as string).replace(/-/g, "").slice(0, 12)}-${(++pendingIdSequence).toString(
+            36
+          )}`,
+        attemptGeneration: globalThis.crypto.randomUUID(),
         model,
         provider,
         connectionId,
@@ -524,25 +598,32 @@ export function trackPendingRequest(
       };
       pendingRequests.details[connectionId][modelKey].push(newDetail);
       pendingById.set(newDetail.id, newDetail);
-      if (normalizedMetadata.correlationId) {
+      pendingState.totalPendingDetailBytes += pendingDetailBytes(newDetail);
+      enforcePendingByteCeiling();
+      if (normalizedMetadata.correlationId && pendingById.get(newDetail.id) === newDetail) {
+        pendingIdByCorrelation.delete(normalizedMetadata.correlationId);
         pendingIdByCorrelation.set(normalizedMetadata.correlationId, {
           id: newDetail.id,
           touchedAt: now,
         });
+        enforcePendingCorrelationLimit();
       }
-      enforcePendingByteBudgetPeriodically();
       return newDetail.id;
     } else if (!started && nextCount >= 0) {
-      if (pendingRequestId) {
+      if (legacyRequestId) {
         const bucket = pendingRequests.details[connectionId][modelKey];
         const [removed] = bucket.splice(
-          bucket.findIndex((entry) => entry.id === pendingRequestId),
+          bucket.findIndex((entry) => entry.id === legacyRequestId),
           1
         );
-        if (removed) pendingById.delete(removed.id);
+        if (removed) {
+          forgetPendingDetail(removed);
+        }
       } else if (pendingRequests.details[connectionId]?.[modelKey]?.length) {
         const removed = pendingRequests.details[connectionId][modelKey].shift();
-        if (removed) pendingById.delete(removed.id);
+        if (removed) {
+          forgetPendingDetail(removed);
+        }
       }
       if (!pendingRequests.details[connectionId]?.[modelKey]?.length) {
         delete pendingRequests.details[connectionId]?.[modelKey];
@@ -566,14 +647,46 @@ export function updatePendingRequest(
   const details = pendingRequests.details[connectionId]?.[modelKey];
   if (!details?.length) return;
   const lastIdx = details.length - 1;
-  Object.assign(details[lastIdx], normalizePendingMetadata(metadata));
+  // providerRequest / providerResponse / clientResponse land HERE, on an
+  // already-tracked entry, not on insert. Without re-measuring, the running total
+  // undercounts and the byte ceiling silently stops enforcing in production.
+  const detail = details[lastIdx];
+  const normalized = normalizePendingMetadata(metadata);
+  if (!pendingRequests.details[connectionId]?.[modelKey]?.includes(detail)) return;
+  const before = pendingDetailBytes(detail);
+  Object.assign(detail, normalized);
+  pendingState.totalPendingDetailBytes += pendingDetailBytes(detail) - before;
+  enforcePendingByteCeiling();
 }
 
-export function updatePendingRequestById(id: string | null, metadata: PendingRequestMetadata) {
-  const detail = id ? pendingById.get(id) : null;
+export function updatePendingRequestById(
+  id: PendingRequestIdentity | null,
+  metadata: PendingRequestMetadata
+) {
+  const detail = resolvePendingIdentity(id);
   if (!detail) return false;
-  Object.assign(detail, normalizePendingMetadata(metadata));
+  const normalized = normalizePendingMetadata(metadata);
+  if (resolvePendingIdentity(id) !== detail) return false;
+  const before = pendingDetailBytes(detail);
+  Object.assign(detail, normalized);
+  pendingState.totalPendingDetailBytes += pendingDetailBytes(detail) - before;
+  enforcePendingByteCeiling();
   return true;
+}
+
+/** Link the first confirmed insert to its exact preview, before or after finalization. */
+export function markRequestPersistedById(
+  id: unknown,
+  attemptGeneration: unknown,
+  persistedLogId: string
+) {
+  if (typeof id !== "string" || typeof attemptGeneration !== "string") return;
+  const pending = pendingById.get(id);
+  if (pending?.attemptGeneration === attemptGeneration) pending.persistedLogId ??= persistedLogId;
+  const completed = getCompletedDetails().get(id);
+  if (completed?.attemptGeneration === attemptGeneration && !completed.persistedLogId) {
+    storeCompletedDetail({ ...completed, persistedLogId });
+  }
 }
 
 /** Attach scalar usage to the exact attempt, even if its stream already finalized. */
@@ -640,24 +753,25 @@ function finalizePendingDetailAt(
   const details = pendingRequests.details[connectionId]?.[modelKey];
   if (!details?.length || index < 0 || index >= details.length) return null;
 
-  const completedAt = Date.now();
-  const updated = {
-    ...details[index],
-    ...normalizePendingMetadata(metadata),
-    completedAt,
-    durationMs: Math.max(0, completedAt - details[index].startedAt),
-  };
-  const storedCompletedDetail = storeCompletedDetail(updated);
-  if (storedCompletedDetail) {
-    maybeEnrichCompletedDetail(updated, connectionId);
-    scheduleCompletedDetailCleanup(updated.id);
+  const detail = details[index];
+  try {
+    const completedAt = Date.now();
+    const updated = {
+      ...detail,
+      ...normalizePendingMetadata(metadata),
+      completedAt,
+      durationMs: Math.max(0, completedAt - detail.startedAt),
+    };
+    const storedCompletedDetail = storeCompletedDetail(updated);
+    if (storedCompletedDetail) {
+      maybeEnrichCompletedDetail(updated, connectionId);
+      scheduleCompletedDetailCleanup(updated.id);
+    }
+    return detail.id;
+  } finally {
+    // Completed-detail retention must not keep a terminal attempt pending.
+    removePendingDetail(detail);
   }
-
-  details.splice(index, 1);
-  pendingById.delete(updated.id);
-  cleanupPendingDetails(connectionId, modelKey);
-  decrementPendingCounters(modelKey, connectionId);
-  return updated.id;
 }
 
 export function finalizePendingRequest(
@@ -672,16 +786,15 @@ export function finalizePendingRequest(
 }
 
 export function finalizePendingRequestById(
-  id: string | null | undefined,
+  id: PendingRequestIdentity | null | undefined,
   metadata: PendingRequestMetadata
 ): boolean {
-  if (!id) return false;
-  const detail = pendingById.get(id);
+  const detail = resolvePendingIdentity(id);
   if (!detail?.connectionId) return false;
   const modelKey = detail.provider ? `${detail.model} (${detail.provider})` : detail.model;
   if (!isSafeKey(modelKey)) return false;
   const details = pendingRequests.details[detail.connectionId]?.[modelKey];
-  const index = details?.findIndex((entry) => entry.id === id) ?? -1;
+  const index = details?.indexOf(detail) ?? -1;
   return finalizePendingDetailAt(detail.connectionId, modelKey, index, metadata) !== null;
 }
 
@@ -705,6 +818,24 @@ export function finalizeMostRecentPendingRequest(
 
 export { getCompletedDetails } from "./completedRequestDetails";
 
+/** Store an owned snapshot so caller array mutations cannot bypass byte accounting. */
+export function updatePendingRequestStreamChunksById(
+  id: string,
+  streamChunks: PendingRequestDetail["streamChunks"]
+): boolean {
+  const entry = pendingById.get(id);
+  if (!entry) return false;
+  const before = pendingDetailBytes(entry);
+  entry.streamChunks = streamChunks
+    ? Object.fromEntries(
+        Object.entries(streamChunks).map(([key, chunks]) => [key, chunks?.slice()])
+      )
+    : streamChunks;
+  pendingState.totalPendingDetailBytes += pendingDetailBytes(entry) - before;
+  enforcePendingByteCeiling();
+  return true;
+}
+
 export function updatePendingRequestStreamChunks(
   model: string,
   provider: string,
@@ -720,7 +851,7 @@ export function updatePendingRequestStreamChunks(
   if (!isSafeKey(modelKey)) return;
   const details = pendingRequests.details[connectionId]?.[modelKey];
   if (!details?.length) return;
-  details[0].streamChunks = streamChunks;
+  updatePendingRequestStreamChunksById(details[0].id, streamChunks);
 }
 
 /**
@@ -751,6 +882,7 @@ export function clearPendingRequests() {
   >;
   pendingById.clear();
   pendingIdByCorrelation.clear();
+  pendingState.totalPendingDetailBytes = 0;
   clearCompletedDetails();
 }
 
@@ -806,48 +938,6 @@ export async function getUsageDb(sinceIso?: string | null, limit?: number, curso
 // ──────────────── Save Request Usage ────────────────
 
 /**
- * DB-entity-mapped shape accepted by {@link saveRequestUsage}, mirroring the
- * `usage_history` table columns 1:1 (see `src/lib/db/migrations/`). Convention
- * (#3512): every `usage_history` writer should type its entry against this
- * interface instead of an inline anonymous object or `any` — call sites are
- * intentionally permissive (fields optional/nullable) because rows are built
- * incrementally across several extraction points (chatCore success/failure
- * paths, rejected-request accounting, the Codex Responses WS bridge).
- *
- * `tokens` stays `unknown` on purpose: callers pass either the raw
- * provider-shaped usage object (OpenAI `prompt_tokens`/`completion_tokens`,
- * Anthropic `input_tokens`/`cache_read_input_tokens`, …) or the already
- * normalized `{ input, output, cacheRead, cacheCreation, reasoning }` shape —
- * `getLoggedInputTokens`/`getLoggedOutputTokens`/`getPromptCache*Tokens` in
- * `./tokenAccounting` accept both and extract the right fields.
- */
-export interface UsageEntry {
-  provider?: string | null;
-  model?: string | null;
-  /** Raw or normalized token usage — see the interface doc above. */
-  tokens?: unknown;
-  status?: string | null;
-  success?: boolean;
-  latencyMs?: number;
-  timeToFirstTokenMs?: number;
-  errorCode?: string | null;
-  /** ISO timestamp; defaults to `new Date().toISOString()` when omitted. */
-  timestamp?: string;
-  connectionId?: string | null;
-  apiKeyId?: string | null;
-  apiKeyName?: string | null;
-  serviceTier?: string | null;
-  /** @deprecated legacy snake_case fallback, read only if `serviceTier` is unset. */
-  service_tier?: string | null;
-  comboStrategy?: string | null;
-  /** @deprecated legacy snake_case fallback, read only if `comboStrategy` is unset. */
-  combo_strategy?: string | null;
-  endpoint?: string | null;
-  /** Opaque CLIProxyAPI auth_index. Never a label, path, token, or email. */
-  cpaAuthIndex?: string | null;
-}
-
-/**
  * Controls the legacy natural-key guard for one usage write.
  *
  * Normal callers keep the default so repeated callbacks for one request remain
@@ -882,14 +972,26 @@ export async function saveRequestUsage(entry: UsageEntry, options: SaveRequestUs
     apiKeyName: entry.apiKeyName || apiKeyContext?.apiKeyName || null,
   };
 
+  // Agent-session counters are priced before the write (pricing is async) and replayed
+  // unchanged by the deferred retry; requests without an agent identity skip the await.
+  let writeOptions: UsageWriteOptions = options;
   try {
-    attemptWrite(frozenEntry, options);
+    if (frozenEntry.agentContext) {
+      const serviceTier = normalizeServiceTier(entry.serviceTier ?? entry.service_tier);
+      const agentSession = await sessions.buildAgentSessionUsage(
+        frozenEntry,
+        frozenEntry.timestamp,
+        serviceTier
+      );
+      writeOptions = { ...options, agentSession };
+    }
+    attemptWrite(frozenEntry, writeOptions);
   } catch (error) {
     if (!isWriteLockError(error)) {
       console.error("Failed to save usage stats:", error);
       return;
     }
-    scheduleWriteRetry(frozenEntry, options);
+    scheduleWriteRetry(frozenEntry, writeOptions);
   }
 }
 
@@ -1105,6 +1207,3 @@ export async function getRecentLogs(limit = 200) {
     return [];
   }
 }
-
-/** Name used by the upstream sweep test; same measure as getPendingDetailsByteSize. */
-export const getPendingRetainedBytes = getPendingDetailsByteSize;

@@ -165,30 +165,30 @@ Anropsloggar (om aktiverade) skrivs till `${DATA_DIR}/call_logs/`.
 
 ---
 
-## Djupdykning i nyckelfiler
+## Nyckelfiler Deep-Dive
 
 ### chatCore.ts (5977 rader)
 
-Den **huvudsakliga förfrågningshanteraren**. Trots sin storlek har den en tydlig struktur:
+De** huvudförfrågningshanterare** . Trots sin storlek har den en tydlig struktur:
 
 ```ts
-// Pseudostruktur för chatCore.ts
+// Pseudo-structure of chatCore.ts
 export async function handleChat(request: NextRequest) {
-  // 1. Autentisering + CORS
+  // 1. Auth + CORS
   await authenticateRequest(request);
   applyCorsHeaders(response);
 
-  // 2. Validering av innehållet
+  // 2. Body validation
   const body = await parseRequestBody(request);
 
-  // 3. Formatidentifiering + översättning
+  // 3. Format detection + translation
   const sourceFormat = detectFormat(request);
   const targetFormat = getTargetFormat(providerId);
   if (needsTranslation(sourceFormat, targetFormat)) {
     body = translateRequest(body, sourceFormat, targetFormat);
   }
 
-  // 4. Kombinationsdirigering
+  // 4. Combo routing
   const targets = await resolveComboTargets(comboId, body);
   for (const target of targets) {
     try {
@@ -196,20 +196,20 @@ export async function handleChat(request: NextRequest) {
       await recordUsage(result);
       return result;
     } catch (err) {
-      // Fortsätt till nästa mål
+      // Continue to next target
     }
   }
 
-  // 5. Reservlösning för nödfall
+  // 5. Emergency fallback
   return await emergencyFallback(body);
 }
 ```
 
-Trots att den är en enda gigantisk funktion är den organiserad i **kommenterade avsnitt** som motsvarar pipeline-processens fem steg.
+Trots att den är en gigantisk funktion är den organiserad i** kommenterade avsnitt** den kartan till 5-stegs pipeline.
 
-### combo.ts (4456 rader kod)
+### combo.ts (4456 LOC)
 
-**Dirigeringsmotorn** som omvandlar en kombination till ordnade mål.
+De** routingmotor** som löser en kombination av beställda mål.
 
 ```ts
 // services/combo.ts
@@ -226,46 +226,51 @@ export async function handleComboChat(body, comboId): Promise<ChatResult> {
 }
 ```
 
-Stöder **19 dirigeringsstrategier** (se `src/shared/constants/routingStrategies.ts`):
+Stöder** 22 routingstrategier** (se `src/shared/constants/routingStrategies.ts`):
 
-| Strategi            | Beteende                                                                            |
-| ------------------- | ----------------------------------------------------------------------------------- |
-| `priority`          | Ordnad lista med första målet först                                                 |
-| `weighted`          | Sannolikhetsbaserat utifrån vikt per mål                                            |
-| `round-robin`       | Växla mellan målen i turordning                                                     |
-| `context-relay`     | Överför kontext mellan mål                                                          |
-| `fill-first`        | Fyll kvoten innan nästa mål används                                                 |
-| `p2c`               | Två slumpmässiga val jämförs                                                        |
-| `random`            | Likformigt slumpmässigt                                                             |
-| `least-used`        | Välj målet med minst användning på senare tid                                       |
-| `cost-optimized`    | Billigaste fungerande målet först                                                   |
-| `reset-aware`       | Tar hänsyn till leverantörernas återställningsfönster                               |
-| `reset-window`      | Dirigering baserad på återställningsfönster                                         |
-| `headroom`          | Mest återstående kvotmarginal först                                                 |
-| `strict-random`     | Verkligt likformigt (ingen kvalitetsviktning)                                       |
-| `auto`              | Använd poängsättning med 16 faktorer (`autoCombo/`)                                 |
-| `lkgp`              | Senast kända fungerande leverantör först                                            |
-| `context-optimized` | Bäst för förfrågningar med lång kontext                                             |
-| `fusion`            | Skicka parallellt till en panel och syntetisera sedan via en bedömare (`fusion.ts`) |
+| Strategi            | Beteende                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| `priority`          | Första mål beställd lista                                                            |
+| `weighted`          | Sannolikhet per målvikt                                                              |
+| `round-robin`       | Gå igenom målen i ordning                                                            |
+| `context-relay`     | Överlämna sammanhang över mål                                                        |
+| `fill-first`        | Fyll kvoten innan du går vidare till nästa                                           |
+| `p2c`               | Kraften i två val                                                                    |
+| `random`            | Uniform slumpmässig                                                                  |
+| `least-used`        | Välj den med minsta användningsområden                                               |
+| `cost-optimized`    | Billigaste hälsosamma mål först                                                      |
+| `reset-aware`       | Medveten om leverantörsåterställningsfönster                                         |
+| `reset-window`      | Återställ fönsterbaserad routing                                                     |
+| `expiry-first`      | Spendera det konto vars kvot skulle löpa ut oanvänt först                            |
+| `headroom`          | Mest återstående kvotutrymme först                                                   |
+| `quota-weighted`    | Hoppa över uttömda konton och dra sedan av överbliven kvot ÷ under flygning          |
+| `strict-random`     | Verkligen enhetlig (ingen kvalitetsviktning)                                         |
+| `auto`              | Använd 16-faktorspoäng (`autoCombo/`)                                                |
+| `lkgp`              | Senast kända bra leverantör först                                                    |
+| `context-optimized` | Bäst för förfrågningar med långa sammanhang                                          |
+| `cache-optimized`   | Fäst varje återanvändbart promptprefix till samma konto (prompt-cache-träffar)       |
+| `fusion`            | Fläkta ut till en panel parallellt och syntetisera sedan via en domare (`fusion.ts`) |
+| `pipeline`          | Kedjesteg — varje måls utdata matar nästa                                            |
+| `jev`               | Opt-in: TypeSafe Jev medger vilka rankade bidrag som körs; annars din beställning    |
 
-### base.ts (1170 rader kod)
+### base.ts (1170 LOC)
 
-Den **abstrakta exekveraren** som varje exekverarklass utökar (direkt eller via `DefaultExecutor` och andra underklasser). Den innehåller:
+De** abstrakt utförare** att varje executorklass sträcker sig (direkt eller genom `DefaultExecutor` och andra underklasser). Den innehåller:
 
-- `buildUrl()` — standardkonstruktion av URL (underklasser åsidosätter för anpassat beteende)
-- `buildHeaders()` — standardrubriker (autentisering, innehållstyp)
-- `transformRequest()` — vidarebefordrar oförändrat som standard
-- `execute()` — den huvudsakliga HTTP-loopen med återförsök, exponentiell fördröjning och brytare
+- `buildUrl()` — standard URL -konstruktion (underklasser åsidosätter för anpassade)
+- `buildHeaders()` — standardhuvuden (auth, innehållstyp)
+- `transformRequest()` — pass-through som standard
+- `execute()` — huvudslingan för HTTP med retry/backoff/breaker
 
 ```ts
 // open-sse/executors/default.ts
 export class DefaultExecutor extends BaseExecutor {
-  // Hanterar alla OpenAI/Anthropic-kompatibla leverantörer
-  // Leverantörer registrerar konfigurationer (URL, autentisering, rubriker) men delar exekveringslogik
+  // Handles all OpenAI/Anthropic-compatible providers
+  // Providers register configurations (URL, auth, headers) but share executor logic
 }
 ```
 
-Leverantörsspecifikt beteende (autentiseringsrubriker, bas-URL, versionsrubriker) konfigureras via leverantörsregistret, inte genom separata exekverarklasser.
+Leverantörsspecifikt beteende (auth headers, base URL, version headers) konfigureras via leverantörsregistret, inte separata executorklasser.
 
 ````
 
@@ -273,88 +278,88 @@ Leverantörsspecifikt beteende (autentiseringsrubriker, bas-URL, versionsrubrike
 
 ## Tjänster (117 moduler)
 
-Tjänster är **fokuserade moduler med ett enda syfte** som handlers kombinerar. De stora kategorierna:
+Tjänster är** fokuserade moduler för enstaka ändamål** som hanterare komponerar. De stora kategorierna:
 
-### Routning och kombination
+### Routing & Combo
 
-- `combo.ts` — startpunkt för kombinationsroutade förfrågningar
-- `services/autoCombo/` — poängsättning med 16 faktorer, 8 automatiska routningsstrategier
+- `combo.ts` — ingångspunkt för combo-dirigerade förfrågningar
+- `services/autoCombo/` — 16-faktors poängsättning, 8 automatiska routingstrategier
 - `wildcardRouter.ts` — matchar jokerteckenrutter (`gpt-*`)
-- `modelFamilyFallback.ts` — T5-reservlösning inom samma familj
+- `modelFamilyFallback.ts` — T5 fallback inom familjen
 
-### Hastighetsbegränsning och kvot
+### Prisbegränsning och kvot
 
-- `rateLimitManager.ts` — tokenhink per nyckel+leverantör
-- `usage.ts` — registrering av användning
-- `quotaCache.ts` — minnesbaserade ögonblicksbilder av kvoter
+- `rateLimitManager.ts` — token-hink per nyckel + leverantör
+- `usage.ts` — användningsinspelning
+- `quotaCache.ts` — ögonblicksbilder av minneskvoter
 
-### Konto och token
+### Konto & Token
 
-- `tokenRefresh.ts` — OAuth-uppdatering vid 401
-- `accountFallback.ts` — växla till ett alternativt konto
-- `sessionManager.ts` — sessionstillstånd för dialoger i flera steg
+- `tokenRefresh.ts` — OAuth uppdatera på 401
+- `accountFallback.ts` — byta till alternativt konto
+- `sessionManager.ts` — multi-turn session tillstånd
 
 ### Intelligens
 
-- `intentClassifier.ts` — klassificera förfrågans avsikt
-- `taskAwareRouter.ts` — routa efter uppgiftstyp
-- `thinkingBudget.ts` — tilldela tokens för resonemang
-- `contextManager.ts` — infoga routningskontext
+- `intentClassifier.ts` — klassificera begäran avsikt
+- `taskAwareRouter.ts` — rutt efter uppgiftstyp
+- `thinkingBudget.ts` — allokera tänkande tokens
+- `contextManager.ts` — injicera routingkontext
 
-### Motståndskraft
+### Elasticitet
 
-- `resilience.ts` — orkestrering av återförsök, backoff och kretsbrytare
-- `emergencyFallback.ts` — reservlösning som sista utväg
-- `modelDeprecation.ts` — routa automatiskt till efterföljande modeller
+- `resilience.ts` — försök igen, backoff, breaker-orkestrering
+- `emergencyFallback.ts` — sista utväg reserv
+- `modelDeprecation.ts` — automatisk rutt till efterföljande modeller
 
-### Tillstånd
+### Ange
 
-- `signatureCache.ts` — deduplicering efter förfrågningssignatur
-- `volumeDetector.ts` — lastreducering
-- `contextHandoff.ts` — sessionsserialisering
+- `signatureCache.ts` — dedup genom begäran signatur
+- `volumeDetector.ts` — avlastning
+- `contextHandoff.ts` — session serialisering
 
-### Komprimering
+### Kompression
 
-- `compression/` (underkatalog) — fullständig komprimeringspipeline
-- 39 filer som omfattar motorer, regelpaket och adaptrar
+- `compression/` (underkatalog) — full komprimeringspipeline
+- 39 filer som täcker motorer, regelpaket, adaptrar
 
 ### Färdigheter
 
-- (beskrivs i [SKILLS.md](./SKILLS.md))
+- (täckt i [SKILLS.md](./SKILLS.md) )
 
 ### Minne
 
-- (beskrivs i [MEMORY.md](./MEMORY.md))
+- (täckt i [MEMORY.md](./MEMORY.md) )
 
 ---
 
-## Exekverare (150 moduler)
+## Exekutorer (150 moduler)
 
-Mestadels en fil per leverantör. Alla exekverarklasser utökar `BaseExecutor` och åsidosätter det som skiljer sig; de övriga modulerna är leverantörsspecifika hjälpare (verktygsscheman, fetch-/TTS-adaptrar och hanterare för egenheter).
+Oftast en fil per leverantör. Exekutorklasserna utökar alla `BaseExecutor` och åsidosätter det som skiljer sig åt; de andra modulerna är hjälpare per leverantör (verktygsscheman, fetch/TTS adaptrar, quirk-hanterare).
 
-### Gemensamma mönster
+### Vanliga mönster
 
-Leverantörer matchas via `getExecutor(providerId)`, som returnerar den konfigurerade exekveraren. OpenAI-/Anthropic-kompatibla leverantörer använder `DefaultExecutor` (`executors/default.ts`). Leverantörsspecifikt beteende (bas-URL, autentiseringshuvuden, API-version) konfigureras i `open-sse/config/providers/`, medan transformeringar av förfrågningsinnehållet hanteras i `open-sse/translator/`.
+Leverantörer löses via `getExecutor(providerId)`, som returnerar den konfigurerade executorn. OpenAI/Anthropic-compatible leverantörer använder `DefaultExecutor` (`executors/default.ts`). Leverantörsspecifikt beteende (base URL, auth headers, API version) konfigureras i `open-sse/config/providers/`, medan förfrågningskroppstransformationer hanteras i `open-sse/translator/`.
 
-**Anpassad URL** anges via leverantörskonfigurationen:
+**Anpassad URL** ställs in via leverantörskonfiguration:
 
 ```ts
-// Leverantörskonfiguration i open-sse/config/providers/
+// Provider config in open-sse/config/providers/
 export default {
   id: "together",
   baseURL: "https://api.together.xyz/v1/chat/completions",
 }
 ````
 
-**Anpassad autentisering** hanteras via leverantörsregistrets autentiseringskonfiguration (API-nyckel, OAuth, huvudprofiler).
+**Anpassad autentisering** hanteras genom leverantörsregistrets autentiseringskonfiguration (API key, OAuth, header profiles).
 
-**Anpassade transformeringar av förfrågningsinnehållet** (t.ex. att Anthropic separerar `system` från `messages`) registreras per leverantör i `open-sse/translator/`.
+**Anpassad förfrågan** transformationer (t.ex. Anthropic som skiljer `system` från `messages`) registreras per leverantör i `open-sse/translator/`.
 
 ````
 
-### Exekverarfabriken
+### The Executor Factory
 
-`executors/index.ts` exporterar `getExecutor(providerId)`:
+`executors/index.ts` exports `getExecutor(providerId)`:
 
 ```ts
 import { getExecutor } from "@omniroute/open-sse/executors";
@@ -366,7 +371,7 @@ const result = await executor.execute({
 });
 ````
 
-Matchningen går via `ExecutorRegistry` (`executors/registry.ts`): varje specialiserad exekverare deklareras i den inbyggda tabellen i `executors/index.ts` och registreras via `registerExecutor(alias, instance)` när modulen läses in; `getExecutor()` konsulterar registret och faller tillbaka till en memoiserad `DefaultExecutor` för alla leverantörer utan en specialiserad post. Den fullständiga mappningen alias → exekverare beskrivs av referenstestet `tests/unit/executor-map-golden.test.ts`.
+Upplösning går genom `ExecutorRegistry` (`executors/registry.ts`): varje specialiserad executor deklareras i den inbyggda tabellen i `executors/index.ts` och registreras via `registerExecutor(alias, instance)` vid modulladdning; `getExecutor()` konsulterar registret och faller tillbaka till en memoiserad `DefaultExecutor` för alla leverantörer utan en specialiserad post. Den fullständiga aliaset → executor mappningen kännetecknas av det gyllene testet `tests/unit/executor-map-golden.test.ts`.
 
 ---
 
@@ -483,15 +488,15 @@ Detta hanterar:
 
 `open-sse/config/` innehåller konfigurationslagret:
 
-| Fil                           | Syfte                                                          |
-| ----------------------------- | -------------------------------------------------------------- |
-| `providerRegistry.ts`         | Register över chattmodeller för katalogen med 374 leverantörer |
-| `providerModels.ts`           | Modellalias och formatmappning                                 |
-| `constants.ts`                | Tidsgränser, begränsningar och statuskoder                     |
-| `defaultThinkingSignature.ts` | Standardsignatur för Claude-resonemang                         |
-| `modelStrip.ts` (i services)  | Leverantörsspecifik borttagning av fält                        |
+| Fil                           | Ändamål                                            |
+| ----------------------------- | -------------------------------------------------- |
+| `providerRegistry.ts`         | Chattmodellregistret över 394-leverantörskatalogen |
+| `providerModels.ts`           | Modellalias, formatmappning                        |
+| `constants.ts`                | Timeouts, gränser, statuskoder                     |
+| `defaultThinkingSignature.ts` | Standard Claude tänkande signatur                  |
+| `modelStrip.ts` (i tjänster)  | Fältstrippning per leverantör                      |
 
-### Schema för leverantörsregistret
+### Providers registerschema
 
 ```ts
 interface ProviderConfig {
@@ -506,7 +511,7 @@ interface ProviderConfig {
 }
 ```
 
-Zod-validering vid modulinläsning säkerställer att alla leverantörskonfigurationer är giltiga.
+Zod validering vid modulladdning säkerställer att alla leverantörskonfigurationer är giltiga.
 
 ---
 

@@ -30,7 +30,7 @@ function StatusWithAvailability({
   return (
     <div className="flex flex-col gap-1">
       {badge}
-      <span className="text-xs text-text-secondary">
+      <span className="text-xs text-text-muted">
         {describeProviderAvailability(connection.availability)}
       </span>
     </div>
@@ -84,6 +84,7 @@ export default function ConnectionsTable({
   return (
     <>
       <DataTable
+        label={t("title")}
         columns={columns}
         data={connections as unknown as DataTableRow[]}
         selectedId={effectiveSelectedId ?? undefined}
@@ -155,10 +156,8 @@ export default function ConnectionsTable({
             case "id":
               return <span>{r.id.length > 8 ? `${r.id.slice(0, 8)}...` : r.id}</span>;
             case "cooldown":
+              // memoized: isolates the 1s tick to a single cell
               return <CountdownCell connection={r} receivedAt={receivedAt} />;
-              {
-                /* memoized: isolates 1s tick to single cell */
-              }
             case "lastError":
               return <span>{r.lastErrorType ?? t("table.never")}</span>;
             case "lockouts":

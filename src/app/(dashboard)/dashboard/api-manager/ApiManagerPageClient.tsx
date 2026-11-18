@@ -1,12 +1,34 @@
 "use client";
 
+import Icon from "@/shared/components/Icon";
 import { useState, useEffect, useMemo, useCallback, useRef, useId } from "react";
 import Link from "next/link";
-import { Card, Button, Input, Modal, CardSkeleton } from "@/shared/components";
+import { Alert } from "@omniroute/ui-kit/alert";
+import { PageHeader } from "@omniroute/ui-kit/page-header";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@omniroute/ui-kit/table";
+import Button from "@/shared/components/Button";
+import Card from "@/shared/components/Card";
+import Input from "@/shared/components/Input";
+import { CardSkeleton, Spinner } from "@/shared/components/Loading";
+import Modal from "@/shared/components/Modal";
+import Select from "@/shared/components/Select";
+import Toggle from "@/shared/components/Toggle";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useConfirmDialog } from "@/shared/hooks/useConfirmDialog";
 import { useLocale, useTranslations } from "next-intl";
 import { matchesSearch } from "@/shared/utils/turkishText";
 import ApiKeyFilterBar from "./components/ApiKeyFilterBar";
+import KeyPolicySixTabEditor from "./components/KeyPolicySixTabEditor";
+import SaveKeyAsTemplateModal from "./components/SaveKeyAsTemplateModal";
+import KeyTemplatesLibrarySection from "./components/KeyTemplatesLibrarySection";
+import { summarizeKeyTemplatePolicy, type KeyTemplate } from "./keyTemplatePolicyUtils";
 import {
   isKeyActive,
   isExpired,
@@ -19,45 +41,15 @@ import {
 } from "./apiManagerPageUtils";
 import type { KeyStatus, KeyType } from "./apiManagerPageUtils";
 import { readActiveOnlyPreference, writeActiveOnlyPreference } from "./apiManagerPageStorage";
-import { buildApiKeyCreateScopes } from "./apiManagerScopes";
 import { extractApiErrorMessage } from "@/shared/http/apiErrorMessage";
 import { hasProviderQuotaBypassScope } from "@/shared/constants/apiKeyPolicyScopes";
 import RoutingEntryLink from "@/shared/components/routing/RoutingEntryLink";
 import { ALL_COMBOS_ACCESS_RULE } from "@/shared/constants/comboAccess";
 
-// Constants for validation
+import { useCreateKeySubmission } from "./useCreateKeySubmission";
+import { useKeyTemplateCreation } from "./useKeyTemplateCreation";
+
 const MAX_KEY_NAME_LENGTH = 200;
-
-// Sanitize user input to prevent XSS
-function sanitizeInput(input: string): string {
-  return input
-    .replace(/[<>]/g, "")
-    .replace(/"/g, "")
-    .replace(/'/g, "")
-    .trim()
-    .slice(0, MAX_KEY_NAME_LENGTH);
-}
-
-// Validate key name
-function validateKeyName(
-  name: string,
-  t: (key: string, values?: Record<string, unknown>) => string
-): { valid: boolean; error?: string } {
-  if (!name || !name.trim()) {
-    return { valid: false, error: t("keyNameRequired") };
-  }
-  if (name.length > MAX_KEY_NAME_LENGTH) {
-    return { valid: false, error: t("keyNameTooLong", { max: MAX_KEY_NAME_LENGTH }) };
-  }
-  // Allow Unicode letters (accented chars), numbers, spaces, hyphens, underscores
-  if (!/^[\p{L}\p{N}_\-\s]+$/u.test(name)) {
-    return {
-      valid: false,
-      error: t("keyNameInvalid"),
-    };
-  }
-  return { valid: true };
-}
 
 interface AccessSchedule {
   enabled: boolean;
@@ -93,6 +85,7 @@ interface ApiKey {
   streamDefaultMode?: StreamDefaultMode;
   compressionEnabled?: boolean;
   allowAutoCombos?: boolean;
+  allowCcDiscoveryAliases?: boolean;
   catalogScope?: string;
   disableNonPublicModels?: boolean;
   allowUsageCommand?: boolean;
@@ -114,20 +107,14 @@ export default function ApiManagerPageClient() {
   const t = useTranslations("apiManager");
   const tc = useTranslations("common");
   const locale = useLocale();
+  const { requestConfirm, confirmDialog } = useConfirmDialog();
   const newKeyNameInputId = useId();
   const createKeyFormRef = useRef<HTMLDivElement | null>(null);
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newKeyName, setNewKeyName] = useState("");
-  const [newKeyManageEnabled, setNewKeyManageEnabled] = useState(false);
-  const [newKeySelfUsageEnabled, setNewKeySelfUsageEnabled] = useState(true);
-  const [newKeyAccountQuotaEnabled, setNewKeyAccountQuotaEnabled] = useState(false);
-  const [newKeyAllowUsageCommand, setNewKeyAllowUsageCommand] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [usageStats, setUsageStats] = useState<Record<string, KeyUsageStats>>({});
   const [sessionCounts, setSessionCounts] = useState<Record<string, number>>({});
@@ -144,6 +131,49 @@ export default function ApiManagerPageClient() {
   const [statusFilter, setStatusFilter] = useState<KeyStatus | null>(null);
   const [typeFilter, setTypeFilter] = useState<KeyType | null>(null);
   const [quotaPoolGroup, setQuotaPoolGroup] = useState<Record<string, string>>({});
+
+  // Key Templates library + Save as Template + Create Key policy state
+  const [saveTemplateSource, setSaveTemplateSource] = useState<ApiKey | null>(null);
+  const templateCreation = useKeyTemplateCreation();
+  const {
+    templates,
+    unreadableTemplates,
+    templatesError,
+    templatesLoading,
+    fetchTemplates,
+    selectedTemplateId,
+    selectedTemplateRef,
+    createKeyFormState,
+    setCreateKeyFormState,
+    createKeyRefIssues,
+    loadingTemplatePolicy,
+    handleEditorValidation,
+    showFullPolicyEditor,
+    setShowFullPolicyEditor,
+    syncCreateKeyFormState,
+    resetCreateKeyModalState,
+    draftCreatePolicy,
+    isCreatePolicyDirty,
+    hasCreatePolicyErrors,
+    hasBlockingCreateRefIssues,
+    applyTemplateToCreateModal,
+    handleSelectTemplateInCreateModal,
+    newKeyName,
+    setNewKeyName,
+    newKeyManageEnabled,
+    setNewKeyManageEnabled,
+    newKeySelfUsageEnabled,
+    setNewKeySelfUsageEnabled,
+    newKeyAccountQuotaEnabled,
+    setNewKeyAccountQuotaEnabled,
+    newKeyAllowUsageCommand,
+    setNewKeyAllowUsageCommand,
+    nameError,
+    setNameError,
+    createError,
+    setCreateError,
+    templateConfirmDialog,
+  } = templateCreation;
 
   const { copied, copy } = useCopyToClipboard();
 
@@ -311,8 +341,8 @@ export default function ApiManagerPageClient() {
     }
   };
 
-  // fetchData calls the three per-key fetchers above — declared after them so the
-  // calls are not TDZ reads (react-hooks/immutability).
+  // fetchData calls the per-key fetchers and template list fetcher above — declared after
+  // them so the calls are not TDZ reads (react-hooks/immutability).
   const fetchData = async () => {
     try {
       const res = await fetch("/api/keys");
@@ -325,6 +355,7 @@ export default function ApiManagerPageClient() {
         fetchSessionCounts(data.keys || []);
         fetchDeviceCounts(data.keys || []);
       }
+      void fetchTemplates();
     } catch (error) {
       console.log("Error fetching keys:", error);
     } finally {
@@ -343,6 +374,13 @@ export default function ApiManagerPageClient() {
   }, []);
 
   const clearPageError = useCallback(() => setPageError(null), []);
+
+  const handleUseTemplateFromLibrary = (tpl: KeyTemplate) => {
+    resetCreateKeyModalState();
+    clearPageError();
+    setShowAddModal(true);
+    void applyTemplateToCreateModal(tpl.id);
+  };
 
   const keyCounts = useMemo(() => computeApiKeyCounts(keys), [keys]);
 
@@ -405,55 +443,17 @@ export default function ApiManagerPageClient() {
     setTypeFilter(null);
   };
 
-  const handleCreateKey = async () => {
-    // Validate raw input first, then sanitize
-    const validation = validateKeyName(newKeyName, t);
-    if (!validation.valid) {
-      scrollCreateKeyFormToTop();
-      setNameError(validation.error || t("invalidKeyName"));
-      return;
-    }
-    const sanitizedName = sanitizeInput(newKeyName);
-
-    setIsSubmitting(true);
-    setNameError(null);
-    setCreateError(null);
-
-    try {
-      const res = await fetch("/api/keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: sanitizedName,
-          scopes: buildApiKeyCreateScopes({
-            manageEnabled: newKeyManageEnabled,
-            selfUsageEnabled: newKeySelfUsageEnabled,
-            selfAccountQuotaEnabled: newKeyAccountQuotaEnabled,
-          }),
-          allowUsageCommand: newKeyAllowUsageCommand,
-        }),
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        setCreatedKey(data.key);
-        await fetchData();
-        setNewKeyName("");
-        setNewKeyManageEnabled(false);
-        setNewKeySelfUsageEnabled(true);
-        setNewKeyAccountQuotaEnabled(false);
-        setNewKeyAllowUsageCommand(false);
-        setShowAddModal(false);
-      } else {
-        setCreateError(extractApiErrorMessage(data, t("failedCreateKey")));
-      }
-    } catch (error) {
-      console.error("Error creating key:", error);
-      setCreateError(t("failedCreateKeyRetry"));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const handleCreateKey = useCreateKeySubmission(templateCreation, {
+    isSubmitting,
+    setIsSubmitting,
+    focusName: scrollCreateKeyFormToTop,
+    onCreated: async (key) => {
+      setCreatedKey(key);
+      await fetchData();
+      resetCreateKeyModalState();
+      setShowAddModal(false);
+    },
+  });
 
   const handleDeleteKey = async (id: string) => {
     if (!id || typeof id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(id)) {
@@ -461,7 +461,7 @@ export default function ApiManagerPageClient() {
       return;
     }
 
-    if (!confirm(t("deleteConfirm"))) return;
+    if (!(await requestConfirm({ message: t("deleteConfirm"), confirmText: tc("delete") }))) return;
 
     setIsSubmitting(true);
     clearPageError();
@@ -492,7 +492,7 @@ export default function ApiManagerPageClient() {
 
   const handleRegenerateKey = async (id: string) => {
     if (!id) return;
-    if (!confirm(t("regenerateConfirm"))) return;
+    if (!(await requestConfirm(t("regenerateConfirm")))) return;
 
     setIsSubmitting(true);
     clearPageError();
@@ -588,54 +588,42 @@ export default function ApiManagerPageClient() {
     <div className="flex flex-col gap-8">
       {/* Error Banner */}
       {pageError && (
-        <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-          <span className="material-symbols-outlined text-red-500">error</span>
-          <p className="text-sm text-red-700 dark:text-red-300 flex-1">{pageError}</p>
-          <button
-            onClick={clearPageError}
-            className="text-red-500 hover:text-red-700 transition-colors"
-          >
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
+        <Alert
+          variant="critical"
+          icon={<Icon name="error" />}
+          description={pageError}
+          dismissLabel={tc("close")}
+          onDismiss={clearPageError}
+        />
       )}
 
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-3">
-          <div>
-            <h1 className="text-3xl font-bold text-text-main">{t("keyManagement")}</h1>
-            <p className="mt-1 text-text-muted">{t("keyManagementDesc")}</p>
-          </div>
-          <div
-            className="flex flex-wrap items-center gap-2 text-sm text-text-secondary"
-            aria-label={t("requestFlowAria")}
-          >
-            <span className="rounded-control border border-border bg-surface px-3 py-1.5 font-medium">
-              {t("requestFlowYourApp")}
-            </span>
-            <span
-              className="material-symbols-outlined text-base text-text-muted"
-              aria-hidden="true"
-            >
-              arrow_forward
-            </span>
-            <span className="rounded-control border border-border bg-surface px-3 py-1.5 font-medium">
-              {t("requestFlowApiKey")}
-            </span>
-            <span
-              className="material-symbols-outlined text-base text-text-muted"
-              aria-hidden="true"
-            >
-              arrow_forward
-            </span>
-            <span className="rounded-control border border-border bg-surface px-3 py-1.5 font-medium">
-              {t("requestFlowOmniRoute")}
-            </span>
-          </div>
+      <div className="flex flex-col gap-3">
+        <PageHeader
+          compact
+          title={t("keyManagement")}
+          description={t("keyManagementDesc")}
+          actions={
+            <Button onClick={() => setShowAddModal(true)} icon="add" className="shrink-0">
+              {t("createKey")}
+            </Button>
+          }
+        />
+        <div
+          className="flex flex-wrap items-center gap-2 text-sm text-text-muted"
+          aria-label={t("requestFlowAria")}
+        >
+          <span className="rounded-control border border-border bg-surface px-3 py-1.5 font-medium">
+            {t("requestFlowYourApp")}
+          </span>
+          <Icon name="arrow_forward" className="text-base text-text-muted" />
+          <span className="rounded-control border border-border bg-surface px-3 py-1.5 font-medium">
+            {t("requestFlowApiKey")}
+          </span>
+          <Icon name="arrow_forward" className="text-base text-text-muted" />
+          <span className="rounded-control border border-border bg-surface px-3 py-1.5 font-medium">
+            {t("requestFlowOmniRoute")}
+          </span>
         </div>
-        <Button onClick={() => setShowAddModal(true)} icon="add" className="shrink-0">
-          {t("createKey")}
-        </Button>
       </div>
 
       <RoutingEntryLink />
@@ -659,11 +647,11 @@ export default function ApiManagerPageClient() {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-10 rounded-lg bg-amber-500/10 shrink-0">
-              <span className="material-symbols-outlined text-xl text-amber-500">vpn_key</span>
+            <div className="flex items-center justify-center size-10 rounded-lg bg-warning/10 shrink-0">
+              <Icon name="vpn_key" className="text-xl text-warning" />
             </div>
             <div>
-              <h3 className="font-semibold">
+              <h3>
                 {t("registeredKeys")}
                 {isFiltered && (
                   <span className="ml-1.5 text-sm font-normal text-text-muted">
@@ -701,7 +689,7 @@ export default function ApiManagerPageClient() {
         {keys.length === 0 ? (
           <div className="text-center py-12 border border-dashed border-border rounded-lg">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
-              <span className="material-symbols-outlined text-[32px]">vpn_key</span>
+              <Icon name="vpn_key" size={32} />
             </div>
             <p className="text-text-main font-medium mb-2">{t("noKeys")}</p>
             <p className="text-sm text-text-muted mb-4">{t("noKeysDesc")}</p>
@@ -719,7 +707,7 @@ export default function ApiManagerPageClient() {
         ) : filteredKeys.length === 0 ? (
           <div className="text-center py-12 border border-dashed border-border rounded-lg">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
-              <span className="material-symbols-outlined text-[32px]">search_off</span>
+              <Icon name="search_off" size={32} />
             </div>
             <p className="text-text-main font-medium mb-2">{t("emptyFilterTitle")}</p>
             <Button onClick={handleClearFilters}>{t("emptyFilterClear")}</Button>
@@ -765,62 +753,61 @@ export default function ApiManagerPageClient() {
               const visibleGroups = groups.slice(0, 3);
               const extraGroupCount = groups.length - visibleGroups.length;
               return (
-                <div
-                  key={key.id}
-                  className="grid grid-cols-12 gap-4 px-4 py-3 border-b border-black/[0.03] dark:border-white/[0.03] last:border-b-0 hover:bg-surface/30 transition-colors group min-w-[760px]"
-                >
-                  <div className="col-span-2 flex items-center gap-2">
-                    <span
-                      className={`material-symbols-outlined text-sm ${isRestricted ? "text-amber-500" : "text-emerald-500"}`}
-                    >
-                      {isRestricted ? "lock" : "lock_open"}
-                    </span>
-                    <span className="text-sm font-medium truncate" title={key.name}>
-                      {key.name}
-                    </span>
-                  </div>
-                  <div className="col-span-3 flex items-center gap-1.5">
-                    <code className="text-sm text-text-muted font-mono truncate">
-                      {visibleKeys.has(key.id) ? (revealedKeys.get(key.id) ?? key.key) : key.key}
-                    </code>
-                    {allowKeyReveal ? (
-                      <>
-                        <button
-                          onClick={() => handleToggleKeyVisibility(key.id)}
-                          className="p-1 text-text-muted/60 hover:text-primary transition-colors shrink-0"
-                          title={visibleKeys.has(key.id) ? t("hideKey") : t("showKey")}
-                          aria-label={visibleKeys.has(key.id) ? t("hideKey") : t("showKey")}
-                          aria-pressed={visibleKeys.has(key.id)}
-                        >
-                          <span className="material-symbols-outlined text-[14px]">
-                            {visibleKeys.has(key.id) ? "visibility_off" : "visibility"}
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => handleCopyExistingKey(key.id)}
-                          className="p-1 text-text-muted/60 hover:text-primary transition-colors shrink-0"
-                          title={tc("copy")}
-                          aria-label={tc("copy")}
-                        >
-                          <span className="material-symbols-outlined text-[14px]">
-                            {copied === `existing_key_${key.id}` ? "check" : "content_copy"}
-                          </span>
-                        </button>
-                      </>
-                    ) : (
-                      <span
-                        className="p-1 text-text-muted/40 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all shrink-0 cursor-help"
-                        title={t("keyOnlyAvailableAtCreation")}
-                      >
-                        <span className="material-symbols-outlined text-[14px]">lock</span>
+                <TableRow key={key.id} className="group">
+                  <TableCell className="max-w-48">
+                    <div className="flex items-center gap-2">
+                      <Icon
+                        name={isRestricted ? "lock" : "lock_open"}
+                        size={14}
+                        className={isRestricted ? "text-warning" : "text-success"}
+                      />
+                      <span className="text-sm font-medium truncate" title={key.name}>
+                        {key.name}
                       </span>
-                    )}
-                  </div>
-                  <div className="col-span-2 flex items-center">
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-64">
+                    <div className="flex items-center gap-1.5">
+                      <code className="text-sm text-text-muted font-mono truncate">
+                        {visibleKeys.has(key.id) ? (revealedKeys.get(key.id) ?? key.key) : key.key}
+                      </code>
+                      {allowKeyReveal ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => handleToggleKeyVisibility(key.id)}
+                            className="shrink-0 text-text-muted"
+                            title={visibleKeys.has(key.id) ? t("hideKey") : t("showKey")}
+                            aria-label={visibleKeys.has(key.id) ? t("hideKey") : t("showKey")}
+                            aria-pressed={visibleKeys.has(key.id)}
+                            icon={visibleKeys.has(key.id) ? "visibility_off" : "visibility"}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => handleCopyExistingKey(key.id)}
+                            className="shrink-0 text-text-muted"
+                            title={tc("copy")}
+                            aria-label={tc("copy")}
+                            icon={copied === `existing_key_${key.id}` ? "check" : "content_copy"}
+                          />
+                        </>
+                      ) : (
+                        <span
+                          className="p-1 text-text-muted/40 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all shrink-0 cursor-help"
+                          title={t("keyOnlyAvailableAtCreation")}
+                        >
+                          <Icon name="lock" size={14} />
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
                     <div className="flex flex-col items-start gap-1">
                       {/* QUOTA differentiation chips — prepended before existing badges */}
                       {keyIsQuota && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-medium">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-chart-3/10 text-chart-3-ink text-[11px] font-medium">
                           {t("quotaModeOnly")}
                         </span>
                       )}
@@ -828,13 +815,13 @@ export default function ApiManagerPageClient() {
                         visibleGroups.map((groupName) => (
                           <span
                             key={groupName}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[11px] font-medium truncate max-w-full"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-info/10 text-info text-[11px] font-medium truncate max-w-full"
                           >
                             {groupName}
                           </span>
                         ))}
                       {keyIsQuota && extraGroupCount > 0 && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[11px] font-medium">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-info/10 text-info text-[11px] font-medium">
                           +{extraGroupCount}
                         </span>
                       )}
@@ -842,209 +829,220 @@ export default function ApiManagerPageClient() {
                       {isModelRestricted ? (
                         <Link
                           href={`/dashboard/api-manager/${encodeURIComponent(key.id)}/access?tab=models`}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium hover:bg-amber-500/20 transition-colors"
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-warning/10 text-warning text-xs font-medium hover:bg-warning/20 transition-colors"
                         >
-                          <span className="material-symbols-outlined text-[14px]">lock</span>
+                          <Icon name="lock" size={14} />
                           {formatProviderModelPermissionSummary(providerCount, modelCount, t, tc)}
                         </Link>
                       ) : (
                         <Link
                           href={`/dashboard/api-manager/${encodeURIComponent(key.id)}/access?tab=models`}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-500/10 text-green-600 dark:text-green-400 text-xs font-medium hover:bg-green-500/20 transition-colors"
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-success/10 text-success text-xs font-medium hover:bg-success/20 transition-colors"
                         >
-                          <span className="material-symbols-outlined text-[14px]">lock_open</span>
+                          <Icon name="lock_open" size={14} />
                           {t("allModels")}
                         </Link>
                       )}
                       {hasConnectionRestrictions && (
                         <Link
                           href={`/dashboard/api-manager/${encodeURIComponent(key.id)}/access?tab=connections`}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-medium hover:bg-blue-500/20 transition-colors"
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-info/10 text-info text-xs font-medium hover:bg-info/20 transition-colors"
                         >
-                          <span className="material-symbols-outlined text-[14px]">cable</span>
+                          <Icon name="cable" size={14} />
                           {key.allowedConnections!.length} conn
                         </Link>
                       )}
                       {hasExclusiveLeaseScope && (
                         <Link
                           href={`/dashboard/api-manager/${encodeURIComponent(key.id)}/access`}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 text-xs font-medium hover:bg-purple-500/20 transition-colors"
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-chart-3/10 text-chart-3-ink text-xs font-medium hover:bg-chart-3/20 transition-colors"
                         >
-                          <span className="material-symbols-outlined text-[14px]">
-                            key_vertical
-                          </span>
+                          <Icon name="key_vertical" size={14} />
                           {t("exclusiveLease")}
                         </Link>
                       )}
                       {hasComboRestrictions && (
                         <Link
                           href={`/dashboard/api-manager/${encodeURIComponent(key.id)}/access?tab=combos`}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400 text-xs font-medium hover:bg-teal-500/20 transition-colors"
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-chart-4/10 text-chart-4-ink text-xs font-medium hover:bg-chart-4/20 transition-colors"
                         >
-                          <span className="material-symbols-outlined text-[14px]">hub</span>
+                          <Icon name="hub" size={14} />
                           {key.allowedCombos!.length} combos
                         </Link>
                       )}
                       {noLogEnabled && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">
-                            visibility_off
-                          </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-chart-3/10 text-chart-3-ink text-[11px] font-medium">
+                          <Icon name="visibility_off" size={12} />
                           No-Log
                         </span>
                       )}
                       {key.autoResolve && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">
-                            auto_fix_high
-                          </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-info/10 text-info text-[11px] font-medium">
+                          <Icon name="auto_fix_high" size={12} />
                           Auto-Resolve
                         </span>
                       )}
                       {hasJsonStreamDefault && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">data_object</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-info/10 text-info text-[11px] font-medium">
+                          <Icon name="data_object" size={12} />
                           {t("streamDefaultBadge")}
                         </span>
                       )}
                       {hasLocalUsageCommand && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-500/10 text-slate-600 dark:text-slate-300 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">terminal</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-2 text-text-muted text-[11px] font-medium">
+                          <Icon name="terminal" size={12} />
                           {t("localUsageCommandBadge")}
                         </span>
                       )}
                       {key.usageLimitEnabled === true && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">paid</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-success/10 text-success text-[11px] font-medium">
+                          <Icon name="paid" size={12} />
                           USD quota
                         </span>
                       )}
                       {hasProviderQuotaBypass && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">alt_route</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning/10 text-warning text-[11px] font-medium">
+                          <Icon name="alt_route" size={12} />
                           Bypass quota policy
                         </span>
                       )}
                       {hasSessionLimit && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">group</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-chart-3/10 text-chart-3-ink text-[11px] font-medium">
+                          <Icon name="group" size={12} />
                           Sessions: {activeSessions}/{maxSessions}
                         </span>
                       )}
                       {deviceCount > 0 && (
                         <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 text-[11px] font-medium"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-info/10 text-info text-[11px] font-medium"
                           title={t("devicesTooltip", { count: deviceCount })}
                         >
-                          <span className="material-symbols-outlined text-[12px]">devices</span>
+                          <Icon name="devices" size={12} />
                           {t("devicesCount", { count: deviceCount })}
                         </span>
                       )}
                       {hasThrottle && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">speed</span>+
-                          {throttleDelayMs}ms
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning/10 text-warning text-[11px] font-medium">
+                          <Icon name="speed" size={12} />+{throttleDelayMs}ms
                         </span>
                       )}
                       {hasManageScope && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">
-                            admin_panel_settings
-                          </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-error/10 text-error text-[11px] font-medium">
+                          <Icon name="admin_panel_settings" size={12} />
                           manage
                         </span>
                       )}
                       {!keyIsActive && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/10 text-red-600 dark:text-red-400 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">block</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-error/10 text-error text-[11px] font-medium">
+                          <Icon name="block" size={12} />
                           {t("disabled")}
                         </span>
                       )}
                       {hasSchedule && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-600 dark:text-orange-400 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">schedule</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning/10 text-warning text-[11px] font-medium">
+                          <Icon name="schedule" size={12} />
                           {t("scheduleActive")}
                         </span>
                       )}
                       {key.isBanned && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-600/10 text-red-700 dark:text-red-400 text-[11px] font-bold animate-pulse">
-                          <span className="material-symbols-outlined text-[12px]">gavel</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-error/10 text-error text-[11px] font-semibold animate-pulse">
+                          <Icon name="gavel" size={12} />
                           BANNED
                         </span>
                       )}
                       {key.expiresAt && new Date(key.expiresAt).getTime() < Date.now() && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-500/10 text-gray-600 dark:text-gray-400 text-[11px] font-medium">
-                          <span className="material-symbols-outlined text-[12px]">event_busy</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-2 text-text-muted text-[11px] font-medium">
+                          <Icon name="event_busy" size={12} />
                           EXPIRED
                         </span>
                       )}
                     </div>
-                  </div>
-                  <div className="col-span-2 flex flex-col justify-center">
-                    <span className="text-sm font-medium tabular-nums">
-                      {stats?.totalRequests ?? 0}{" "}
-                      <span className="text-text-muted font-normal text-xs">{t("reqs")}</span>
-                    </span>
-                    {(stats?.totalRequests ?? 0) > 0 && (
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 tabular-nums">
-                        {formatUsdCost(stats?.totalCost ?? 0, locale)}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col justify-center">
+                      <span className="text-sm font-medium tabular-nums">
+                        {stats?.totalRequests ?? 0}{" "}
+                        <span className="text-text-muted font-normal text-xs">{t("reqs")}</span>
                       </span>
-                    )}
-                    {stats?.lastUsed ? (
-                      <span className="text-[10px] text-text-muted">
-                        {t("lastUsedOn", { date: new Date(stats.lastUsed).toLocaleDateString() })}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-text-muted italic">{t("neverUsed")}</span>
-                    )}
-                  </div>
-                  <div className="col-span-1 flex items-center text-sm text-text-muted">
+                      {(stats?.totalRequests ?? 0) > 0 && (
+                        <span className="text-[10px] text-success tabular-nums">
+                          {formatUsdCost(stats?.totalCost ?? 0, locale)}
+                        </span>
+                      )}
+                      {stats?.lastUsed ? (
+                        <span className="text-[10px] text-text-muted">
+                          {t("lastUsedOn", { date: new Date(stats.lastUsed).toLocaleDateString() })}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-text-muted italic">{t("neverUsed")}</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm text-text-muted whitespace-nowrap">
                     {new Date(key.createdAt).toLocaleDateString()}
-                  </div>
-                  <div className="col-span-2 flex items-center justify-end gap-1">
-                    <a
-                      href={`/dashboard/costs?range=all&apiKeyIds=${encodeURIComponent(key.id)}&groupBy=model`}
-                      className="p-2 hover:bg-emerald-500/10 rounded text-text-muted hover:text-emerald-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                      title={`View costs for ${key.name}`}
-                      aria-label={`View costs for ${key.name}`}
-                    >
-                      <span className="material-symbols-outlined text-[18px]">payments</span>
-                    </a>
-                    <button
-                      onClick={() => handleRegenerateKey(key.id)}
-                      className="p-2 hover:bg-amber-500/10 rounded text-text-muted hover:text-amber-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                      title={t("regenerateKey")}
-                    >
-                      <span className="material-symbols-outlined text-[18px]">refresh</span>
-                    </button>
-                    <Link
-                      href={`/dashboard/api-manager/${encodeURIComponent(key.id)}/access`}
-                      className="p-2 hover:bg-primary/10 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all inline-flex items-center justify-center"
-                      title={t("editPermissions")}
-                    >
-                      <span className="material-symbols-outlined text-[18px]">tune</span>
-                    </Link>
-                    <button
-                      onClick={() => handleDeleteKey(key.id)}
-                      className="p-2 hover:bg-red-500/10 rounded text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-                      title={t("deleteKey")}
-                    >
-                      <span className="material-symbols-outlined text-[18px]">delete</span>
-                    </button>
-                  </div>
-                </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-end gap-1">
+                      <a
+                        href={`/dashboard/costs?range=all&apiKeyIds=${encodeURIComponent(key.id)}&groupBy=model`}
+                        className="p-2 hover:bg-success/10 rounded text-text-muted hover:text-success opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                        title={`View costs for ${key.name}`}
+                        aria-label={`View costs for ${key.name}`}
+                      >
+                        <Icon name="payments" size={18} />
+                      </a>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRegenerateKey(key.id)}
+                        className="text-text-muted hover:text-warning opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                        title={t("regenerateKey")}
+                        aria-label={t("regenerateKey")}
+                        icon="refresh"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        icon="playlist_add"
+                        className="text-text-muted hover:text-primary opacity-100"
+                        title={t("saveAsTemplate")}
+                        aria-label={t("saveKeyAsTemplateAria", { name: key.name })}
+                        disabled={isSubmitting}
+                        onClick={() => setSaveTemplateSource(key)}
+                      />
+                      <Link
+                        href={`/dashboard/api-manager/${encodeURIComponent(key.id)}/access`}
+                        className="p-2 hover:bg-primary/10 rounded text-text-muted hover:text-primary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all inline-flex items-center justify-center"
+                        title={t("editPermissions")}
+                      >
+                        <Icon name="tune" size={18} />
+                      </Link>
+                      <Button
+                        variant="destructive-ghost"
+                        size="icon"
+                        onClick={() => handleDeleteKey(key.id)}
+                        className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                        title={t("deleteKey")}
+                        aria-label={t("deleteKey")}
+                        icon="delete"
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
               );
             };
 
             const tableHeader = (
-              <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-surface/50 border-b border-border text-xs font-semibold text-text-muted uppercase tracking-wider min-w-[760px]">
-                <div className="col-span-2">{t("name")}</div>
-                <div className="col-span-3">{t("key")}</div>
-                <div className="col-span-2">{t("permissions")}</div>
-                <div className="col-span-2">{t("usage")}</div>
-                <div className="col-span-1">{t("created")}</div>
-                <div className="col-span-2 text-right">{t("actions")}</div>
-              </div>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("name")}</TableHead>
+                  <TableHead>{t("key")}</TableHead>
+                  <TableHead>{t("permissions")}</TableHead>
+                  <TableHead>{t("usage")}</TableHead>
+                  <TableHead>{t("created")}</TableHead>
+                  <TableHead className="text-right">{t("actions")}</TableHead>
+                </TableRow>
+              </TableHeader>
             );
 
             return (
@@ -1053,9 +1051,7 @@ export default function ApiManagerPageClient() {
                   <div>
                     {/* Normal keys section heading */}
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="material-symbols-outlined text-base text-text-muted">
-                        vpn_key
-                      </span>
+                      <Icon name="vpn_key" className="text-base text-text-muted" />
                       <span className="text-sm font-medium text-text-main">
                         {t("normalKeysSection")}
                       </span>
@@ -1063,37 +1059,37 @@ export default function ApiManagerPageClient() {
                         {normalKeys.length}
                       </span>
                     </div>
-                    <div className="border border-border rounded-lg overflow-hidden">
-                      <div className="overflow-x-auto">
-                        {tableHeader}
-                        {normalKeys.map(renderKeyRow)}
-                      </div>
-                    </div>
+                    <Table
+                      scrollbarLabel={t("normalKeysSection")}
+                      scrollLabel={t("normalKeysSection")}
+                    >
+                      {tableHeader}
+                      <TableBody>{normalKeys.map(renderKeyRow)}</TableBody>
+                    </Table>
                   </div>
                 )}
                 {quotaKeys.length > 0 && (
                   <div>
                     {/* Quota keys section heading */}
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="material-symbols-outlined text-base text-violet-500">
-                        toll
-                      </span>
+                      <Icon name="toll" className="text-base text-chart-3" />
                       <span className="text-sm font-medium text-text-main">
                         {t("quotaKeysSection")}
                       </span>
                       <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-surface/80 border border-border text-[11px] font-semibold text-text-muted">
                         {quotaKeys.length}
                       </span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-semibold">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-chart-3/10 text-chart-3-ink text-[11px] font-semibold">
                         {t("quotaPill")}
                       </span>
                     </div>
-                    <div className="border border-border rounded-lg overflow-hidden">
-                      <div className="overflow-x-auto">
-                        {tableHeader}
-                        {quotaKeys.map(renderKeyRow)}
-                      </div>
-                    </div>
+                    <Table
+                      scrollbarLabel={t("quotaKeysSection")}
+                      scrollLabel={t("quotaKeysSection")}
+                    >
+                      {tableHeader}
+                      <TableBody>{quotaKeys.map(renderKeyRow)}</TableBody>
+                    </Table>
                   </div>
                 )}
               </div>
@@ -1102,60 +1098,122 @@ export default function ApiManagerPageClient() {
         )}
       </Card>
 
+      {/* Key Templates Library */}
+      <KeyTemplatesLibrarySection
+        unreadable={unreadableTemplates}
+        loadError={templatesError}
+        loading={templatesLoading}
+        templates={templates}
+        onRefreshTemplates={fetchTemplates}
+        onUseTemplate={handleUseTemplateFromLibrary}
+      />
+
+      {/* Save Key as Template Modal */}
+      <SaveKeyAsTemplateModal
+        sourceKey={
+          saveTemplateSource ? { id: saveTemplateSource.id, name: saveTemplateSource.name } : null
+        }
+        onClose={() => setSaveTemplateSource(null)}
+        onSaved={() => {
+          void fetchTemplates();
+        }}
+      />
+
       {/* Add Key Modal */}
       <Modal
         isOpen={showAddModal}
         title={t("createKey")}
+        maxWidth={showFullPolicyEditor ? "max-w-4xl" : "max-w-xl"}
         bodyClassName="p-6 max-h-[calc(100vh-150px)] overflow-y-auto"
         onClose={() => {
           setShowAddModal(false);
-          setNewKeyName("");
-          setNewKeyManageEnabled(false);
-          setNewKeySelfUsageEnabled(true);
-          setNewKeyAccountQuotaEnabled(false);
-          setNewKeyAllowUsageCommand(false);
-          setNameError(null);
-          setCreateError(null);
+          resetCreateKeyModalState();
         }}
       >
         <div ref={createKeyFormRef} className="flex flex-col gap-4">
           <div ref={createKeyNameFieldRef}>
-            <label className="text-sm font-medium text-text-main mb-1.5 block">
-              {t("keyName")}
-            </label>
             <Input
+              label={t("keyName")}
               id={newKeyNameInputId}
               value={newKeyName}
               onChange={(e) => {
                 setNewKeyName(e.target.value);
+                templateCreation.setCreateKeyRefIssues((issues) =>
+                  issues.filter((issue) => issue.code !== "INVALID_FIELD")
+                );
                 setNameError(null);
               }}
               placeholder={t("keyNamePlaceholder")}
               maxLength={MAX_KEY_NAME_LENGTH}
               error={nameError}
               autoFocus
+              hint={t("keyNameDesc")}
             />
-            <p className="text-xs text-text-muted mt-1.5">{t("keyNameDesc")}</p>
           </div>
+
+          {/* Template Picker */}
+          <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-surface/40">
+            <Select
+              native
+              label={t("templatePickerLabel")}
+              value={selectedTemplateId}
+              onChange={(e) => void handleSelectTemplateInCreateModal(e.target.value)}
+              disabled={loadingTemplatePolicy || isSubmitting}
+              options={[
+                { value: "", label: t("templatePickerNone") },
+                ...templates.map((tpl) => ({
+                  value: tpl.id,
+                  label: `${tpl.name} (rev ${tpl.revision})`,
+                })),
+              ]}
+              hint={t("templatePickerHint")}
+            />
+            {loadingTemplatePolicy && (
+              <div className="flex items-center gap-2 text-xs text-text-muted">
+                <Spinner size="sm" />
+                <span>{t("loadingTemplatePolicy")}</span>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              {summarizeKeyTemplatePolicy(draftCreatePolicy, t).map((badge) => (
+                <span
+                  key={badge.id}
+                  className="inline-flex items-center px-2 py-0.5 rounded-md bg-surface-2 border border-border/60 text-[11px] font-medium text-text-muted"
+                >
+                  {badge.label}
+                </span>
+              ))}
+              {selectedTemplateRef && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-primary text-[11px] font-medium">
+                  <Icon name="layers" size={12} />
+                  {t("templateSnapshotBadge", { revision: selectedTemplateRef.revision })}
+                </span>
+              )}
+              {isCreatePolicyDirty && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning/10 text-warning text-[11px] font-medium">
+                  <Icon name="edit_note" size={12} />
+                  {t("policyCustomizedBadge")}
+                </span>
+              )}
+            </div>
+          </div>
+
           <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-border bg-surface/40">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium text-text-main">{t("managementAccess")}</p>
               <p className="text-xs text-text-muted">{t("managementAccessDesc")}</p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={newKeyManageEnabled}
-              onClick={() => setNewKeyManageEnabled((prev) => !prev)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors shrink-0 ${
-                newKeyManageEnabled
-                  ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30"
-                  : "bg-black/5 dark:bg-white/5 text-text-muted border border-border"
-              }`}
-            >
-              <span className="material-symbols-outlined text-[14px]">admin_panel_settings</span>
-              {newKeyManageEnabled ? tc("enabled") : tc("disabled")}
-            </button>
+            <Toggle
+              size="sm"
+              className="shrink-0"
+              checked={newKeyManageEnabled}
+              disabled={isSubmitting || loadingTemplatePolicy}
+              onChange={(checked) => {
+                setNewKeyManageEnabled(checked);
+                setCreateKeyFormState((prev) => ({ ...prev, manageEnabled: checked }));
+              }}
+              ariaLabel={t("managementAccess")}
+            />
           </div>
           <div className="flex flex-col gap-3 p-3 rounded-lg border border-border bg-surface/40">
             <div className="flex flex-col gap-1">
@@ -1167,85 +1225,106 @@ export default function ApiManagerPageClient() {
                 <p className="text-sm text-text-main">{t("ownUsageVisibility")}</p>
                 <p className="text-xs text-text-muted">{t("ownUsageVisibilityDesc")}</p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={newKeySelfUsageEnabled}
-                onClick={() =>
+              <Toggle
+                size="sm"
+                className="shrink-0"
+                checked={newKeySelfUsageEnabled}
+                disabled={isSubmitting || loadingTemplatePolicy}
+                onChange={() =>
                   setNewKeySelfUsageEnabled((prev) => {
-                    if (prev) setNewKeyAccountQuotaEnabled(false);
-                    return !prev;
+                    const next = !prev;
+                    if (!next) setNewKeyAccountQuotaEnabled(false);
+                    setCreateKeyFormState((form) => ({
+                      ...form,
+                      selfUsageEnabled: next,
+                      selfAccountQuotaEnabled: next ? form.selfAccountQuotaEnabled : false,
+                    }));
+                    return next;
                   })
                 }
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors shrink-0 ${
-                  newKeySelfUsageEnabled
-                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
-                    : "bg-black/5 dark:bg-white/5 text-text-muted border border-border"
-                }`}
-              >
-                <span className="material-symbols-outlined text-[14px]">query_stats</span>
-                {newKeySelfUsageEnabled ? tc("enabled") : tc("disabled")}
-              </button>
+                ariaLabel={t("ownUsageVisibility")}
+              />
             </div>
             <div className="flex items-start justify-between gap-3">
               <div className="flex flex-col gap-1">
                 <p className="text-sm text-text-main">{t("sharedAccountQuotaVisibility")}</p>
                 <p className="text-xs text-text-muted">{t("sharedAccountQuotaVisibilityDesc")}</p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={newKeyAccountQuotaEnabled}
-                disabled={!newKeySelfUsageEnabled}
-                onClick={() => setNewKeyAccountQuotaEnabled((prev) => !prev)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors shrink-0 ${
-                  newKeyAccountQuotaEnabled
-                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
-                    : "bg-black/5 dark:bg-white/5 text-text-muted border border-border"
-                } ${!newKeySelfUsageEnabled ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <span className="material-symbols-outlined text-[14px]">account_balance</span>
-                {newKeyAccountQuotaEnabled ? tc("enabled") : tc("disabled")}
-              </button>
+              <Toggle
+                size="sm"
+                className="shrink-0"
+                checked={newKeyAccountQuotaEnabled}
+                disabled={isSubmitting || loadingTemplatePolicy || !newKeySelfUsageEnabled}
+                onChange={(checked) => {
+                  setNewKeyAccountQuotaEnabled(checked);
+                  setCreateKeyFormState((prev) => ({ ...prev, selfAccountQuotaEnabled: checked }));
+                }}
+                ariaLabel={t("sharedAccountQuotaVisibility")}
+              />
             </div>
             <div className="flex items-start justify-between gap-3">
               <div className="flex flex-col gap-1">
                 <p className="text-sm text-text-main">{t("localUsageCommand")}</p>
                 <p className="text-xs text-text-muted">{t("localUsageCommandDesc")}</p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={newKeyAllowUsageCommand}
-                onClick={() => setNewKeyAllowUsageCommand((prev) => !prev)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors shrink-0 ${
-                  newKeyAllowUsageCommand
-                    ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30"
-                    : "bg-black/5 dark:bg-white/5 text-text-muted border border-border"
-                }`}
-              >
-                <span className="material-symbols-outlined text-[14px]">terminal</span>
-                {newKeyAllowUsageCommand ? tc("enabled") : tc("disabled")}
-              </button>
+              <Toggle
+                size="sm"
+                className="shrink-0"
+                checked={newKeyAllowUsageCommand}
+                disabled={isSubmitting || loadingTemplatePolicy}
+                onChange={(checked) => {
+                  setNewKeyAllowUsageCommand(checked);
+                  setCreateKeyFormState((prev) => ({ ...prev, allowUsageCommand: checked }));
+                }}
+                ariaLabel={t("localUsageCommand")}
+              />
             </div>
           </div>
-          {createError && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30">
-              <span className="material-symbols-outlined text-red-500 text-sm">error</span>
-              <p className="text-sm text-red-700 dark:text-red-300 flex-1">{createError}</p>
+
+          {/* Expandable Full 6-Tab Policy Editor */}
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface/20 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-text-main">{t("fullPolicyEditorTitle")}</p>
+                <p className="text-xs text-text-muted">{t("fullPolicyEditorDesc")}</p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={showFullPolicyEditor ? "expand_less" : "tune"}
+                onClick={() => setShowFullPolicyEditor((prev) => !prev)}
+              >
+                {showFullPolicyEditor ? t("hideFullPolicyEditor") : t("customizeFullPolicy")}
+              </Button>
             </div>
+            {showFullPolicyEditor && (
+              <div className="pt-2 border-t border-border/60">
+                <KeyPolicySixTabEditor
+                  policy={draftCreatePolicy}
+                  formStateOverride={createKeyFormState}
+                  onFormStateChange={syncCreateKeyFormState}
+                  onValidationStateChange={handleEditorValidation}
+                  serverReferenceIssues={createKeyRefIssues}
+                  disabled={isSubmitting || loadingTemplatePolicy}
+                />
+              </div>
+            )}
+          </div>
+
+          {createError && (
+            <Alert
+              variant="critical"
+              icon={<Icon name="error" />}
+              description={createError}
+              dismissLabel={tc("close")}
+              onDismiss={() => setCreateError(null)}
+            />
           )}
           <div className="flex gap-2">
             <Button
               onClick={() => {
                 setShowAddModal(false);
-                setNewKeyName("");
-                setNewKeyManageEnabled(false);
-                setNewKeySelfUsageEnabled(true);
-                setNewKeyAccountQuotaEnabled(false);
-                setNewKeyAllowUsageCommand(false);
-                setNameError(null);
-                setCreateError(null);
+                resetCreateKeyModalState();
               }}
               variant="ghost"
               fullWidth
@@ -1255,7 +1334,12 @@ export default function ApiManagerPageClient() {
             <Button
               onClick={handleCreateKey}
               fullWidth
-              disabled={!newKeyName.trim()}
+              disabled={
+                !newKeyName.trim() ||
+                loadingTemplatePolicy ||
+                hasCreatePolicyErrors ||
+                hasBlockingCreateRefIssues
+              }
               loading={isSubmitting}
             >
               {t("createKey")}
@@ -1267,21 +1351,15 @@ export default function ApiManagerPageClient() {
       {/* Created Key Modal */}
       <Modal isOpen={!!createdKey} title={t("keyCreated")} onClose={() => setCreatedKey(null)}>
         <div className="flex flex-col gap-4">
-          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-            <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-green-600 dark:text-green-400">
-                check_circle
-              </span>
-              <div>
-                <p className="text-sm text-green-800 dark:text-green-200 font-medium mb-1">
-                  {t("keyCreatedSuccess")}
-                </p>
-                <p className="text-sm text-green-700 dark:text-green-300">{t("keyCreatedNote")}</p>
-              </div>
-            </div>
-          </div>
+          <Alert
+            variant="success"
+            icon={<Icon name="check_circle" />}
+            title={t("keyCreatedSuccess")}
+            description={t("keyCreatedNote")}
+            dismissLabel={tc("close")}
+          />
           <div className="flex gap-2">
-            <Input value={createdKey || ""} readOnly className="flex-1 font-mono text-sm" />
+            <Input value={createdKey || ""} readOnly className="flex-1" />
             <Button
               variant="secondary"
               icon={copied === "created_key" ? "check" : "content_copy"}
@@ -1295,6 +1373,8 @@ export default function ApiManagerPageClient() {
           </Button>
         </div>
       </Modal>
+      {confirmDialog}
+      {templateConfirmDialog}
     </div>
   );
 }

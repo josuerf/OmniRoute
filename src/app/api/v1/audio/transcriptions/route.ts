@@ -2,6 +2,7 @@
 export const maxDuration = 300;
 import { getRequestedModelEndpointMismatch } from "@/lib/providerModels/modelEndpointGuard";
 import { handleAudioTranscription } from "@omniroute/open-sse/handlers/audioTranscription.ts";
+import { fetchRemoteMedia } from "@/shared/network/remoteImageFetch";
 import {
   getProviderCredentialsWithQuotaPreflight,
   clearRecoveredProviderState,
@@ -18,6 +19,10 @@ import {
 import { resolveDynamicAudioProviders } from "@/app/api/v1/_shared/audioProviderNodes";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
+import { getCombinedModelAliases } from "@/sse/services/model";
+import { resolveModel } from "@omniroute/open-sse/services/wildcardRouter.ts";
+import { resolveModelAliasFromMap } from "@omniroute/open-sse/services/model.ts";
+import { isModelAllowedForKey } from "@/lib/db/apiKeys";
 import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
 import {
   createComboTargetKeyGate,
@@ -30,7 +35,12 @@ import {
   isAllRateLimitedCredentials,
   rateLimitedProviderResponse,
 } from "@/app/api/v1/_shared/rateLimit";
-import { attachOmniRouteMetaToResponse } from "@/domain/omnirouteResponseMeta";
+import {
+  attachMediaResponseMeta,
+  normalizeMediaUsage,
+  priceMediaRequest,
+  recordMediaRequest,
+} from "@/lib/usage/mediaRequestAccounting";
 import { generateRequestId } from "@/shared/utils/requestId";
 import { getComboByName, getCombos } from "@/lib/db/combos";
 import { getUserDatabaseSettings } from "@/lib/db/databaseSettings";
@@ -60,6 +70,16 @@ export async function peekDurationUsage(
     // Best-effort only — the transcription response itself already succeeded.
   }
   return undefined;
+}
+
+async function peekBillingUsage(response: Response): Promise<Record<string, unknown>> {
+  try {
+    if (!response.headers.get("content-type")?.includes("application/json")) return {};
+    const parsed = await response.clone().json();
+    return normalizeMediaUsage(parsed?.usage ?? { seconds: parsed?.duration });
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -99,7 +119,8 @@ async function transcribeWithModel(
   startTime: number,
   apiKeyId?: string | null,
   apiKeyName?: string | null,
-  allowedConnections: string[] | null = null
+  allowedConnections: string[] | null = null,
+  signal: AbortSignal | null = null
 ): Promise<Response> {
   // Provider nodes eligible for transcription: this route's own audio type plus
   // general chat/responses gateways. Remote hosts are opt-in (default OFF).
@@ -203,6 +224,8 @@ async function transcribeWithModel(
     credentials,
     resolvedProvider: providerConfig,
     resolvedModel,
+    remoteMediaFetcher: fetchRemoteMedia,
+    signal,
   });
 
   const connectionId = (credentials as { connectionId?: string } | null)?.connectionId || undefined;
@@ -210,18 +233,39 @@ async function transcribeWithModel(
 
   if (response?.ok) {
     await clearRecoveredProviderState(credentials);
+    const usage = await peekBillingUsage(response);
     const durationUsage = await peekDurationUsage(response);
-    // No per-second pricing rule exists yet for transcription duration → cost 0
-    // (ADD-only headers, body intact). The upstream usage is still persisted on
-    // the call_logs row below so it is auditable ahead of that pricing rule.
-    response = attachOmniRouteMetaToResponse(response, {
+    const requestId = generateRequestId();
+    const bill = await priceMediaRequest({
       provider,
       model: resolvedModel,
-      costUsd: 0,
+      unit: "second",
+      quantity: typeof usage.seconds === "number" ? usage.seconds : null,
+      usage,
+    });
+    await recordMediaRequest(
+      {
+        provider,
+        model: resolvedModel,
+        connectionId,
+        apiKeyId,
+        apiKeyName,
+        startTime,
+        requestId,
+        endpoint: "/v1/audio/transcriptions",
+      },
+      bill
+    );
+    response = attachMediaResponseMeta(response, {
+      provider,
+      model: resolvedModel,
+      costUsd: bill.costUsd,
+      usage,
       latencyMs: Date.now() - startTime,
-      requestId: generateRequestId(),
+      requestId,
     });
     saveCallLog({
+      id: requestId,
       method: "POST",
       path: "/v1/audio/transcriptions",
       status: 200,
@@ -229,7 +273,9 @@ async function transcribeWithModel(
       provider,
       connectionId,
       duration: Date.now() - startTime,
-      responseBody: durationUsage ? { usage: durationUsage } : undefined,
+      responseBody: Object.keys(usage).length
+        ? { usage: { ...durationUsage, ...usage } }
+        : undefined,
       apiKeyId: apiKeyId || undefined,
       apiKeyName: apiKeyName || undefined,
     }).catch(() => {});
@@ -252,6 +298,48 @@ async function transcribeWithModel(
     }).catch(() => {});
   }
   return response;
+}
+
+/** Resolve native exact/wildcard aliases without changing unknown audio model ids. */
+async function resolveTranscriptionAlias(modelStr: string): Promise<string> {
+  // Reuse the same DB/settings exact and wildcard alias stores as chat. Stored
+  // combos above retain precedence, and unknown ids keep audio's own parser.
+  const aliases = await getCombinedModelAliases();
+  const wildcardAliases = Object.entries(aliases)
+    .filter(([pattern, target]) => /[*?]/.test(pattern) && typeof target === "string")
+    .map(([pattern, target]) => ({ pattern, target: target as string }));
+  const exact = resolveModelAliasFromMap(modelStr, aliases);
+  return exact ? `${exact.provider}/${exact.model}` : resolveModel(modelStr, {}, wildcardAliases);
+}
+
+async function transcribeWithAlias(
+  formData: FormData,
+  modelStr: string,
+  startTime: number,
+  apiKeyId: string | null,
+  apiKeyName: string | null,
+  apiKey: string | null,
+  allowedConnections: string[] | null,
+  signal: AbortSignal | null = null
+) {
+  const resolvedModel = await resolveTranscriptionAlias(modelStr);
+  if (
+    resolvedModel !== modelStr &&
+    apiKey &&
+    !(await isModelAllowedForKey(apiKey, modelStr, resolvedModel))
+  ) {
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "API key is not allowed to use the resolved model");
+  }
+
+  return transcribeWithModel(
+    resolvedModel === modelStr ? formData : withModel(formData, resolvedModel),
+    resolvedModel,
+    startTime,
+    apiKeyId,
+    apiKeyName,
+    allowedConnections,
+    signal
+  );
 }
 
 /**
@@ -308,6 +396,7 @@ export async function POST(request) {
         } catch {}
 
         return handleComboChat({
+          endpointCapability: "audio-transcriptions",
           body: { model: modelStr } as any,
           combo: combo as any,
           handleSingleModel: async (_reqBody: any, targetModelStr: string) =>
@@ -317,7 +406,8 @@ export async function POST(request) {
               startTime,
               apiKeyId,
               apiKeyName,
-              allowedConnections
+              allowedConnections,
+              request.signal ?? null
             ),
           isModelAvailable: createComboTargetKeyGate(policy, modelStr),
           log,
@@ -332,12 +422,14 @@ export async function POST(request) {
     }
   }
 
-  return transcribeWithModel(
+  return transcribeWithAlias(
     formData,
     modelStr,
     startTime,
     apiKeyId,
     apiKeyName,
-    allowedConnections
+    policy.apiKey,
+    allowedConnections,
+    request.signal ?? null
   );
 }

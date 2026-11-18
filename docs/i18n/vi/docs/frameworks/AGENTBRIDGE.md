@@ -16,34 +16,34 @@ AgentBridge là proxy MITM (Man-in-the-Middle — trung gian) của OmniRoute, c
 
 ### AgentBridge là gì?
 
-Khi một tác nhân IDE (ví dụ: GitHub Copilot, Cursor, Claude Code) thực hiện lệnh gọi API, nó sẽ kết nối trực tiếp với nhà cung cấp AI thượng nguồn (OpenAI, Anthropic, v.v.). AgentBridge chặn kết nối đó một cách minh bạch ở tầng TLS — mà không yêu cầu bất kỳ thay đổi cấu hình nào đối với tác nhân — và viết lại yêu cầu thông qua OmniRoute.
+Khi một tác nhân IDE (ví dụ: GitHub Copilot, Cursor, Claude Code) thực hiện cuộc gọi API, nó sẽ kết nối trực tiếp với nhà cung cấp AI ngược dòng (OpenAI, Anthropic, v.v.). AgentBridge chặn kết nối đó một cách minh bạch ở cấp độ TLS — mà không yêu cầu bất kỳ thay đổi cấu hình tác nhân nào — và ghi lại yêu cầu thông qua OmniRoute.
 
 Điều này có nghĩa là bạn có thể:
 
-- **Định tuyến lại bất kỳ tác nhân nào đến bất kỳ nhà cung cấp nào**: Copilot đang giao tiếp với OpenAI? Hãy chuyển hướng nó đến Anthropic Claude, Gemini hoặc bất kỳ nhà cung cấp nào trong số 374 nhà cung cấp của OmniRoute.
-- **Áp dụng ánh xạ mô hình**: `gemini-3-flash` → `claude-sonnet-4.7` một cách minh bạch ở cấp trình xử lý.
-- **Quan sát toàn bộ lưu lượng của tác nhân**: mọi yêu cầu bị chặn đều được gửi đến [Trình kiểm tra lưu lượng](./TRAFFIC_INSPECTOR.md).
-- **Áp dụng khả năng phục hồi của OmniRoute**: định tuyến tổ hợp, bộ ngắt mạch, phương án dự phòng và theo dõi chi phí cũng hoạt động với lưu lượng của tác nhân IDE.
+- **Định tuyến lại bất kỳ đại lý nào đến bất kỳ nhà cung cấp nào** : Copilot đang nói chuyện với OpenAI? Chuyển hướng nó tới Anthropic Claude, Gemini hoặc bất kỳ nhà cung cấp nào trong số 394 nhà cung cấp của OmniRoute.
+- **Áp dụng ánh xạ mô hình** : `gemini-3-flash` → `claude-sonnet-4.7` một cách minh bạch ở cấp độ xử lý.
+- **Quan sát tất cả lưu lượng đại lý** : mọi yêu cầu bị chặn sẽ được công bố tới [Thanh tra giao thông](./TRAFFIC_INSPECTOR.md).
+- **Áp dụng khả năng phục hồi OmniRoute** : định tuyến kết hợp, bộ ngắt mạch, dự phòng và theo dõi chi phí cũng hoạt động đối với lưu lượng tác nhân IDE.
 
-### Vị thế so với thị trường
+### Định vị so với thị trường
 
-| Tính năng                 | 9router | anti-api | llm-interceptor | **OmniRoute AgentBridge** |
-| ------------------------- | :-----: | :------: | :-------------: | :-----------------------: |
-| Antigravity               |    ✓    |    ✓     |        —        |             ✓             |
-| GitHub Copilot            |    ✓    |    ✓     |        —        |             ✓             |
-| Kiro (AWS)                |    ✓    |    ✓     |        —        |             ✓             |
-| OpenAI Codex              |    —    |    ✓     |        —        |             ✓             |
-| Cursor IDE                |    ✓    |    ✓     |        —        |             ✓             |
-| Zed Industries            |    —    |    ✓     |        —        |             ✓             |
-| Claude Code               |    —    |    —     |        ✓        |             ✓             |
-| Open Code                 |    —    |    —     |        ✓        |             ✓             |
-| Trae                      |    —    |    —     |        —        |     🔍 Đang điều tra      |
-| Giao diện bảng điều khiển |    ✓    |    ✗     |        ✗        |             ✓             |
-| Trình kiểm tra lưu lượng  |    ✗    |    ✗     |        ✓        |             ✓             |
-| Định tuyến OmniRoute      |    ✗    |    ✗     |        ✗        |             ✓             |
-| Giao diện ánh xạ mô hình  |    ✗    |    ✗     |        ✗        |             ✓             |
-| Danh sách bỏ qua          |    ✗    |    ✗     |        ✓        |             ✓             |
-| Chứng chỉ CA thượng nguồn |    ✗    |    ✗     |        ✓        |             ✓             |
+| Tính năng               | 9 bộ định tuyến | chống api | llm-đánh chặn | **OmniRoute AgentBridge** |
+| ----------------------- | :-------------: | :-------: | :-----------: | :-----------------------: |
+| Antigravity             |        ✓        |     ✓     |       —       |             ✓             |
+| GitHub Copilot          |        ✓        |     ✓     |       —       |             ✓             |
+| Kiro (AWS)              |        ✓        |     ✓     |       —       |             ✓             |
+| OpenAI Codex            |        —        |     ✓     |       —       |             ✓             |
+| Cursor IDE              |        ✓        |     ✓     |       —       |             ✓             |
+| công nghiệp Zed         |        —        |     ✓     |       —       |             ✓             |
+| Claude                  |        —        |     —     |       ✓       |             ✓             |
+| Mã mở                   |        —        |     —     |       ✓       |             ✓             |
+| Trà                     |        —        |     —     |       —       |        🔍 điều tra        |
+| Trang tổng quan UI      |        ✓        |     ✗     |       ✗       |             ✓             |
+| Thanh tra giao thông    |        ✗        |     ✗     |       ✓       |             ✓             |
+| định tuyến OmniRoute    |        ✗        |     ✗     |       ✗       |             ✓             |
+| Ánh xạ mô hình UI       |        ✗        |     ✗     |       ✗       |             ✓             |
+| Bỏ qua danh sách        |        ✗        |     ✗     |       ✓       |             ✓             |
+| Chứng chỉ CA ngược dòng |        ✗        |     ✗     |       ✓       |             ✓             |
 
 ---
 
@@ -545,24 +545,24 @@ Các schema OpenAPI đầy đủ: `docs/openapi.yaml` → thẻ `AgentBridge`.
 
 ## §8 Lộ trình
 
-### Khảo sát Trae
+### Trà điều tra
 
-Trae là một trợ lý lập trình AI tương đối mới. Trước khi triển khai một handler:
+Trae là một trợ lý mã hóa AI tương đối mới. Trước khi thực hiện một trình xử lý:
 
-1. Xác định tệp nhị phân/tiện ích mở rộng trên các marketplace của VS Code / JetBrains hoặc dưới dạng ứng dụng độc lập
-2. Ghi lại lưu lượng truy cập bằng mitmproxy để xác định các máy chủ API và cấu trúc endpoint
+1. Xác định binary/extension trong các thị trường Mã VS / JetBrains hoặc dưới dạng một ứng dụng độc lập
+2. Nắm bắt lưu lượng truy cập bằng mitmproxy để khám phá máy chủ API và hình dạng điểm cuối
 3. Xác định cơ chế xác thực
-4. Đánh giá nên tiếp tục hay dừng lại dựa trên TOS và khả năng khám phá API
+4. Đánh giá go/no-go dựa trên khả năng khám phá TOS và API
 
-Cho đến khi quá trình khảo sát hoàn tất, thẻ Trae trên dashboard sẽ hiển thị huy hiệu "Đang khảo sát" cùng liên kết "Báo cáo tính khả thi". Stub của handler tại `src/mitm/handlers/trae.ts` sẽ đưa ra lỗi có cấu trúc `Chưa được triển khai`.
+Cho đến khi cuộc điều tra hoàn tất, thẻ Trae trong trang tổng quan sẽ hiển thị huy hiệu "Đang điều tra" cùng với liên kết "Báo cáo khả năng tồn tại". Sơ khai trình xử lý tại `src/mitm/handlers/trae.ts` đưa ra lỗi `Not yet implemented` có cấu trúc.
 
-### Các agent tồn đọng (bắt buộc dùng MITM — không hỗ trợ base URL tùy chỉnh)
+### Đại lý tồn đọng (MITM yêu cầu — không hỗ trợ URL cơ sở tùy chỉnh)
 
-Các công cụ sau không hỗ trợ base URL tùy chỉnh trong phiên bản hiện tại, khiến MITM trở thành phương thức chặn bắt duy nhất. Việc đánh giá tính khả thi vẫn đang chờ xử lý:
+Các công cụ sau không hỗ trợ URLs cơ sở tùy chỉnh trong các phiên bản hiện tại của chúng, khiến MITM trở thành đường dẫn chặn duy nhất. Đang chờ đánh giá khả năng tồn tại:
 
 - **Windsurf** (Codeium/Cognition)
-- **Amp** (Sourcegraph)
+- **Bộ khuếch đại** (Nguồn ảnh)
 - **Amazon Q / Kiro CLI** (AWS Bedrock — tách biệt với Kiro IDE)
-- **Cowork** (ứng dụng desktop của Anthropic)
+- **đồng nghiệp** (máy tính để bàn Anthropic )
 
-Lưu ý: GitHub Copilot CLI ≥v1.0.19 hỗ trợ `COPILOT_PROVIDER_BASE_URL` — hãy sử dụng cấu hình trực tiếp thay vì MITM cho công cụ đó.
+Lưu ý: GitHub Copilot CLI ≥ v1.0.19 hỗ trợ `COPILOT_PROVIDER_BASE_URL` — sử dụng cấu hình trực tiếp thay vì MITM cho công cụ đó.

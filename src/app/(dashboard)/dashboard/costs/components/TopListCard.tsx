@@ -33,14 +33,12 @@ export function TopListCard({
 
   return (
     <Card className="p-5">
-      <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wide mb-4">
-        {title}
-      </h3>
+      <h3 className="text-sm text-text-muted uppercase mb-4">{title}</h3>
       <div className="space-y-2">
         {rows.slice(0, 6).map((row) => (
           <div
             key={String(row[nameKey])}
-            className="flex items-center justify-between gap-3 rounded-lg border border-border/20 bg-surface/20 px-4 py-3"
+            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-subtle px-4 py-3"
           >
             <span className="text-sm text-text-main truncate">{String(row[nameKey])}</span>
             <div className="flex items-center gap-3 shrink-0">

@@ -1,3 +1,4 @@
+import { resolveLocalProviderBaseUrl } from "@/shared/utils/localProviderBaseUrl";
 import { handleEmbedding } from "@omniroute/open-sse/handlers/embeddings.ts";
 import {
   parseEmbeddingModel,
@@ -37,11 +38,10 @@ import {
   formatUnknownEmbeddingProviderError,
 } from "./errors";
 import { isPrivateHost, isCloudMetadataHost } from "@/shared/network/outboundUrlGuard";
-import { calculateCost } from "@/lib/usage/costCalculator";
-import { attachOmniRouteMetaHeaders } from "@/domain/omnirouteResponseMeta";
-import { generateRequestId } from "@/shared/utils/requestId";
+import { embeddingSuccessResponse } from "./billing";
 import { resolveLocalSyncedEndpointRoute } from "@/lib/providerModels/syncedEndpointRouting";
 import { resolveAlibabaProviderEmbeddingUrl } from "@/shared/constants/alibabaProviderRegions";
+import { ensureCopilotEmbeddingToken } from "./copilotToken";
 
 /**
  * A local server (llama.cpp, LM Studio, …) embeds with whatever model it loaded and
@@ -99,6 +99,8 @@ export interface EmbeddingHandlerOptions {
   allowedConnections?: string[] | null;
   /** GHSA-3w2r: combo per-target model gate for the caller key (undefined = none). */
   isComboTargetAllowed?: (targetModelStr: string) => Promise<boolean>;
+  requestedModel?: string | null;
+  comboName?: string | null;
 }
 
 export async function createEmbeddingResponse(
@@ -106,12 +108,23 @@ export async function createEmbeddingResponse(
   options: EmbeddingHandlerOptions = {}
 ): Promise<Response> {
   const modelStr = body.model;
+  const requestedModel = options.requestedModel ?? modelStr;
   const startTime = Date.now();
 
-  if (!modelStr.includes("/")) {
+  if (!modelStr.includes("/") || modelStr.startsWith("combo/")) {
     try {
-      const combo = await getComboByName(modelStr);
+      let combo = await getComboByName(modelStr);
+      if (
+        (!combo || !Array.isArray(combo.models) || combo.models.length === 0) &&
+        modelStr.startsWith("combo/")
+      ) {
+        combo = await getComboByName(modelStr.slice("combo/".length));
+      }
       if (combo) {
+        const resolvedComboName =
+          typeof combo.name === "string" && combo.name.trim()
+            ? combo.name
+            : modelStr.replace(/^combo\//, "");
         let allCombos: Awaited<ReturnType<typeof getCombos>> = [];
         try {
           allCombos = await getCombos();
@@ -122,7 +135,16 @@ export async function createEmbeddingResponse(
         // different models are not comparable). The generic combo engine has no
         // notion of embedding families, so reject loudly here before dispatch.
         // See _tasks/features-v3.8.12/01-embeddings-combo-family-guard.plan.md.
-        const dimConflict = findEmbeddingComboDimensionConflict(combo as any, allCombos as any);
+        // A pinned `dimensions` (the client's, else the combo's) is what every target is asked
+        // for, so the guard compares that effective size instead of the registry default.
+        const pinnedDimensions = Number(
+          body.dimensions ?? (combo as Record<string, unknown>).dimensions
+        );
+        const dimConflict = findEmbeddingComboDimensionConflict(
+          combo as any,
+          allCombos as any,
+          Number.isFinite(pinnedDimensions) ? pinnedDimensions : undefined
+        );
         if (dimConflict.conflict) {
           return errorResponse(
             HTTP_STATUS.BAD_REQUEST,
@@ -152,6 +174,7 @@ export async function createEmbeddingResponse(
             : body;
 
         return handleComboChat({
+          endpointCapability: "embeddings",
           body: bodyWithDimensions,
           combo: combo as any,
           handleSingleModel: async (reqBody: any, targetModelStr: string, target?: any) => {
@@ -159,6 +182,8 @@ export async function createEmbeddingResponse(
             return createEmbeddingResponse(newBody, {
               ...options,
               connectionId: target?.connectionId || options.connectionId,
+              requestedModel,
+              comboName: options.comboName || resolvedComboName,
             });
           },
           isModelAvailable: options.isComboTargetAllowed,
@@ -262,7 +287,7 @@ export async function createEmbeddingResponse(
 
     const providerSpecificData = (credentials as { providerSpecificData?: Record<string, unknown> })
       .providerSpecificData;
-    const configuredBaseUrl = providerSpecificData?.baseUrl;
+    const configuredBaseUrl = resolveLocalProviderBaseUrl(provider, providerSpecificData?.baseUrl);
     if (typeof configuredBaseUrl !== "string" || configuredBaseUrl.trim().length === 0) {
       return errorResponse(
         HTTP_STATUS.BAD_REQUEST,
@@ -277,7 +302,7 @@ export async function createEmbeddingResponse(
     providerConfig = {
       id: provider,
       baseUrl: baseUrl.endsWith("/embeddings") ? baseUrl : `${baseUrl}/embeddings`,
-      authType: "apikey",
+      authType: provider === "docker-model-runner" ? "none" : "apikey",
       authHeader: "bearer",
       models: [],
       structuredInputProtocol: registryConfig?.structuredInputProtocol,
@@ -485,6 +510,9 @@ export async function createEmbeddingResponse(
     if (connectionBaseUrl) providerConfig = { ...providerConfig, baseUrl: connectionBaseUrl };
   }
 
+  // GitHub Copilot: renew or mint the exchanged copilotToken before dispatch.
+  credentials = await ensureCopilotEmbeddingToken(providerConfig, provider, credentials);
+
   // #474: when the request used a bare model name (no "/" — e.g. an alias that
   // resolved to "auto") and the selected connection declares a defaultModel,
   // resolve the bare name to that real model ID before the upstream call so the
@@ -514,6 +542,7 @@ export async function createEmbeddingResponse(
     }
   }
 
+  let reportedUsage: Record<string, unknown> | null = null;
   const runEmbedding = () =>
     handleEmbedding({
       body:
@@ -534,6 +563,11 @@ export async function createEmbeddingResponse(
       clientRawRequest: options.clientRawRequest || null,
       apiKeyId: options.apiKeyId || null,
       apiKeyName: options.apiKeyName || null,
+      requestedModel,
+      comboName: options.comboName || null,
+      onUsage: (usage) => {
+        reportedUsage = usage;
+      },
       // #10347 — thread the selected connection id so handleEmbedding can cool the
       // account on a hard upstream failure (previously always null on /v1/embeddings).
       connectionId:
@@ -541,6 +575,7 @@ export async function createEmbeddingResponse(
         options.connectionId ||
         connectionIdForProxy ||
         null,
+      connectionProvider: credentialsProviderId,
     });
 
   const result = connectionIdForProxy
@@ -551,20 +586,14 @@ export async function createEmbeddingResponse(
 
   if (result.success) {
     if (credentials) await clearRecoveredProviderState(credentials as Record<string, unknown>);
-    responseHeaders.set("Content-Type", "application/json");
-    const usage = (result.data as { usage?: Record<string, number> })?.usage ?? null;
-    const costUsd = usage ? await calculateCost(provider, effectiveModel ?? "", usage) : 0;
-    attachOmniRouteMetaHeaders(responseHeaders, {
+    return embeddingSuccessResponse(result.data, responseHeaders, {
       provider,
-      model: effectiveModel,
-      usage,
-      costUsd,
-      latencyMs: Date.now() - startTime,
-      requestId: generateRequestId(),
-    });
-    return new Response(JSON.stringify(result.data), {
-      status: result.status,
-      headers: responseHeaders,
+      model: effectiveModel ?? "",
+      usage: reportedUsage,
+      apiKeyId: options.apiKeyId,
+      apiKeyName: options.apiKeyName,
+      connectionId: connectionIdForProxy || options.connectionId,
+      startTime,
     });
   }
 
@@ -581,11 +610,15 @@ export async function createEmbeddingResponse(
     typeof credentials.connectionId === "string" &&
     HARD_ERROR_STATUSES.has(result.status)
   ) {
+    // Classify against the connection's own provider id. For a custom node the
+    // request `provider` is the model prefix (e.g. "my-embed"), which is not a
+    // compatible-provider id, so a node's rate-limit 429 was judged by API-key wallet
+    // rules and parked as credits_exhausted instead of a model-scoped cooldown.
     markAccountUnavailable(
       credentials.connectionId,
       result.status,
       result.error || "Embedding provider error",
-      provider,
+      credentialsProviderId,
       resolvedModel || null
     ).catch((err) => {
       log.debug(

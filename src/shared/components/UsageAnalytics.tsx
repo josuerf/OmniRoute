@@ -1,9 +1,14 @@
 "use client";
+import UsageEvidenceNotice from "./UsageEvidenceNotice";
 
 import { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import Button from "./Button";
 import Card from "./Card";
+import TokenBreakdownCards from "./analytics/TokenBreakdownCards";
+import Icon from "./Icon";
 import { CardSkeleton } from "./Loading";
+import AnimatedNumber from "./AnimatedNumber";
 import { fmtCompact as fmt, fmtFull, fmtCost } from "@/shared/utils/formatting";
 import { readFetchErrorMessage } from "@/shared/utils/fetchError";
 import {
@@ -58,6 +63,11 @@ function writeTokenDisplayMode(mode: TokenDisplayMode): void {
   for (const listener of tokenDisplayListeners) listener();
 }
 
+/**
+ * Render usage analytics for the selected date range and API keys.
+ * Fetch the corresponding usage summary and breakdowns while preserving the user's
+ * compact or exact token-display preference across filter changes.
+ */
 export default function UsageAnalytics() {
   const locale = useLocale();
   const t = useTranslations("analytics");
@@ -134,12 +144,8 @@ export default function UsageAnalytics() {
   }, [fetchAnalytics]);
 
   const handleRangeSelect = useCallback((value: string) => {
-    if (value === "custom") {
-      setShowCustomPicker(true);
-    } else {
-      setRange(value);
-      setShowCustomPicker(false);
-    }
+    setRange(value);
+    setShowCustomPicker(false);
   }, []);
 
   const handleCustomApply = useCallback((start: string, end: string) => {
@@ -222,7 +228,7 @@ export default function UsageAnalytics() {
   if (loading && !analytics) return <CardSkeleton />;
   if (error)
     return (
-      <Card className="p-6 text-center text-red-500">
+      <Card className="p-6 text-center text-error">
         {tCommon("errorShort")}: {error}
       </Card>
     );
@@ -236,47 +242,42 @@ export default function UsageAnalytics() {
 
   return (
     <div className="flex flex-col gap-5 min-w-0">
+      <UsageEvidenceNotice estimated={s.estimated} unknownEvidence={s.unknownEvidence} />
       {/* Header + Filters */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary text-[22px]">analytics</span>
+        <h2 className="text-xl flex items-center gap-2">
+          <Icon name="analytics" size={22} className="text-primary" />
           {t("usageAnalyticsTitle")}
         </h2>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Token Display Mode Toggle (Compact vs Exact) */}
           <div
             role="radiogroup"
             aria-label={t("tokenDisplayMode")}
-            className="flex items-center gap-0.5 bg-black/[0.03] dark:bg-white/[0.03] rounded-lg p-1 border border-black/5 dark:border-white/5 text-xs"
+            className="flex items-center gap-0.5 bg-surface-2 rounded-lg p-1 border border-border text-xs"
           >
-            <button
-              type="button"
+            <Button
+              size="sm"
+              variant={tokenDisplayMode === "compact" ? "secondary" : "ghost"}
               role="radio"
               aria-checked={tokenDisplayMode === "compact"}
               onClick={() => handleToggleDisplayMode("compact")}
               title={t("tokenDisplayCompact")}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                tokenDisplayMode === "compact"
-                  ? "bg-surface text-text-main shadow-xs"
-                  : "text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5"
-              }`}
+              className="h-7 min-h-7 px-2.5 text-xs"
             >
               {t("tokenDisplayCompact")}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              size="sm"
+              variant={tokenDisplayMode === "exact" ? "secondary" : "ghost"}
               role="radio"
               aria-checked={tokenDisplayMode === "exact"}
               onClick={() => handleToggleDisplayMode("exact")}
               title={t("tokenDisplayExact")}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                tokenDisplayMode === "exact"
-                  ? "bg-surface text-text-main shadow-xs"
-                  : "text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5"
-              }`}
+              className="h-7 min-h-7 px-2.5 text-xs"
             >
               {t("tokenDisplayExact")}
-            </button>
+            </Button>
           </div>
 
           {/* API Key Filter */}
@@ -288,102 +289,73 @@ export default function UsageAnalytics() {
 
           {/* Period Selector + Custom */}
           <div
-            className="relative flex items-center gap-1 bg-black/[0.03] dark:bg-white/[0.03] rounded-lg p-1 border border-black/5 dark:border-white/5"
+            className="relative flex flex-wrap items-center gap-1 bg-surface-2 rounded-lg p-1 border border-border"
             ref={customPickerAnchorRef}
           >
             {ranges.map((r) => (
-              <button
+              <Button
                 key={r.value}
+                size="sm"
+                variant={range === r.value ? "primary" : "ghost"}
+                aria-pressed={range === r.value}
                 onClick={() => handleRangeSelect(r.value)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                  range === r.value
-                    ? "bg-primary text-white shadow-sm"
-                    : "text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5"
-                }`}
+                className="h-7 min-h-7 px-3 text-xs"
               >
                 {r.label}
-              </button>
+              </Button>
             ))}
-            <button
-              onClick={() => handleRangeSelect("custom")}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all flex items-center gap-1 ${
-                range === "custom"
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5"
-              }`}
+            {/* Custom range: the button is the trigger of the picker's kit Popover. */}
+            <CustomRangePicker
+              open={showCustomPicker}
+              onOpenChange={setShowCustomPicker}
+              start={customStart}
+              end={customEnd}
+              onApply={handleCustomApply}
             >
-              <span className="material-symbols-outlined text-[13px]">date_range</span>
-              {customRangeLabel || t("customRange")}
-              {range === "custom" && customRangeLabel && (
-                <span
-                  role="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRange("30d");
-                    setCustomStart("");
-                    setCustomEnd("");
-                  }}
-                  className="ml-0.5 opacity-70 hover:opacity-100"
-                >
-                  <span className="material-symbols-outlined text-[11px]">close</span>
-                </span>
-              )}
-            </button>
-
-            {/* Custom Range Picker Popover */}
-            {showCustomPicker && (
-              <CustomRangePicker
-                start={customStart}
-                end={customEnd}
-                onApply={handleCustomApply}
-                onClose={() => setShowCustomPicker(false)}
-              />
-            )}
+              <Button
+                size="sm"
+                variant={range === "custom" ? "primary" : "ghost"}
+                aria-pressed={range === "custom"}
+                className="h-7 min-h-7 px-3 text-xs gap-1"
+              >
+                <Icon name="date_range" size={13} />
+                {customRangeLabel || t("customRange")}
+                {range === "custom" && customRangeLabel && (
+                  <span
+                    role="button"
+                    onClick={(e) => {
+                      // Inside the popover trigger: the press does not dismiss the panel and the
+                      // stopped click does not toggle it, so close it here with the range.
+                      e.stopPropagation();
+                      setShowCustomPicker(false);
+                      setRange("30d");
+                      setCustomStart("");
+                      setCustomEnd("");
+                    }}
+                    className="ml-0.5 opacity-70 hover:opacity-100"
+                  >
+                    <Icon name="close" size={11} />
+                  </span>
+                )}
+              </Button>
+            </CustomRangePicker>
           </div>
         </div>
       </div>
 
       {/* Primary KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          icon="generating_tokens"
-          label={t("totalTokens")}
-          value={tokenDisplayMode === "exact" ? fmtFull(s.totalTokens) : fmt(s.totalTokens)}
-          tooltip={tokenDisplayMode === "exact" ? `~${fmt(s.totalTokens)}` : fmtFull(s.totalTokens)}
-          subValue={`${fmtFull(s.totalRequests)} ${t("chartRequests")}`}
-        />
-        <StatCard
-          icon="input"
-          label={t("inputTokens")}
-          value={tokenDisplayMode === "exact" ? fmtFull(s.promptTokens) : fmt(s.promptTokens)}
-          tooltip={
-            tokenDisplayMode === "exact" ? `~${fmt(s.promptTokens)}` : fmtFull(s.promptTokens)
-          }
-          color="text-primary"
-        />
-        <StatCard
-          icon="output"
-          label={t("outputTokens")}
-          value={
-            tokenDisplayMode === "exact" ? fmtFull(s.completionTokens) : fmt(s.completionTokens)
-          }
-          tooltip={
-            tokenDisplayMode === "exact"
-              ? `~${fmt(s.completionTokens)}`
-              : fmtFull(s.completionTokens)
-          }
-          color="text-emerald-500"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-3">
+        <TokenBreakdownCards summary={s} displayMode={tokenDisplayMode} />
         <StatCard
           icon="payments"
           label={t("estCost")}
-          value={fmtCost(s.totalCost)}
+          value={<AnimatedNumber value={s.totalCost} format={fmtCost} integer={false} />}
           tooltip={
             s.totalCost !== undefined && s.totalCost !== null
               ? `$${Number(s.totalCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`
               : undefined
           }
-          color="text-amber-500"
+          color="text-warning"
         />
       </div>
 
@@ -398,7 +370,7 @@ export default function UsageAnalytics() {
                 icon: "dns",
                 label: t("infraProviders"),
                 value: providerCount,
-                color: "text-indigo-500",
+                color: "text-chart-2-ink",
               },
               { icon: "vpn_key", label: t("infraApiKeys"), value: s.uniqueApiKeys || 0 },
               { icon: "model_training", label: t("infraModels"), value: s.uniqueModels || 0 },
@@ -416,7 +388,7 @@ export default function UsageAnalytics() {
                   tokenDisplayMode === "exact"
                     ? `tokens : ~${fmt(avgTokensPerReq)} tokens`
                     : `tokens : ${fmtFull(avgTokensPerReq)} tokens`,
-                color: "text-cyan-500",
+                color: "text-info",
               },
               {
                 icon: "request_quote",
@@ -425,13 +397,13 @@ export default function UsageAnalytics() {
                 tooltip: costPerReq
                   ? `cost : $${Number(costPerReq).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })}`
                   : undefined,
-                color: "text-orange-500",
+                color: "text-warning",
               },
               {
                 icon: "compare_arrows",
                 label: t("perfIoRatio"),
                 value: `${ioRatio}x`,
-                color: "text-violet-500",
+                color: "text-chart-3-ink",
               },
               {
                 icon: "bolt",
@@ -444,7 +416,7 @@ export default function UsageAnalytics() {
                   tokenDisplayMode === "exact"
                     ? `requests : ~${fmt(s.fastRequests || 0)} requests`
                     : `requests : ${fmtFull(s.fastRequests || 0)} requests`,
-                color: "text-sky-500",
+                color: "text-info",
               },
             ],
           },
@@ -456,31 +428,31 @@ export default function UsageAnalytics() {
                 icon: "star",
                 label: t("highlightsTopModel"),
                 value: topModel,
-                color: "text-pink-500",
+                color: "text-chart-5-ink",
               },
               {
                 icon: "cloud",
                 label: t("highlightsTopProvider"),
                 value: topProvider,
-                color: "text-teal-500",
+                color: "text-chart-4-ink",
               },
               {
                 icon: "today",
                 label: t("highlightsBusiestDay"),
                 value: busiestDay,
-                color: "text-rose-500",
+                color: "text-error",
               },
               {
                 icon: "network_node",
                 label: t("highlightsDiversity"),
                 value: `${providerDiversity.toFixed(1)}%`,
-                color: "text-sky-500",
+                color: "text-info",
               },
               {
                 icon: "swap_horiz",
                 label: t("highlightsFallbackRate"),
                 value: `${Number(s.fallbackRatePct || 0).toFixed(1)}%`,
-                color: "text-amber-500",
+                color: "text-warning",
               },
             ],
           },

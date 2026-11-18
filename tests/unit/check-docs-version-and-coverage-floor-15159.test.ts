@@ -7,6 +7,7 @@ import {
   makeVersionClaimValidator,
   makeCoverageFloorClaimValidator,
 } from "../../scripts/check/check-docs-counts-sync.mjs";
+import { loadFactsSnapshot } from "../../scripts/release/facts.mjs";
 
 // Regression guard for audit #15159 — G-06 (stale version strings the validator
 // cannot see) and G-08 (AGENTS.md advertises the wrong coverage floor).
@@ -126,7 +127,13 @@ test("G-06: prose with no version claim at all is accepted", () => {
 
 test("G-06: README.md and llm.txt carry no stale version claim", () => {
   const root = path.resolve(import.meta.dirname, "..", "..");
-  const validator = validateVersion(VERSION);
+  // The REAL files are judged against the REAL package.json, not the fixture constant above:
+  // pinning "3.8.52" here made this test red on every new cycle at the exact moment the README
+  // was bumped correctly (release/v3.8.53, 2026-10-20) and green while it was stale.
+  const realVersion = String(
+    JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version
+  );
+  const validator = validateVersion(realVersion);
 
   for (const rel of ["README.md", "llm.txt"]) {
     const result = validator(fs.readFileSync(path.join(root, rel), "utf8"));
@@ -167,14 +174,31 @@ test("G-08: a docs file with no coverage claim is accepted", () => {
 test("G-08: AGENTS.md no longer advertises a floor below the blocking ratchet", () => {
   // The end state: the instruction surface an agent reads first must not send
   // them below the floor the blocking gate enforces.
+  //
+  // The floor AGENTS.md states is a DERIVED number (plan 2026-11-13): feature PRs no longer
+  // write it, `npm run release:refresh-derived` rewrites it and records the floors it used in
+  // docs/reference/derived-facts.json. So the document is judged against the snapshot (same
+  // refresh), not against the live baseline, which a ratchet PR may raise between releases.
+  // The live baseline comparison is release mode's job (the counts gate's "Coverage floor"
+  // check with the live facts).
   const root = path.resolve(import.meta.dirname, "..", "..");
   const agents = fs.readFileSync(path.join(root, "AGENTS.md"), "utf8");
+  const snapshot = loadFactsSnapshot() as { coverageFloors?: typeof REAL_FLOORS } | null;
+  assert.ok(
+    snapshot?.coverageFloors,
+    "docs/reference/derived-facts.json must record coverageFloors"
+  );
+  const floors = snapshot.coverageFloors;
+  for (const key of ["statements", "lines", "functions", "branches"] as const) {
+    // The snapshot never records a floor below the absolute 60% minimum (Hard Rule #9).
+    assert.ok(floors[key] >= 60, `derived-facts.json coverageFloors.${key}=${floors[key]} < 60`);
+  }
 
-  const result = validateCoverage(REAL_FLOORS)(agents);
+  const result = validateCoverage(floors)(agents);
   assert.equal(
     result.ok,
     true,
-    `AGENTS.md advertises a coverage floor below the blocking ratchet — ${result.detail}`
+    `AGENTS.md advertises a coverage floor below the snapshot ratchet — ${result.detail}`
   );
 });
 

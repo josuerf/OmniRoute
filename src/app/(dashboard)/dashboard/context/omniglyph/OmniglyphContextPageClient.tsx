@@ -14,6 +14,9 @@ import { useTranslations } from "next-intl";
 import Card from "@/shared/components/Card";
 import Toggle from "@/shared/components/Toggle";
 import Button from "@/shared/components/Button";
+import Badge from "@/shared/components/Badge";
+import Select from "@/shared/components/Select";
+import { PageHeader as KitPageHeader } from "@omniroute/ui-kit/page-header";
 import { SAMPLE_BEFORE_TEXT, SAMPLE_PAGE_PNG_DATA_URI, SAMPLE_METRICS } from "./sampleData";
 
 interface CompressionConfigLite {
@@ -62,15 +65,16 @@ const ECONOMICS = [
 function PageHeader() {
   const t = useTranslations("omniglyph");
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-semibold">{t("title")}</h1>
-        <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-          {t("preview")}
+    <KitPageHeader
+      compact
+      title={
+        <span className="flex items-center gap-3">
+          {t("title")}
+          <Badge variant="warning">{t("preview")}</Badge>
         </span>
-      </div>
-      <p className="max-w-2xl text-sm text-text-muted">{t("description")}</p>
-    </div>
+      }
+      description={t("description")}
+    />
   );
 }
 
@@ -78,7 +82,7 @@ function EconomicsCard() {
   const t = useTranslations("omniglyph");
   return (
     <Card className="p-6">
-      <h2 className="mb-4 text-lg font-semibold">{t("economicsTitle")}</h2>
+      <h2 className="mb-4 text-lg">{t("economicsTitle")}</h2>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {ECONOMICS.map((e) => (
           <div key={e.id} className="flex flex-col gap-1">
@@ -96,8 +100,8 @@ function BeforeAfterCard() {
   return (
     <Card className="p-6">
       <div className="mb-1 flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold">{t("beforeAfterTitle")}</h2>
-        <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+        <h2 className="text-lg">{t("beforeAfterTitle")}</h2>
+        <span className="text-sm font-medium text-success">
           {t("blockSavings", { percent: SAMPLE_METRICS.savingsPct })}
         </span>
       </div>
@@ -109,7 +113,7 @@ function BeforeAfterCard() {
           <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
             {t("textTokens", { tokens: SAMPLE_METRICS.textTokens })}
           </span>
-          <pre className="max-h-60 overflow-auto rounded border border-black/10 bg-black/5 p-3 text-[11px] leading-relaxed dark:border-white/10 dark:bg-white/5">
+          <pre className="max-h-60 overflow-auto rounded border border-border bg-bg-subtle p-3 text-[11px] leading-relaxed">
             {SAMPLE_BEFORE_TEXT}
           </pre>
         </div>
@@ -117,7 +121,8 @@ function BeforeAfterCard() {
           <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
             {t("renderedTokens", { tokens: SAMPLE_METRICS.imageTokens })}
           </span>
-          <div className="overflow-auto rounded border border-black/10 bg-white p-3 dark:border-white/10">
+          {/* White paper behind the rendered page image (its own background), in both themes. */}
+          <div className="overflow-auto rounded border border-border bg-white p-3">
             {/* eslint-disable-next-line @next/next/no-img-element -- data URI, no loader needed */}
             <img
               src={SAMPLE_PAGE_PNG_DATA_URI}
@@ -140,7 +145,7 @@ function GatesCard() {
   const t = useTranslations("omniglyph");
   return (
     <Card className="p-6">
-      <h2 className="mb-1 text-lg font-semibold">{t("gatesTitle")}</h2>
+      <h2 className="mb-1 text-lg">{t("gatesTitle")}</h2>
       <p className="mb-4 text-xs text-text-muted">
         {t.rich("gatesDescription", {
           code: (chunks) => <code>{chunks}</code>,
@@ -149,15 +154,13 @@ function GatesCard() {
       <ol className="flex flex-col gap-3">
         {GATES.map((g, i) => (
           <li key={g.id} className="flex gap-3">
-            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black/5 text-xs font-semibold tabular-nums dark:bg-white/10">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-bg-subtle text-xs font-semibold tabular-nums">
               {i + 1}
             </span>
             <div className="flex flex-col">
               <span className="text-sm font-medium">
                 {t(`gates.${g.id}.label`)} —{" "}
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  {t(`gates.${g.id}.pass`)}
-                </span>
+                <span className="text-success">{t(`gates.${g.id}.pass`)}</span>
               </span>
               <span className="text-xs text-text-muted">{t(`gates.${g.id}.why`)}</span>
             </div>
@@ -178,10 +181,10 @@ function ProfileCard(props: {
   return (
     <Card className="p-6">
       <div className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">{t("profileTitle")}</h2>
+        <h2 className="text-lg">{t("profileTitle")}</h2>
         <p className="max-w-xl text-sm text-text-muted">{t("profileDescription")}</p>
-        <select
-          className="w-full max-w-sm rounded-md border border-border bg-surface px-3 py-2 text-sm"
+        <Select
+          className="w-full max-w-sm"
           value={props.profile}
           disabled={props.disabled}
           aria-label={t("profileAria")}
@@ -193,7 +196,7 @@ function ProfileCard(props: {
               {t(`profiles.${p.key}.label`)}
             </option>
           ))}
-        </select>
+        </Select>
         <span className="max-w-xl text-xs text-text-muted">
           {t(`profiles.${selected.key}.description`)}
         </span>
@@ -213,7 +216,7 @@ function EnableCard(props: {
     <Card className="p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold">{t("enableTitle")}</h2>
+          <h2 className="text-lg">{t("enableTitle")}</h2>
           <p className="max-w-xl text-sm text-text-muted">
             {t.rich("enableDescription", {
               code: (chunks) => <code>{chunks}</code>,
@@ -249,7 +252,7 @@ function LoadErrorCard(props: { onRetry: () => void }) {
   return (
     <Card className="p-6">
       <div className="flex items-center justify-between gap-4">
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="text-sm text-error">
           {t("compressionTitle")}: {tCommon("failedToLoad")}
         </p>
         <Button size="sm" variant="secondary" onClick={props.onRetry}>
@@ -271,6 +274,19 @@ export default function OmniglyphContextPageClient() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"" | "saved" | "error">("");
   const saveGenRef = useRef(0);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (saveTimerRef.current !== null) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // A retry re-runs the load; answers that arrive for the run it replaced are rejected
@@ -302,6 +318,10 @@ export default function OmniglyphContextPageClient() {
   // unless a later save has started since, so it never clears that save's error.
   const save = async (body: Record<string, unknown>, rollback: () => void) => {
     const gen = ++saveGenRef.current;
+    if (saveTimerRef.current !== null) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
     setSaving(true);
     setStatus("");
     let ok = false;
@@ -315,6 +335,7 @@ export default function OmniglyphContextPageClient() {
     } catch {
       // A network failure is a failed save.
     }
+    if (!mountedRef.current) return;
     setSaving(false);
     if (!ok) {
       rollback();
@@ -322,7 +343,8 @@ export default function OmniglyphContextPageClient() {
       return;
     }
     setStatus("saved");
-    setTimeout(() => {
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
       if (gen === saveGenRef.current) setStatus("");
     }, 2000);
   };

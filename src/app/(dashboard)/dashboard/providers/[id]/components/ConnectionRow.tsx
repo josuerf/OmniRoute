@@ -1,5 +1,13 @@
 "use client";
 
+import Icon from "@/shared/components/Icon";
+
+import { buttonVariants } from "@omniroute/ui-kit/button";
+import {
+  ChatGptManageUsageButton,
+  ChatGptUsageLimitNotice,
+} from "@/shared/components/ChatGptPlanUi";
+import { hasChatGptUsageLimit } from "@/shared/utils/chatgptPlanUi";
 import ConnectionTestButton from "@/shared/components/ConnectionTestButton";
 
 // Phase 1d extraction — Issue #3501
@@ -9,19 +17,21 @@ import ConnectionTestButton from "@/shared/components/ConnectionTestButton";
 import { readCookieExpiresAt } from "@/shared/utils/webCookieExpiry";
 import { useState, useEffect } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Badge, Button, ReorderControl, Toggle } from "@/shared/components";
+import { Badge, Button, Checkbox, ReorderControl, Select, Toggle } from "@/shared/components";
 import { pickDisplayValue } from "@/shared/utils/maskEmail";
 import useEmailPrivacyStore from "@/store/emailPrivacyStore";
 import { isClaudeExtraUsageBlockEnabled } from "@/lib/providers/claudeExtraUsage";
-import { shouldShowConnectionLastError } from "./connectionRowHelpers";
+import { getCodexServiceTierBadge } from "./codexServiceTierBadge";
+import { shouldShowConnectionLastError, formatRelativeAge } from "./connectionRowHelpers";
 import { readStoredVerificationUrl } from "@omniroute/open-sse/services/antigravityVerification.ts";
 import type { ConnectionRowProps } from "./connectionRowTypes";
 import { getStatusPresentation } from "./connectionRowStatus";
 import { getCodexEffectiveServiceTier } from "@/lib/providers/codexFastTier";
 import { normalizeCodexLimitPolicy, providerText } from "../providerPageHelpers";
-import { getCodexPlanLabel } from "../codexPlanLabel";
+import { formatCodexPlanLabel, getCodexAccountSummary, getCodexPlanLabel } from "../codexPlanLabel";
 import CodexAccountDetails from "./CodexAccountDetails";
 import ConnectionQuotaPanel from "./ConnectionQuotaPanel";
+import ConnectionQuotaRefreshButton from "./ConnectionQuotaRefreshButton";
 import ConnectionIdChip from "./ConnectionIdChip";
 import {
   isProviderQuotaVisible,
@@ -77,7 +87,7 @@ function CooldownTimer({ until }: CooldownTimerProps) {
 
   if (!remaining) return null;
 
-  return <span className="text-xs text-orange-500 font-mono">⏱ {remaining}</span>;
+  return <span className="text-xs text-warning font-mono">⏱ {remaining}</span>;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,9 +146,12 @@ export default function ConnectionRow({
   onToggleProxyEnabled,
   quotaCache,
   quotaRefreshing,
+  quotaRefreshState,
   onRefreshQuota,
 }: ConnectionRowProps) {
   const t = useTranslations("providers");
+  const isChatGpt = connection.provider === "chatgpt";
+  const chatGptRenewsAutomatically = isChatGpt && connection.testStatus === "active";
   const locale = useLocale();
   const emailsVisible = useEmailPrivacyStore((s) => s.emailsVisible);
   const displayName = isOAuth
@@ -226,47 +239,17 @@ export default function ConnectionRow({
     : "default";
   const codexServiceTierIsGlobal =
     isCodex && codexGlobalServiceMode !== undefined && codexGlobalServiceMode !== "none";
-  const codexServiceTierBadge =
-    codexServiceTier === "priority"
-      ? {
-          label: providerText(t, "codexTierFastLabel", "Fast"),
-          icon: "bolt",
-          className: "bg-sky-500/15 text-sky-500",
-          title: codexServiceTierIsGlobal
-            ? providerText(
-                t,
-                "providerDetailGlobalPriorityActive",
-                "Global Codex priority service tier is active"
-              )
-            : providerText(
-                t,
-                "providerDetailConnectionPriorityActive",
-                "Codex priority service tier is active for this connection"
-              ),
-        }
-      : codexServiceTier === "flex"
-        ? {
-            label: providerText(t, "codexTierFlexLabel", "Flex"),
-            icon: "speed",
-            className: "bg-cyan-500/15 text-cyan-500",
-            title: codexServiceTierIsGlobal
-              ? providerText(
-                  t,
-                  "providerDetailGlobalFlexActive",
-                  "Global Codex flex service tier is active"
-                )
-              : providerText(
-                  t,
-                  "providerDetailConnectionFlexActive",
-                  "Codex flex service tier is active for this connection"
-                ),
-          }
-        : null;
+  const codexServiceTierBadge = getCodexServiceTierBadge(
+    t,
+    codexServiceTier,
+    codexServiceTierIsGlobal
+  );
   const claudeBlockExtraUsageEnabled = isClaude
     ? isClaudeExtraUsageBlockEnabled("claude", connection.providerSpecificData)
     : false;
   const codexPaidCreditsEnabled = connection.providerSpecificData?.allowPaidCredits === true;
   const codexPlanLabel = getCodexPlanLabel(!!isCodex, connection.providerSpecificData);
+  const codexAccount = getCodexAccountSummary(!!isCodex, connection.providerSpecificData);
   // Per-account quota strip — gated per connection (not per page) so family
   // aliases and openai-compatible-* nodes with their own quotaEndpoint qualify.
   const quotaPanelSupported =
@@ -290,37 +273,40 @@ export default function ConnectionRow({
   const effectiveUpstreamProxyMode = upstreamProxyMode ?? "native";
   const autoSyncEnabled = !!(connection.providerSpecificData as Record<string, unknown> | undefined)
     ?.autoSync;
-  const [syncClock, setSyncClock] = useState<number | null>(null);
+  // One clock for the whole row: the age of the last catalog sync and the age
+  // of the last discovery outcome both read from it, so the two never
+  // disagree — and the row never calls Date.now() while rendering.
+  const [rowClock, setRowClock] = useState<number | null>(null);
   useEffect(() => {
-    const update = () => setSyncClock(Date.now());
+    const update = () => setRowClock(Date.now());
     update();
     const timer = setInterval(update, 60_000);
     return () => clearInterval(timer);
   }, []);
   const lastSync = connection.syncedModelsAt ? Date.parse(connection.syncedModelsAt) : NaN;
   const validSync = Number.isFinite(lastSync) && lastSync > 0;
-  const ageMinutes =
-    validSync && syncClock !== null
-      ? Math.max(0, Math.floor((syncClock - lastSync) / 60_000))
-      : null;
-  const ageUnit =
-    ageMinutes === null ? null : ageMinutes < 60 ? "minute" : ageMinutes < 1440 ? "hour" : "day";
-  const ageValue =
-    ageMinutes === null
-      ? 0
-      : ageUnit === "minute"
-        ? ageMinutes
-        : ageUnit === "hour"
-          ? Math.floor(ageMinutes / 60)
-          : Math.floor(ageMinutes / 1440);
-  const syncAgeLabel =
-    ageUnit === null
-      ? null
-      : new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(-ageValue, ageUnit);
+  const syncAgeLabel = rowClock === null ? null : formatRelativeAge(lastSync, rowClock, locale);
+  // The outcome of the last discovery of this connection. Only a failure is
+  // shown: the cause is a technical value next to the label, never a sentence,
+  // and the label says nothing about the model list the page displays.
+  const discoveryState = connection.discoveryState;
+  const discoveryFailed = discoveryState?.status === "degraded";
+  const discoveryAt = discoveryState?.at ? Date.parse(discoveryState.at) : NaN;
+  const discoveryAgeLabel =
+    rowClock === null ? null : formatRelativeAge(discoveryAt, rowClock, locale);
+  const discoveryCause = discoveryFailed && discoveryState?.cause ? discoveryState.cause : null;
+  const discoveryTitle = discoveryFailed
+    ? [
+        discoveryState?.at ? new Date(discoveryState.at).toLocaleString(locale) : null,
+        discoveryCause,
+      ]
+        .filter(Boolean)
+        .join(" — ")
+    : "";
 
   return (
     <div
-      className={`group flex ${isCodex ? "flex-col items-stretch gap-3" : "flex-wrap items-center justify-between gap-x-3 gap-y-2"} p-3 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}
+      className={`group flex ${isCodex ? "flex-col items-stretch gap-3" : "flex-wrap items-center justify-between gap-x-3 gap-y-2"} p-3 rounded-lg hover:bg-bg-subtle transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}
     >
       {/* basis-64 lets the action bar drop to its own line on narrow screens instead of
           pushing the row past the viewport (the page clips x-overflow, so buttons vanished).
@@ -329,12 +315,7 @@ export default function ConnectionRow({
         className={`flex items-center gap-2 sm:gap-3 flex-1 min-w-0 ${isCodex ? "" : "basis-64"}`}
       >
         {onToggleSelect && (
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={onToggleSelect}
-            className="w-4 h-4 shrink-0 rounded border-border text-primary focus:ring-primary/30 cursor-pointer"
-          />
+          <Checkbox checked={isSelected} onChange={onToggleSelect} className="shrink-0" />
         )}
         <ReorderControl
           onMoveUp={onMoveUp}
@@ -342,19 +323,39 @@ export default function ConnectionRow({
           isFirst={isFirst}
           isLast={isLast}
         />
-        <span className="material-symbols-outlined hidden text-base text-text-muted sm:inline-block">
-          {isOAuth ? "lock" : "key"}
-        </span>
+        <Icon
+          name={isOAuth ? "lock" : "key"}
+          size={16}
+          className="hidden text-text-muted sm:inline-block"
+        />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium break-words sm:truncate">{displayName}</p>
+          <p className="text-sm font-medium break-words sm:truncate">
+            {displayName}
+            {codexAccount && (
+              <span
+                className="font-normal text-text-muted"
+                title={
+                  codexAccount.role ? t("codexAccountRole", { role: codexAccount.role }) : undefined
+                }
+              >
+                {" · "}
+                {t(
+                  codexAccount.kind === "business" ? "codexAccountBusiness" : "codexAccountPersonal"
+                )}
+                {codexAccount.workspaceName ? ` · ${codexAccount.workspaceName}` : ""}
+              </span>
+            )}
+          </p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <Badge variant={statusPresentation.statusVariant as any} size="sm" dot>
               {statusPresentation.statusLabel}
             </Badge>
             {codexPlanLabel && (
-              <Badge variant="primary" size="sm" className="capitalize">
-                {codexPlanLabel}
-              </Badge>
+              <span title={codexPlanLabel}>
+                <Badge variant="primary" size="sm">
+                  {formatCodexPlanLabel(codexPlanLabel)}
+                </Badge>
+              </span>
             )}
             {planLabel && (
               <span title={t("quotaPlanBadge")}>
@@ -371,22 +372,30 @@ export default function ConnectionRow({
             {tokenMinsLeft !== null &&
               (tokenMinsLeft < 0 ? (
                 connection.testStatus === "expired" ? (
-                  <span
-                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-red-500/15 text-red-500"
+                  <Badge
+                    variant="error"
+                    size="sm"
+                    icon={<Icon name="error" size={11} />}
                     title={t("tokenExpiredTitle", { date: effectiveExpiresAt })}
                   >
-                    <span className="material-symbols-outlined text-[11px]">error</span>
                     {t("tokenExpiredBadge")}
-                  </span>
+                  </Badge>
                 ) : null
               ) : tokenMinsLeft < 30 ? (
-                <span
-                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-500/15 text-amber-500"
-                  title={t("tokenExpiresSoonTitle", { minutes: tokenMinsLeft })}
+                <Badge
+                  variant={chatGptRenewsAutomatically ? "info" : "warning"}
+                  size="sm"
+                  icon={
+                    <Icon name={chatGptRenewsAutomatically ? "autorenew" : "warning"} size={11} />
+                  }
+                  title={
+                    chatGptRenewsAutomatically
+                      ? t("chatgptTokenRenewsTitle", { minutes: tokenMinsLeft })
+                      : t("tokenExpiresSoonTitle", { minutes: tokenMinsLeft })
+                  }
                 >
-                  <span className="material-symbols-outlined text-[11px]">warning</span>
                   {`~${tokenMinsLeft}m`}
-                </span>
+                </Badge>
               ) : null)}
             {isCooldown && connection.isActive !== false && (
               <CooldownTimer until={connection.rateLimitedUntil!} />
@@ -395,6 +404,14 @@ export default function ConnectionRow({
               <Badge variant={statusPresentation.errorBadge.variant} size="sm">
                 {t(statusPresentation.errorBadge.labelKey)}
               </Badge>
+            )}
+            {connection.prefixShadowed && connection.isActive !== false && (
+              <span
+                className="text-xs text-warning truncate max-w-[300px]"
+                title={connection.prefixShadowed.message}
+              >
+                {connection.prefixShadowed.code}: {connection.prefixShadowed.message}
+              </span>
             )}
             {shouldShowConnectionLastError(connection) && (
               <span
@@ -412,52 +429,64 @@ export default function ConnectionRow({
               </span>
             )}
             {connection.maxConcurrent != null && connection.maxConcurrent > 0 && (
-              <span
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-zinc-500/15 text-zinc-500 dark:bg-zinc-400/15 dark:text-zinc-400"
+              <Badge
+                variant="default"
+                size="sm"
+                icon={<Icon name="dynamic_feed" size={11} />}
                 title={t("accountConcurrencyCapLabel")}
               >
-                <span className="material-symbols-outlined text-[11px]">dynamic_feed</span>
                 {connection.maxConcurrent}
-              </span>
+              </Badge>
             )}
             {/* Rate Limit Protection — inline toggle with label */}
             <span className="hidden text-text-muted/30 select-none sm:inline">|</span>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="shield"
               onClick={() => onToggleRateLimit(!rateLimitEnabled)}
-              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
+              className={`h-auto min-h-0 gap-1 rounded px-1.5 py-0.5 text-xs ${
                 rateLimitShielded
-                  ? "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25"
-                  : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
+                  ? "bg-success/15 text-success hover:bg-success/25"
+                  : "bg-bg-subtle text-text-muted/50 hover:text-text-muted hover:bg-bg-subtle"
               }`}
               title={
                 rateLimitEnabled ? t("disableRateLimitProtection") : t("enableRateLimitProtection")
               }
             >
-              <span className="material-symbols-outlined text-[13px]">shield</span>
               {rateLimitShielded ? t("rateLimitProtected") : t("rateLimitUnprotected")}
-            </button>
+            </Button>
             {onToggleQuotaVisibility && (
               <ProviderQuotaVisibilityToggle
                 visible={quotaVisible}
                 onToggle={onToggleQuotaVisibility}
               />
             )}
+            {connection.provider === "codex" && onRefreshQuota && (
+              <ConnectionQuotaRefreshButton
+                refreshing={quotaRefreshing}
+                state={quotaRefreshState}
+                onRefresh={onRefreshQuota}
+              />
+            )}
             {onToggleAutoSync && (
               <>
                 <span className="hidden text-text-muted/30 select-none sm:inline">|</span>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="sync"
                   onClick={() => onToggleAutoSync?.(!autoSyncEnabled)}
                   disabled={connection.isActive === false}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  className={`h-auto min-h-0 gap-1 rounded px-1.5 py-0.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed ${
                     autoSyncEnabled
-                      ? "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
+                      ? "bg-success/15 text-success hover:bg-success/25"
+                      : "bg-bg-subtle text-text-muted/50 hover:text-text-muted hover:bg-bg-subtle"
                   }`}
                   title={t("autoSyncTooltip")}
                 >
-                  <span className="material-symbols-outlined text-[13px]">sync</span>
                   {t("autoSyncShort")}
-                </button>
+                </Button>
                 <span
                   className="text-xs text-text-muted"
                   title={
@@ -471,41 +500,60 @@ export default function ConnectionRow({
                 </span>
               </>
             )}
+            {discoveryFailed && discoveryAgeLabel && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-warning/15 text-warning"
+                title={discoveryTitle}
+                data-testid="connection-discovery-state"
+              >
+                <Icon name="warning" size={11} />
+                {t("discoveryDegradedStatus", { time: discoveryAgeLabel })}
+                {discoveryCause && (
+                  <span className="font-mono opacity-80" data-testid="connection-discovery-cause">
+                    {discoveryCause}
+                  </span>
+                )}
+              </span>
+            )}
             {isClaude && (
               <>
                 <span className="hidden text-text-muted/30 select-none sm:inline">|</span>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="payments"
                   onClick={() => onToggleClaudeExtraUsage?.(!claudeBlockExtraUsageEnabled)}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
+                  className={`h-auto min-h-0 gap-1 rounded px-1.5 py-0.5 text-xs ${
                     !claudeBlockExtraUsageEnabled
-                      ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
+                      ? "bg-warning/15 text-warning hover:bg-warning/25"
+                      : "bg-bg-subtle text-text-muted/50 hover:text-text-muted hover:bg-bg-subtle"
                   }`}
                   title={t("claudeExtraUsageToggleTitle")}
                 >
-                  <span className="material-symbols-outlined text-[13px]">payments</span>
                   {t("claudeExtraUsageShort")}{" "}
                   {!claudeBlockExtraUsageEnabled ? t("toggleOnShort") : t("toggleOffShort")}
-                </button>
+                </Button>
               </>
             )}
             {isCodex && connection.provider === "codex" && onToggleCodexPaidCredits && (
               <>
                 <span className="hidden text-text-muted/30 select-none sm:inline">|</span>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="payments"
                   onClick={() => onToggleCodexPaidCredits(!codexPaidCreditsEnabled)}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
+                  className={`h-auto min-h-0 gap-1 rounded px-1.5 py-0.5 text-xs ${
                     codexPaidCreditsEnabled
-                      ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
+                      ? "bg-warning/15 text-warning hover:bg-warning/25"
+                      : "bg-bg-subtle text-text-muted/50 hover:text-text-muted hover:bg-bg-subtle"
                   }`}
                   title={t("codexPaidCreditsToggleTitle")}
                   aria-pressed={codexPaidCreditsEnabled}
                 >
-                  <span className="material-symbols-outlined text-[13px]">payments</span>
                   {t("codexPaidCreditsShort")}{" "}
                   {codexPaidCreditsEnabled ? t("toggleOnShort") : t("toggleOffShort")}
-                </button>
+                </Button>
               </>
             )}
             {/* #dario: upstream proxy routing selector. Gated on isClaude (the
@@ -518,23 +566,26 @@ export default function ConnectionRow({
             {(isClaude || isCcCompatible) && (
               <>
                 <span className="hidden text-text-muted/30 select-none sm:inline">|</span>
-                <select
+                <Select
+                  compact
                   value={effectiveUpstreamProxyMode}
                   onChange={(e) =>
                     onSetUpstreamProxyMode?.(
                       e.target.value as "native" | "cliproxyapi" | "dario" | "fallback"
                     )
                   }
-                  className="text-xs font-medium rounded px-1.5 py-0.5 border-0 bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/70 hover:text-text-muted cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/30"
-                  title="Upstream proxy routing for Claude Code traffic"
+                  className="w-auto"
+                  selectClassName="text-xs font-medium"
+                  title={t("claudeCodeRoutingTitle")}
                 >
-                  <option value="native">Native</option>
+                  <option value="native">{t("routingNative")}</option>
                   <option value="cliproxyapi">CLIProxyAPI</option>
                   <option value="dario">Dario</option>
-                  <option value="fallback">Fallback</option>
-                </select>
+                  <option value="fallback">{t("routingFallback")}</option>
+                </Select>
                 {effectiveUpstreamProxyMode === "fallback" && (
-                  <select
+                  <Select
+                    compact
                     value={upstreamProxyFallbackBackend ?? "cliproxyapi"}
                     onChange={(e) =>
                       onSetUpstreamProxyMode?.(
@@ -542,12 +593,13 @@ export default function ConnectionRow({
                         e.target.value as "cliproxyapi" | "dario"
                       )
                     }
-                    className="text-xs font-medium rounded px-1.5 py-0.5 border-0 bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/70 hover:text-text-muted cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/30"
-                    title="Fallback retry backend"
+                    className="w-auto"
+                    selectClassName="text-xs font-medium"
+                    title={t("fallbackRetryBackendTitle")}
                   >
                     <option value="cliproxyapi">→ CLIProxyAPI</option>
                     <option value="dario">→ Dario</option>
-                  </select>
+                  </Select>
                 )}
               </>
             )}
@@ -559,70 +611,77 @@ export default function ConnectionRow({
                     className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${codexServiceTierBadge.className}`}
                     title={codexServiceTierBadge.title}
                   >
-                    <span className="material-symbols-outlined text-[13px]">
-                      {codexServiceTierBadge.icon}
-                    </span>
+                    <Icon name={codexServiceTierBadge.icon} size={13} />
                     {codexServiceTierBadge.label}
                   </span>
                 )}
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="timer"
                   onClick={() => onToggleCodex5h?.(!codex5hEnabled)}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
+                  className={`h-auto min-h-0 gap-1 rounded px-1.5 py-0.5 text-xs ${
                     codex5hEnabled
-                      ? "bg-blue-500/15 text-blue-500 hover:bg-blue-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
+                      ? "bg-info/15 text-info hover:bg-info/25"
+                      : "bg-bg-subtle text-text-muted/50 hover:text-text-muted hover:bg-bg-subtle"
                   }`}
                   title={t("codex5hToggleTitle")}
                 >
-                  <span className="material-symbols-outlined text-[13px]">timer</span>
                   5h {codex5hEnabled ? t("toggleOnShort") : t("toggleOffShort")}
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="date_range"
                   onClick={() => onToggleCodexWeekly?.(!codexWeeklyEnabled)}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
+                  className={`h-auto min-h-0 gap-1 rounded px-1.5 py-0.5 text-xs ${
                     codexWeeklyEnabled
-                      ? "bg-violet-500/15 text-violet-500 hover:bg-violet-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
+                      ? "bg-chart-3/15 text-chart-3-ink hover:bg-chart-3/25"
+                      : "bg-bg-subtle text-text-muted/50 hover:text-text-muted hover:bg-bg-subtle"
                   }`}
                   title={t("codexWeeklyToggleTitle")}
                 >
-                  <span className="material-symbols-outlined text-[13px]">date_range</span>
                   {t("weeklyShort")} {codexWeeklyEnabled ? t("toggleOnShort") : t("toggleOffShort")}
-                </button>
+                </Button>
               </>
             )}
             {onToggleProxyEnabled && (
               <>
                 <span className="hidden text-text-muted/30 select-none sm:inline">|</span>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="vpn_lock"
                   onClick={() => onToggleProxyEnabled(!proxyEnabled)}
                   aria-label={proxyEnabled ? t("proxyEnabledTitle") : t("proxyDisabledTitle")}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
+                  className={`h-auto min-h-0 gap-1 rounded px-1.5 py-0.5 text-xs ${
                     proxyEnabled
-                      ? "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
+                      ? "bg-success/15 text-success hover:bg-success/25"
+                      : "bg-bg-subtle text-text-muted/50 hover:text-text-muted hover:bg-bg-subtle"
                   }`}
                   title={proxyEnabled ? t("proxyEnabledTitle") : t("proxyDisabledTitle")}
                 >
-                  <span className="material-symbols-outlined text-[13px]">vpn_lock</span>
                   {proxyEnabled ? <span className="sr-only">{t("proxyOn")}</span> : t("proxyOff")}
-                </button>
+                </Button>
               </>
             )}
             {onTogglePerKeyProxyEnabled && (
               <>
                 <span className="hidden text-text-muted/30 select-none sm:inline">|</span>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="key"
                   onClick={() => onTogglePerKeyProxyEnabled(!perKeyProxyEnabled)}
                   aria-label={
                     perKeyProxyEnabled
                       ? t("perKeyProxyEnabledTitle")
                       : t("perKeyProxyDisabledTitle")
                   }
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
+                  className={`h-auto min-h-0 gap-1 rounded px-1.5 py-0.5 text-xs ${
                     perKeyProxyEnabled
-                      ? "bg-violet-500/15 text-violet-500 hover:bg-violet-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
+                      ? "bg-chart-3/15 text-chart-3-ink hover:bg-chart-3/25"
+                      : "bg-bg-subtle text-text-muted/50 hover:text-text-muted hover:bg-bg-subtle"
                   }`}
                   title={
                     perKeyProxyEnabled
@@ -630,23 +689,22 @@ export default function ConnectionRow({
                       : t("perKeyProxyDisabledTitle")
                   }
                 >
-                  <span className="material-symbols-outlined text-[13px]">key</span>
                   {perKeyProxyEnabled ? (
                     t("perKeyProxyOn")
                   ) : (
                     <span className="sr-only">{t("perKeyProxyOff")}</span>
                   )}
-                </button>
+                </Button>
               </>
             )}
             {hasProxy &&
               (() => {
                 const colorClass =
                   proxySource === "global"
-                    ? "bg-emerald-500/15 text-emerald-500"
+                    ? "bg-success/15 text-success"
                     : proxySource === "provider"
-                      ? "bg-amber-500/15 text-amber-500"
-                      : "bg-blue-500/15 text-blue-500";
+                      ? "bg-warning/15 text-warning"
+                      : "bg-info/15 text-info";
                 const label =
                   proxySource === "global"
                     ? t("proxySourceGlobal")
@@ -656,19 +714,20 @@ export default function ConnectionRow({
                 return (
                   <>
                     <span className="hidden text-text-muted/30 select-none sm:inline">|</span>
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="vpn_lock"
                       onClick={onProxy}
                       disabled={!onProxy}
-                      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium ${colorClass}`}
+                      className={`h-auto min-h-0 gap-0.5 rounded px-1.5 py-0.5 text-xs ${colorClass}`}
                       title={t("proxyConfiguredBySource", {
                         source: label,
                         host: proxyHost || t("configured"),
                       })}
                     >
-                      <span className="material-symbols-outlined text-[13px]">vpn_lock</span>
                       {proxyName || proxyHost || t("proxy")}
-                    </button>
+                    </Button>
                   </>
                 );
               })()}
@@ -694,6 +753,7 @@ export default function ConnectionRow({
           >
             <span className="hidden sm:inline">{t("retest")}</span>
           </Button>
+          {isChatGpt && <ChatGptManageUsageButton />}
           {/* T12: Manual token refresh for OAuth accounts */}
           {onRefreshToken && (
             <Button
@@ -703,11 +763,15 @@ export default function ConnectionRow({
               loading={isRefreshing}
               disabled={connection.isActive === false || isRefreshing}
               onClick={onRefreshToken}
-              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-amber-500 hover:text-amber-400"
-              aria-label={t("tokenShort")}
-              title={t("refreshOauthTokenTitle")}
+              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-warning hover:text-warning"
+              aria-label={isChatGpt ? t("chatgptRefreshToken") : t("tokenShort")}
+              title={isChatGpt ? t("chatgptRefreshTokenTitle") : t("refreshOauthTokenTitle")}
             >
-              <span className="hidden sm:inline">{t("tokenShort")}</span>
+              {isChatGpt ? (
+                <span className="hidden sm:inline">{t("chatgptRefreshToken")}</span>
+              ) : (
+                <span className="hidden sm:inline">{t("tokenShort")}</span>
+              )}
             </Button>
           )}
           {isCodex && isOAuth && connection.provider === "codex" && (
@@ -724,7 +788,7 @@ export default function ConnectionRow({
               loading={isApplyingCodexAuthLocal}
               disabled={isApplyingCodexAuthLocal}
               onClick={onApplyCodexAuthLocal}
-              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-emerald-500 hover:text-emerald-400"
+              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-success hover:text-success"
               aria-label={applyCodexAuthLabel}
               title={applyCodexAuthLabel}
             >
@@ -739,7 +803,7 @@ export default function ConnectionRow({
               loading={isExportingCodexAuthFile}
               disabled={isExportingCodexAuthFile}
               onClick={onExportCodexAuthFile}
-              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-sky-500 hover:text-sky-400"
+              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-info hover:text-info"
               aria-label={exportCodexAuthLabel}
               title={exportCodexAuthLabel}
             >
@@ -754,7 +818,7 @@ export default function ConnectionRow({
               loading={isApplyingClaudeAuthLocal}
               disabled={isApplyingClaudeAuthLocal}
               onClick={onApplyClaudeAuthLocal}
-              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-emerald-500 hover:text-emerald-400"
+              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-success hover:text-success"
               aria-label={applyClaudeAuthLabel}
               title={applyClaudeAuthLabel}
             >
@@ -769,7 +833,7 @@ export default function ConnectionRow({
               loading={isExportingClaudeAuthFile}
               disabled={isExportingClaudeAuthFile}
               onClick={onExportClaudeAuthFile}
-              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-sky-500 hover:text-sky-400"
+              className="!size-7 !p-0 sm:!w-auto sm:!px-2 text-xs text-info hover:text-info"
               aria-label={exportClaudeAuthLabel}
               title={exportClaudeAuthLabel}
             >
@@ -784,51 +848,69 @@ export default function ConnectionRow({
           />
           <div className="contents">
             {onReauth && (
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                icon="passkey"
                 onClick={onReauth}
-                className="inline-flex size-7 items-center justify-center rounded hover:bg-amber-500/10 text-amber-600 hover:text-amber-500"
+                aria-haspopup="dialog"
+                className="size-7 min-h-7 rounded hover:bg-warning/10 text-warning"
                 title={t("reauthenticateConnection")}
-              >
-                <span className="material-symbols-outlined text-[18px]">passkey</span>
-              </button>
+                aria-label={t("reauthenticateConnection")}
+              />
             )}
             {verificationUrl && (
               <a
                 href={verificationUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex size-7 items-center justify-center rounded hover:bg-amber-500/10 text-amber-600 hover:text-amber-500"
+                className={buttonVariants({
+                  variant: "ghost",
+                  size: "icon-sm",
+                  className: "size-7 min-h-7 rounded hover:bg-warning/10 text-warning",
+                })}
                 title={t("verifyAccountHint")}
                 aria-label={t("verifyAccount")}
                 data-testid="connection-verify-account"
               >
-                <span className="material-symbols-outlined text-[18px]">verified_user</span>
+                <Icon name="verified_user" size={18} />
               </a>
             )}
-            <button
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              icon="edit"
               onClick={onEdit}
-              className="inline-flex size-7 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary"
+              className="size-7 min-h-7 rounded hover:bg-bg-subtle text-text-muted hover:text-primary"
               title={t("edit")}
-            >
-              <span className="material-symbols-outlined text-[18px]">edit</span>
-            </button>
-            <button
+              aria-label={t("edit")}
+            />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              icon="vpn_lock"
               onClick={onProxy}
-              className="inline-flex size-7 items-center justify-center rounded hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary"
+              className="size-7 min-h-7 rounded hover:bg-bg-subtle text-text-muted hover:text-primary"
               title={t("proxyConfig")}
-            >
-              <span className="material-symbols-outlined text-[18px]">vpn_lock</span>
-            </button>
-            <button
+              aria-label={t("proxyConfig")}
+            />
+            <Button
+              variant="destructive-ghost"
+              size="icon-sm"
+              icon="delete"
               onClick={onDelete}
-              className="inline-flex size-7 items-center justify-center rounded hover:bg-red-500/10 text-red-500"
+              className="size-7 min-h-7 rounded"
               title={t("delete")}
-            >
-              <span className="material-symbols-outlined text-[18px]">delete</span>
-            </button>
+              aria-label={t("delete")}
+            />
           </div>
         </div>
       </div>
+      {hasChatGptUsageLimit(connection) && (
+        <div className="w-full pt-3">
+          <ChatGptUsageLimitNotice />
+        </div>
+      )}
       {isCodex && connection.codexAccountPool ? (
         <div className="basis-full min-w-0">
           <CodexAccountDetails pool={connection.codexAccountPool} />
@@ -841,7 +923,7 @@ export default function ConnectionRow({
             connection={connection}
             cache={quotaCache}
             refreshing={quotaRefreshing}
-            onRefresh={onRefreshQuota}
+            onRefresh={connection.provider === "codex" ? undefined : onRefreshQuota}
           />
         </div>
       ) : null}

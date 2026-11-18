@@ -12,38 +12,38 @@ AgentBridge jẹ́ proxy MITM (Man-in-the-Middle) ti OmniRoute, èyí tí ń dá
 
 ---
 
-## §1 Àkíyèsí Gbogbogbò
+## §1 Akopọ
 
-### Kí ni AgentBridge?
+### Kini AgentBridge?
 
-Nígbà tí aṣojú IDE kan (fún àpẹẹrẹ, GitHub Copilot, Cursor, Claude Code) bá ṣe ìpè API, ó máa ń sopọ̀ tààrà sí olupèsè AI ìpilẹ̀ṣẹ̀ (OpenAI, Anthropic, àti bẹ́ẹ̀ bẹ́ẹ̀ lọ). AgentBridge máa ń dá ìsopọ̀ yẹn dúró láìfarahàn ní ìpele TLS — láìní kí a yí ètò aṣojú kankan padà — ó sì máa ń tún ìbéèrè náà kọjá nípasẹ̀ OmniRoute.
+Nigbati aṣoju IDE kan (fun apẹẹrẹ, GitHub Copilot, Cursor, koodu Claude ) ṣe ipe API, o sopọ taara si olupese AI oke (OpenAI, Anthropic, ati bẹbẹ lọ). AgentBridge ṣe idilọwọ asopọ yẹn ni gbangba ni ipele TLS — laisi nilo eyikeyi iṣeto iṣeto aṣoju ayipada — ati tun ṣe ibeere naa nipasẹ OmniRoute.
 
-Èyí túmọ̀ sí pé o lè:
+Eyi tumọ si pe o le:
 
-- **Tún aṣojú èyíkéyìí darí sí olupèsè èyíkéyìí**: Copilot ń bá OpenAI sọ̀rọ̀? Tún un darí sí Anthropic Claude, Gemini, tàbí èyíkéyìí nínú àwọn olupèsè 374 ti OmniRoute.
-- **Lo àwọn ìbámu àwòṣe**: `gemini-3-flash` → `claude-sonnet-4.7` láìfarahàn ní ìpele olùṣàkóso.
-- **Ṣàkíyèsí gbogbo ìrìnàjò aṣojú**: gbogbo ìbéèrè tí a dá dúró ni a máa ń tẹ̀jáde sí [Olùṣàyẹ̀wò Ìrìnàjò](./TRAFFIC_INSPECTOR.md).
-- **Lo agbára ìfaradà OmniRoute**: ìdarí àkójọpọ̀, àwọn olùdásí àyíká, àwọn ọ̀nà àfẹ́yìntì, àti ìtọpinpin iye owó tún ń ṣiṣẹ́ fún ìrìnàjò aṣojú IDE.
+- **Yipada eyikeyi aṣoju si olupese eyikeyi** : Copilot sọrọ si OpenAI? Ṣe àtúnjúwe sí Anthropic Claude, Gemini, tabi eyikeyi ninu awọn olupese 394 OmniRoute.
+- **Waye awọn aworan agbaye** : `gemini-3-flash` → `claude-sonnet-4.7` ni gbangba ni ipele oluṣakoso.
+- **Ṣe akiyesi gbogbo ijabọ aṣoju** : Gbogbo ibeere ti o gba wọle ni a gbejade si [Oluyewo Ijabọ](./TRAFFIC_INSPECTOR.md).
+- **Waye resilience OmniRoute** : ipa ọna konbo, awọn fifọ iyika, awọn ipadasẹhin, ati iṣẹ ipasẹ iye owo fun ijabọ aṣoju IDE paapaa.
 
-### Ipò rẹ̀ ní ìfiwéra pẹ̀lú ọjà
+### Ipo la oja
 
-| Ẹ̀ya ara             | 9router | anti-api | llm-interceptor | **OmniRoute AgentBridge** |
-| ------------------- | :-----: | :------: | :-------------: | :-----------------------: |
-| Antigravity         |    ✓    |    ✓     |        —        |             ✓             |
-| GitHub Copilot      |    ✓    |    ✓     |        —        |             ✓             |
-| Kiro (AWS)          |    ✓    |    ✓     |        —        |             ✓             |
-| OpenAI Codex        |    —    |    ✓     |        —        |             ✓             |
-| Cursor IDE          |    ✓    |    ✓     |        —        |             ✓             |
-| Zed Industries      |    —    |    ✓     |        —        |             ✓             |
-| Claude Code         |    —    |    —     |        ✓        |             ✓             |
-| Open Code           |    —    |    —     |        ✓        |             ✓             |
-| Trae                |    —    |    —     |        —        |      🔍 Ṣíṣe ìwádìí       |
-| Ojú-iṣẹ́ ìṣàkóso     |    ✓    |    ✗     |        ✗        |             ✓             |
-| Olùṣàyẹ̀wò ìrìnàjò   |    ✗    |    ✗     |        ✓        |             ✓             |
-| Ìdarí OmniRoute     |    ✗    |    ✗     |        ✗        |             ✓             |
-| Ojú-iṣẹ́ ìbámu àwòṣe |    ✗    |    ✗     |        ✗        |             ✓             |
-| Àtòjọ ìkọjá         |    ✗    |    ✗     |        ✓        |             ✓             |
-| Ìjẹ́rìísí CA ìpilẹ̀ṣẹ̀ |    ✗    |    ✗     |        ✓        |             ✓             |
+| Ẹya ara ẹrọ            | 9 olulana | egboogi-api | llm-interceptor | **OmniRoute AgentBridge** |
+| ---------------------- | :-------: | :---------: | :-------------: | :-----------------------: |
+| Antigravity            |     ✓     |      ✓      |        —        |             ✓             |
+| GitHub Copilot         |     ✓     |      ✓      |        —        |             ✓             |
+| Kiro (AWS)             |     ✓     |      ✓      |        —        |             ✓             |
+| OpenAI Codex           |     —     |      ✓      |        —        |             ✓             |
+| Cursor IDE             |     ✓     |      ✓      |        —        |             ✓             |
+| Zed Industries         |     —     |      ✓      |        —        |             ✓             |
+| Claude koodu           |     —     |      —      |        ✓        |             ✓             |
+| Ṣi koodu               |     —     |      —      |        ✓        |             ✓             |
+| Trae                   |     —     |      —      |        —        |         🔍 Iwadii         |
+| Dasibodu UI            |     ✓     |      ✗      |        ✗        |             ✓             |
+| Oluyewo ijabọ          |     ✗     |      ✗      |        ✓        |             ✓             |
+| OmniRoute afisona      |     ✗     |      ✗      |        ✗        |             ✓             |
+| Awoṣe aworan agbaye UI |     ✗     |      ✗      |        ✗        |             ✓             |
+| Fori akojọ             |     ✗     |      ✗      |        ✓        |             ✓             |
+| Ilọsiwaju CA ijẹrisi   |     ✗     |      ✗      |        ✓        |             ✓             |
 
 ---
 
@@ -543,26 +543,26 @@ Ipá-ọ̀nà ìpìlẹ̀: `/api/tools/agent-bridge/`
 
 ---
 
-## §8 Àtòjọ-ètò ọjọ́ iwájú
+## §8 Roadmap
 
-### Ìwádìí Trae
+### Trae iwadi
 
-Trae jẹ́ olùrànlọ́wọ́ AI fún kíkọ kóòdù tí ó ṣẹ̀ṣẹ̀ dé. Ṣáájú ṣíṣe handler kan:
+Trae jẹ oluranlọwọ ifaminsi AI tuntun kan. Ṣaaju lilo oluṣakoso kan:
 
-1. Ṣe ìdánimọ̀ binary/extension náà ní àwọn ọjà VS Code / JetBrains tàbí gẹ́gẹ́ bí app aládàáṣe
-2. Gba traffic pẹ̀lú mitmproxy láti ṣàwárí àwọn API host àti àwọn ìrísí endpoint
-3. Ṣàwárí ọ̀nà authentication tí ó ń lò
-4. Ṣe àyẹ̀wò go/no-go ní ìbámu pẹ̀lú TOS àti bí API ṣe ṣeé ṣàwárí tó
+1. Ṣe idanimọ binary/extension ni koodu VS / awọn ọja ọjà JetBrains tabi bi ohun elo adaduro
+2. Yaworan ijabọ pẹlu mitmproxy lati ṣawari awọn ogun API ati awọn apẹrẹ ipari
+3. Mọ siseto ìfàṣẹsí
+4. Ṣe ayẹwo go/no-go ti o da lori TOS ati wiwa API
 
-Títí ìwádìí yóò fi parí, káàdì Trae inú dashboard yóò máa fi àmì "Ó wà lábẹ́ ìwádìí" hàn pẹ̀lú ìjápọ̀ "Ṣàlàyé bóyá ó ṣeé ṣe". Àwòṣe handler ní `src/mitm/handlers/trae.ts` máa ń ju àṣìṣe `A kò tíì ṣe é` tí a ṣètò sílẹ̀.
+Titi ti iwadii yoo fi pari, kaadi Trae ti o wa ninu dasibodu n ṣe afihan baaji “Iwadii” pẹlu ọna asopọ “Ṣiṣeeṣe Ijabọ”. Ogbontarigi olutọju ni `src/mitm/handlers/trae.ts` ju aṣiṣe `Not yet implemented` ti eleto kan.
 
-### Àwọn agent inú backlog (MITM pọndandan — kò sí àtìlẹ́yìn fún custom base URL)
+### Awọn aṣoju afẹyinti (MITM nilo — ko si atilẹyin aṣa URL )
 
-Àwọn irinṣẹ́ wọ̀nyí kò ṣe àtìlẹ́yìn fún custom base URL nínú àwọn ẹ̀yà wọn lọ́wọ́lọ́wọ́, èyí mú kí MITM jẹ́ ọ̀nà interception kan ṣoṣo. Àyẹ̀wò bóyá wọ́n ṣeé lò ṣì ń dúró:
+Awọn irinṣẹ atẹle ko ṣe atilẹyin URLs ipilẹ aṣa ni awọn ẹya lọwọlọwọ wọn, ṣiṣe MITM ọna idawọle nikan. Iwadii ṣiṣeeṣe wa ni isunmọtosi:
 
 - **Windsurf** (Codeium/Cognition)
-- **Amp** (Sourcegraph)
-- **Amazon Q / Kiro CLI** (AWS Bedrock — ó yàtọ̀ sí Kiro IDE)
-- **Cowork** (Anthropic desktop)
+- **Amp** (Orisun)
+- **Amazon Q / Kiro CLI** (AWS Bedrock — yato si Kiro IDE)
+- **Ṣiṣẹpọ** ( tabili Anthropic )
 
-Àkíyèsí: GitHub Copilot CLI ≥v1.0.19 ṣe àtìlẹ́yìn fún `COPILOT_PROVIDER_BASE_URL` — lo àtúnṣe tààrà dípò MITM fún irinṣẹ́ yẹn.
+Akiyesi: GitHub Copilot CLI ≥ v1.0.19 ṣe atilẹyin `COPILOT_PROVIDER_BASE_URL` — lo atunto taara dipo MITM fun irinṣẹ yẹn.

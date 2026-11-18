@@ -165,30 +165,30 @@ Các tạo tác nhật ký cuộc gọi (nếu được bật) được ghi vào
 
 ---
 
-## Phân Tích Chuyên Sâu Các Tệp Chính
+## Tìm hiểu sâu các tập tin chính
 
 ### chatCore.ts (5977 dòng)
 
-**Trình xử lý yêu cầu chính**. Mặc dù có kích thước lớn, tệp này có cấu trúc rõ ràng:
+các** xử lý yêu cầu chính** . Mặc dù kích thước của nó, nó có cấu trúc rõ ràng:
 
 ```ts
-// Cấu trúc giả lập của chatCore.ts
+// Pseudo-structure of chatCore.ts
 export async function handleChat(request: NextRequest) {
-  // 1. Xác thực + CORS
+  // 1. Auth + CORS
   await authenticateRequest(request);
   applyCorsHeaders(response);
 
-  // 2. Xác thực nội dung yêu cầu
+  // 2. Body validation
   const body = await parseRequestBody(request);
 
-  // 3. Phát hiện định dạng + chuyển đổi
+  // 3. Format detection + translation
   const sourceFormat = detectFormat(request);
   const targetFormat = getTargetFormat(providerId);
   if (needsTranslation(sourceFormat, targetFormat)) {
     body = translateRequest(body, sourceFormat, targetFormat);
   }
 
-  // 4. Định tuyến combo
+  // 4. Combo routing
   const targets = await resolveComboTargets(comboId, body);
   for (const target of targets) {
     try {
@@ -196,20 +196,20 @@ export async function handleChat(request: NextRequest) {
       await recordUsage(result);
       return result;
     } catch (err) {
-      // Tiếp tục với đích tiếp theo
+      // Continue to next target
     }
   }
 
-  // 5. Phương án dự phòng khẩn cấp
+  // 5. Emergency fallback
   return await emergencyFallback(body);
 }
 ```
 
-Mặc dù là một hàm khổng lồ, nó được tổ chức thành các **phần có chú thích** tương ứng với quy trình 5 giai đoạn.
+Mặc dù là một chức năng khổng lồ nhưng nó được tổ chức thành** phần bình luận** bản đồ đó tới quy trình 5 giai đoạn.
 
 ### combo.ts (4456 LOC)
 
-**Công cụ định tuyến** phân giải một combo thành danh sách các đích được sắp xếp theo thứ tự.
+các** công cụ định tuyến** giải quyết một sự kết hợp cho các mục tiêu đã ra lệnh.
 
 ```ts
 // services/combo.ts
@@ -226,135 +226,140 @@ export async function handleComboChat(body, comboId): Promise<ChatResult> {
 }
 ```
 
-Hỗ trợ **19 chiến lược định tuyến** (xem `src/shared/constants/routingStrategies.ts`):
+Hỗ trợ** 22 chiến lược định tuyến** (xem `src/shared/constants/routingStrategies.ts`):
 
-| Chiến lược          | Hành vi                                                                         |
-| ------------------- | ------------------------------------------------------------------------------- |
-| `priority`          | Danh sách được sắp xếp với đích đầu tiên được ưu tiên                           |
-| `weighted`          | Chọn theo xác suất dựa trên trọng số của từng đích                              |
-| `round-robin`       | Lần lượt xoay vòng qua các đích theo thứ tự                                     |
-| `context-relay`     | Chuyển tiếp ngữ cảnh qua các đích                                               |
-| `fill-first`        | Dùng hết hạn ngạch trước khi chuyển sang đích tiếp theo                         |
-| `p2c`               | Sức mạnh của hai lựa chọn                                                       |
-| `random`            | Chọn ngẫu nhiên đồng đều                                                        |
-| `least-used`        | Chọn đích có số lần sử dụng gần đây ít nhất                                     |
-| `cost-optimized`    | Ưu tiên đích hoạt động tốt có chi phí thấp nhất                                 |
-| `reset-aware`       | Nhận biết các khoảng thời gian đặt lại của nhà cung cấp                         |
-| `reset-window`      | Định tuyến dựa trên khoảng thời gian đặt lại                                    |
-| `headroom`          | Ưu tiên đích có phần hạn ngạch còn lại nhiều nhất                               |
-| `strict-random`     | Hoàn toàn đồng đều (không áp dụng trọng số chất lượng)                          |
-| `auto`              | Sử dụng cơ chế chấm điểm 16 yếu tố (`autoCombo/`)                               |
-| `lkgp`              | Ưu tiên nhà cung cấp hoạt động tốt gần đây nhất                                 |
-| `context-optimized` | Phù hợp nhất với các yêu cầu có ngữ cảnh dài                                    |
-| `fusion`            | Phân phối song song đến một nhóm, sau đó tổng hợp qua bộ phán xét (`fusion.ts`) |
+| Chiến lược          | Hành vi                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `priority`          | Danh sách đặt hàng mục tiêu đầu tiên                                                                    |
+| `weighted`          | Xác suất theo trọng lượng trên mỗi mục tiêu                                                             |
+| `round-robin`       | Duyệt qua các mục tiêu theo thứ tự                                                                      |
+| `context-relay`     | Phân bổ bối cảnh cho các mục tiêu                                                                       |
+| `fill-first`        | Điền vào hạn ngạch trước khi chuyển sang phần tiếp theo                                                 |
+| `p2c`               | Sức mạnh của hai sự lựa chọn                                                                            |
+| `random`            | Thống nhất ngẫu nhiên                                                                                   |
+| `least-used`        | Chọn cái có ít lần sử dụng gần đây nhất                                                                 |
+| `cost-optimized`    | Mục tiêu lành mạnh rẻ nhất đầu tiên                                                                     |
+| `reset-aware`       | Nhận biết các cửa sổ thiết lập lại nhà cung cấp                                                         |
+| `reset-window`      | Đặt lại định tuyến dựa trên cửa sổ                                                                      |
+| `expiry-first`      | Chi tiêu tài khoản có hạn ngạch sẽ hết hạn mà không sử dụng trước                                       |
+| `headroom`          | Phần lớn hạn ngạch còn lại đầu tiên                                                                     |
+| `quota-weighted`    | Bỏ qua các tài khoản đã cạn kiệt, sau đó rút theo hạn ngạch ÷ còn lại khi tải trong chuyến bay          |
+| `strict-random`     | Thực sự đồng nhất (không có trọng số chất lượng)                                                        |
+| `auto`              | Sử dụng tính điểm 16 yếu tố (`autoCombo/`)                                                              |
+| `lkgp`              | Nhà cung cấp tốt được biết đến lần cuối đầu tiên                                                        |
+| `context-optimized` | Tốt nhất cho các yêu cầu ngữ cảnh dài                                                                   |
+| `cache-optimized`   | Ghim từng tiền tố lời nhắc có thể sử dụng lại vào cùng một tài khoản (lần truy cập bộ đệm nhắc nhở)     |
+| `fusion`            | Quạt ra một bảng song song, sau đó tổng hợp thông qua một giám khảo (`fusion.ts`)                       |
+| `pipeline`          | Các bước chuỗi — đầu ra của mỗi mục tiêu sẽ cung cấp dữ liệu cho mục tiêu tiếp theo                     |
+| `jev`               | Chọn tham gia: TypeSafe Jev thừa nhận mục nào được xếp hạng sẽ chạy; nếu không thì đơn đặt hàng của bạn |
 
 ### base.ts (1170 LOC)
 
-**Trình thực thi trừu tượng** mà mọi lớp thực thi đều kế thừa (trực tiếp hoặc thông qua `DefaultExecutor` và các lớp con khác). Tệp này chứa:
+các** người thi hành trừu tượng** mà mọi lớp người thực thi đều mở rộng (trực tiếp hoặc thông qua `DefaultExecutor` và các lớp con khác). Nó chứa:
 
-- `buildUrl()` — xây dựng URL mặc định (các lớp con ghi đè để tùy chỉnh)
-- `buildHeaders()` — các header mặc định (xác thực, loại nội dung)
-- `transformRequest()` — mặc định chuyển tiếp nguyên trạng
-- `execute()` — vòng lặp HTTP chính với cơ chế thử lại/tăng thời gian chờ/bộ ngắt mạch
+- xây dựng URL mặc định `buildUrl()` — (ghi đè các lớp con cho tùy chỉnh)
+- tiêu đề mặc định `buildHeaders()` — (auth, loại nội dung)
+- truyền qua `transformRequest()` — theo mặc định
+- `execute()` — vòng lặp HTTP chính với retry/backoff/breaker
 
 ```ts
 // open-sse/executors/default.ts
 export class DefaultExecutor extends BaseExecutor {
-  // Xử lý tất cả nhà cung cấp tương thích với OpenAI/Anthropic
-  // Các nhà cung cấp đăng ký cấu hình (URL, xác thực, header) nhưng dùng chung logic thực thi
+  // Handles all OpenAI/Anthropic-compatible providers
+  // Providers register configurations (URL, auth, headers) but share executor logic
 }
 ```
 
-Hành vi dành riêng cho từng nhà cung cấp (header xác thực, URL cơ sở, header phiên bản) được cấu hình thông qua registry nhà cung cấp, thay vì các lớp thực thi riêng biệt.
+Hành vi dành riêng cho nhà cung cấp (tiêu đề xác thực, URL cơ sở, tiêu đề phiên bản) được định cấu hình thông qua sổ đăng ký của nhà cung cấp, không phải các lớp thực thi riêng biệt.
 
 ````
 
 ---
 
-## Dịch vụ (117 mô-đun)
+## Dịch vụ (117 học phần)
 
-Dịch vụ là các **mô-đun tập trung, đơn mục đích** được các trình xử lý kết hợp với nhau. Các nhóm chính:
+Dịch vụ là** các mô-đun tập trung, có mục đích duy nhất** mà người xử lý soạn thảo. Các hạng mục lớn:
 
-### Định tuyến & Combo
+### Định tuyến & Kết hợp
 
-- `combo.ts` — điểm vào cho các yêu cầu được định tuyến theo combo
-- `services/autoCombo/` — chấm điểm theo 16 yếu tố, 8 chiến lược định tuyến tự động
-- `wildcardRouter.ts` — khớp các tuyến ký tự đại diện (`gpt-*`)
-- `modelFamilyFallback.ts` — phương án dự phòng nội bộ trong họ T5
+- điểm vào `combo.ts` — cho các yêu cầu được định tuyến kết hợp
+- `services/autoCombo/` — Tính điểm 16 yếu tố, 8 chiến lược định tuyến tự động
+- `wildcardRouter.ts` — khớp với các tuyến ký tự đại diện (`gpt-*`)
+- dự phòng nội bộ gia đình `modelFamilyFallback.ts` — T5
 
-### Giới hạn tốc độ & Hạn ngạch
+### Giới hạn tỷ lệ & hạn ngạch
 
-- `rateLimitManager.ts` — token bucket cho mỗi cặp khóa+nhà cung cấp
-- `usage.ts` — ghi nhận mức sử dụng
-- `quotaCache.ts` — ảnh chụp hạn ngạch trong bộ nhớ
+- nhóm mã thông báo `rateLimitManager.ts` — cho mỗi nhà cung cấp + chính
+- ghi lại việc sử dụng `usage.ts` —
+- ảnh chụp nhanh hạn ngạch trong bộ nhớ `quotaCache.ts` —
 
-### Tài khoản & Token
+### Tài khoản & Mã thông báo
 
-- `tokenRefresh.ts` — làm mới OAuth khi gặp lỗi 401
+- `tokenRefresh.ts` — OAuth làm mới trên 401
 - `accountFallback.ts` — chuyển sang tài khoản thay thế
-- `sessionManager.ts` — trạng thái phiên nhiều lượt
+- trạng thái phiên nhiều lượt `sessionManager.ts` —
 
-### Trí tuệ
+### Tình báo
 
-- `intentClassifier.ts` — phân loại ý định của yêu cầu
-- `taskAwareRouter.ts` — định tuyến theo loại tác vụ
-- `thinkingBudget.ts` — phân bổ token suy luận
-- `contextManager.ts` — chèn ngữ cảnh định tuyến
+- `intentClassifier.ts` — phân loại mục đích yêu cầu
+- tuyến đường `taskAwareRouter.ts` — theo loại nhiệm vụ
+- `thinkingBudget.ts` — phân bổ mã thông báo tư duy
+- ngữ cảnh định tuyến tiêm `contextManager.ts` —
 
-### Khả năng phục hồi
+### khả năng phục hồi
 
-- `resilience.ts` — điều phối thử lại, backoff và circuit breaker
-- `emergencyFallback.ts` — phương án dự phòng cuối cùng
+- `resilience.ts` — thử lại, lùi lại, điều phối ngắt
+- phương án dự phòng cuối cùng `emergencyFallback.ts` —
 - `modelDeprecation.ts` — tự động định tuyến đến các mô hình kế nhiệm
 
-### Trạng thái
+### Tình trạng
 
-- `signatureCache.ts` — loại bỏ trùng lặp theo chữ ký yêu cầu
-- `volumeDetector.ts` — giảm tải
-- `contextHandoff.ts` — tuần tự hóa phiên
+- `signatureCache.ts` — khấu trừ bằng chữ ký yêu cầu
+- `volumeDetector.ts` — sa thải tải
+- tuần tự hóa phiên `contextHandoff.ts` —
 
-### Nén
+### nén
 
-- `compression/` (thư mục con) — quy trình nén hoàn chỉnh
-- 39 tệp bao gồm engine, bộ quy tắc và adapter
+- `compression/` (thư mục con) đường dẫn nén đầy đủ —
+- 39 tệp bao gồm công cụ, gói quy tắc, bộ điều hợp
 
 ### Kỹ năng
 
-- (được đề cập trong [SKILLS.md](./SKILLS.md))
+- (được bao phủ trong [SKILLS.md](./SKILLS.md) )
 
-### Bộ nhớ
+### Ký ức
 
-- (được đề cập trong [MEMORY.md](./MEMORY.md))
+- (được bao phủ trong [MEMORY.md](./MEMORY.md) )
 
 ---
 
-## Bộ thực thi (150 mô-đun)
+## Người thực thi (150 mô-đun)
 
-Phần lớn mỗi nhà cung cấp có một tệp riêng. Tất cả các lớp thực thi đều mở rộng `BaseExecutor` và ghi đè những phần khác biệt; các mô-đun còn lại là những trình trợ giúp dành riêng cho từng nhà cung cấp (lược đồ công cụ, adapter fetch/TTS, trình xử lý các đặc điểm riêng).
+Chủ yếu là một tập tin cho mỗi nhà cung cấp. Tất cả các lớp thực thi đều mở rộng `BaseExecutor` và ghi đè những gì khác biệt; các mô-đun khác là công cụ trợ giúp cho mỗi nhà cung cấp (lược đồ công cụ, bộ điều hợp fetch/TTS, trình xử lý quirk).
 
-### Các mẫu phổ biến
+### Các mẫu chung
 
-Nhà cung cấp được phân giải thông qua `getExecutor(providerId)`, hàm này trả về bộ thực thi đã được cấu hình. Các nhà cung cấp tương thích với OpenAI/Anthropic sử dụng `DefaultExecutor` (`executors/default.ts`). Hành vi dành riêng cho nhà cung cấp (URL cơ sở, header xác thực, phiên bản API) được cấu hình trong `open-sse/config/providers/`, còn các phép biến đổi nội dung yêu cầu được xử lý trong `open-sse/translator/`.
+Các nhà cung cấp được giải quyết thông qua `getExecutor(providerId)`, trả về trình thực thi được định cấu hình. Các nhà cung cấp OpenAI/Anthropic-compatible sử dụng `DefaultExecutor` (`executors/default.ts`). Hành vi dành riêng cho nhà cung cấp (cơ sở URL, tiêu đề xác thực, phiên bản API ) được định cấu hình trong `open-sse/config/providers/`, trong khi các chuyển đổi nội dung yêu cầu được xử lý trong `open-sse/translator/`.
 
-**URL tùy chỉnh** được thiết lập thông qua cấu hình nhà cung cấp:
+**URL tùy chỉnh** được đặt thông qua cấu hình nhà cung cấp:
 
 ```ts
-// Cấu hình nhà cung cấp trong open-sse/config/providers/
+// Provider config in open-sse/config/providers/
 export default {
   id: "together",
   baseURL: "https://api.together.xyz/v1/chat/completions",
 }
 ````
 
-**Xác thực tùy chỉnh** được xử lý thông qua cấu hình xác thực của registry nhà cung cấp (khóa API, OAuth, hồ sơ header).
+**Xác thực tùy chỉnh** được xử lý thông qua cấu hình xác thực của cơ quan đăng ký nhà cung cấp ( khóa API, OAuth, hồ sơ tiêu đề).
 
-Các phép biến đổi **nội dung yêu cầu tùy chỉnh** (ví dụ: Anthropic tách `system` khỏi `messages`) được đăng ký cho từng nhà cung cấp trong `open-sse/translator/`.
+**Nội dung yêu cầu tùy chỉnh** các phép biến đổi (ví dụ: Anthropic tách `system` khỏi `messages`) được đăng ký cho mỗi nhà cung cấp trong `open-sse/translator/`.
 
 ````
 
-### Factory bộ thực thi
+### The Executor Factory
 
-`executors/index.ts` xuất `getExecutor(providerId)`:
+`executors/index.ts` exports `getExecutor(providerId)`:
 
 ```ts
 import { getExecutor } from "@omniroute/open-sse/executors";
@@ -366,7 +371,7 @@ const result = await executor.execute({
 });
 ````
 
-Quá trình phân giải được thực hiện thông qua `ExecutorRegistry` (`executors/registry.ts`): mọi bộ thực thi chuyên biệt đều được khai báo trong bảng tích hợp sẵn của `executors/index.ts` và được đăng ký bằng `registerExecutor(alias, instance)` khi mô-đun được tải; `getExecutor()` tra cứu registry và dùng một `DefaultExecutor` được ghi nhớ làm phương án dự phòng cho mọi nhà cung cấp không có mục chuyên biệt. Ánh xạ đầy đủ từ bí danh → bộ thực thi được đặc tả bởi kiểm thử chuẩn vàng `tests/unit/executor-map-golden.test.ts`.
+Độ phân giải đi qua `ExecutorRegistry` (`executors/registry.ts`): mọi người thực thi chuyên biệt được khai báo trong bảng tích hợp của `executors/index.ts` và được đăng ký qua `registerExecutor(alias, instance)` khi tải mô-đun; `getExecutor()` tham khảo cơ quan đăng ký và quay lại `DefaultExecutor` được ghi nhớ cho bất kỳ nhà cung cấp nào không có mục nhập chuyên biệt. Ánh xạ trình thực thi → bí danh đầy đủ được đặc trưng bởi bài kiểm tra vàng `tests/unit/executor-map-golden.test.ts`.
 
 ---
 
@@ -481,17 +486,17 @@ Bộ biến đổi này xử lý:
 
 ## Cấu hình
 
-`open-sse/config/` chứa lớp cấu hình:
+`open-sse/config/` giữ lớp cấu hình:
 
-| Tệp                              | Mục đích                                                   |
-| -------------------------------- | ---------------------------------------------------------- |
-| `providerRegistry.ts`            | Registry mô hình trò chuyện trên danh mục 374 nhà cung cấp |
-| `providerModels.ts`              | Bí danh mô hình, ánh xạ định dạng                          |
-| `constants.ts`                   | Thời gian chờ, giới hạn, mã trạng thái                     |
-| `defaultThinkingSignature.ts`    | Chữ ký suy luận Claude mặc định                            |
-| `modelStrip.ts` (trong services) | Loại bỏ trường theo từng nhà cung cấp                      |
+| Tài liệu                        | Mục đích                                                  |
+| ------------------------------- | --------------------------------------------------------- |
+| `providerRegistry.ts`           | Đăng ký mô hình trò chuyện trên danh mục 394 nhà cung cấp |
+| `providerModels.ts`             | Bí danh mô hình, ánh xạ định dạng                         |
+| `constants.ts`                  | Thời gian chờ, giới hạn, mã trạng thái                    |
+| `defaultThinkingSignature.ts`   | Chữ ký tư duy Claude mặc định                             |
+| `modelStrip.ts` (trong dịch vụ) | Loại bỏ trường của mỗi nhà cung cấp                       |
 
-### Schema Registry Nhà cung cấp
+### Lược đồ đăng ký nhà cung cấp
 
 ```ts
 interface ProviderConfig {
@@ -506,7 +511,7 @@ interface ProviderConfig {
 }
 ```
 
-Việc xác thực bằng Zod khi tải mô-đun đảm bảo tất cả cấu hình nhà cung cấp đều hợp lệ.
+Xác thực Zod khi tải mô-đun đảm bảo tất cả cấu hình của nhà cung cấp đều hợp lệ.
 
 ---
 

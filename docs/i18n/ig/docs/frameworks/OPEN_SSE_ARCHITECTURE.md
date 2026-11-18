@@ -165,30 +165,30 @@ A na-ede ihe ndekọ oku (ọ bụrụ na agbanyere ya) na `${DATA_DIR}/call_log
 
 ---
 
-## Nnyocha Miri Emi nke Faịlụ Ndị Dị Mkpa
+## Isi faịlụ Deep-Dive
 
 ### chatCore.ts (ahịrị 5977)
 
-**Onye isi na-ahụ maka arịrịọ**. N'agbanyeghị nha ya, o nwere nhazi doro anya:
+Nke** onye isi arịrịọ** . N'agbanyeghị nha ya, ọ nwere nhazi doro anya:
 
 ```ts
-// Nhazi atụ nke chatCore.ts
+// Pseudo-structure of chatCore.ts
 export async function handleChat(request: NextRequest) {
-  // 1. Nyocha njirimara + CORS
+  // 1. Auth + CORS
   await authenticateRequest(request);
   applyCorsHeaders(response);
 
-  // 2. Nkwado izi ezi nke body
+  // 2. Body validation
   const body = await parseRequestBody(request);
 
-  // 3. Nchọpụta format + ntụgharị
+  // 3. Format detection + translation
   const sourceFormat = detectFormat(request);
   const targetFormat = getTargetFormat(providerId);
   if (needsTranslation(sourceFormat, targetFormat)) {
     body = translateRequest(body, sourceFormat, targetFormat);
   }
 
-  // 4. Nduzi combo
+  // 4. Combo routing
   const targets = await resolveComboTargets(comboId, body);
   for (const target of targets) {
     try {
@@ -196,20 +196,20 @@ export async function handleChat(request: NextRequest) {
       await recordUsage(result);
       return result;
     } catch (err) {
-      // Gaa n'ihu na target na-esote
+      // Continue to next target
     }
   }
 
-  // 5. Usoro ndabere mberede
+  // 5. Emergency fallback
   return await emergencyFallback(body);
 }
 ```
 
-N'agbanyeghị na ọ bụ otu nnukwu function, a haziri ya n'ime **ngalaba nwere nkọwa** ndị kwekọrọ na pipeline nke nwere usoro 5.
+N'agbanyeghị na ọ bụ otu nnukwu ọrụ, a haziri ya** ngalaba kwuru** map ahụ gaa na pipeline nke 5.
 
-### combo.ts (LOC 4456)
+### combo.ts (4456 LOC)
 
-**Injin nduzi** nke na-ekpebi targets ahaziri n'usoro maka otu combo.
+Nke** igwe ntughari** nke na-edozi ngwakọta na ebumnuche ndị enyere iwu.
 
 ```ts
 // services/combo.ts
@@ -226,46 +226,51 @@ export async function handleComboChat(body, comboId): Promise<ChatResult> {
 }
 ```
 
-Ọ na-akwado **usoro nduzi 19** (lee `src/shared/constants/routingStrategies.ts`):
+Na-akwado** 22 ụzọ aghụghọ** (Lee `src/shared/constants/routingStrategies.ts`):
 
-| Usoro               | Omume                                                                      |
-| ------------------- | -------------------------------------------------------------------------- |
-| `priority`          | Ndepụta ahaziri nke target mbụ                                             |
-| `weighted`          | Nhọrọ dabere na puru omume dịka ibu target nke ọ bụla si dị                |
-| `round-robin`       | Ịgagharị targets n'usoro                                                   |
-| `context-relay`     | Ịnyefe context n'etiti targets                                             |
-| `fill-first`        | Mejupụta oke tupu ịgafe na nke na-esote                                    |
-| `p2c`               | Ike nke nhọrọ abụọ                                                         |
-| `random`            | Nhọrọ enweghị usoro nke nwere ohere hà nhata                               |
-| `least-used`        | Họrọ nke e ji mee ihe ole na ole n'oge na-adịbeghị anya                    |
-| `cost-optimized`    | Buru ụzọ họrọ target dị ọnụ ala ma dị mma                                  |
-| `reset-aware`       | Na-eburu oge reset nke provider n'uche                                     |
-| `reset-window`      | Nduzi dabere na windo reset                                                |
-| `headroom`          | Buru ụzọ họrọ nke nwere ohere quota fọdụrụ kachasị                         |
-| `strict-random`     | Nhọrọ hà nhata n'ezie (enweghị itule ogo)                                  |
-| `auto`              | Jiri ntule ihe 16 (`autoCombo/`)                                           |
-| `lkgp`              | Buru ụzọ họrọ provider ikpeazụ a maara na ọ dị mma                         |
-| `context-optimized` | Nke kachasị mma maka arịrịọ nwere context ogologo                          |
-| `fusion`            | Ziga n'otu oge na panel, wee jiri onye ọkaikpe chịkọta azịza (`fusion.ts`) |
+| Atụmatụ             | Omume                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `priority`          | Ndepụta ahaziri ebumnuche mbụ                                                                 |
+| `weighted`          | Nke puru omume site na ibu nke ebumnuche                                                      |
+| `round-robin`       | Gagharịa na ebumnuche n'usoro                                                                 |
+| `context-relay`     | Wepụ ihe ndị gbara ya gburugburu n'ofe ebumnuche                                              |
+| `fill-first`        | Jupụta oke tupu ịkwaga na-esote                                                               |
+| `p2c`               | Ike nke nhọrọ abụọ                                                                            |
+| `random`            | Uniform random                                                                                |
+| `least-used`        | Họrọ nke nwere kacha nso nso a                                                                |
+| `cost-optimized`    | Ebumnuche ahụike kacha dị ọnụ ala nke mbụ                                                     |
+| `reset-aware`       | Mara maka nrụpụta nrụpụta ndị na-eweta ya                                                     |
+| `reset-window`      | Tọgharia okporo ụzọ dabere na windo                                                           |
+| `expiry-first`      | Wefuo akaụntụ nke oke ya ga-agwụ na-ejighi ya                                                 |
+| `headroom`          | Kachasị fọduru isi ụlọ oke                                                                    |
+| `quota-weighted`    | Mafee akaụntụ ndị ike gwụrụ, wee see site na nke fọdụrụ ÷ ibu ụgbọ elu                        |
+| `strict-random`     | Otu n'ezie (enweghị ịdị arọ dị mma)                                                           |
+| `auto`              | Jiri akara ihe nwere ihe iri na isii (`autoCombo/`)                                           |
+| `lkgp`              | Ikpeazụ mara ezigbo onye na-eweta mbụ                                                         |
+| `context-optimized` | Kachasị mma maka arịrịọ ogologo okwu                                                          |
+| `cache-optimized`   | Kpanye prefix ngwa ngwa ọ bụla enwere ike iji mee ihe n'otu akaụntụ ahụ (mkpọsa cache ozugbo) |
+| `fusion`            | Ọpụpụ gaa na panel n'otu aka ahụ, wee megharịa site na onye ọka ikpe (`fusion.ts`)            |
+| `pipeline`          | Chain nzọụkwụ — mmepụta nke ọ bụla lekwasịrị anya na-azụ nke na-esote                         |
+| `jev`               | Nwepu: TypeSafe Jev kwetara nke ndenye aha họọrọ na-agba; ọzọ iji gị                          |
 
-### base.ts (LOC 1170)
+### base.ts (1170 LOC)
 
-**Abstract executor** nke klaasị executor ọ bụla na-agbatị (ozugbo ma ọ bụ site na `DefaultExecutor` na subclasses ndị ọzọ). Ọ nwere:
+Nke** abtract executor** na klaasị ọ bụla executor gbatịrị (kpọmkwem ma ọ bụ site `DefaultExecutor` na ndị ọzọ subclasses). O nwere:
 
-- `buildUrl()` — nrụpụta URL ndabara (subclasses na-edochi ya maka nhazi pụrụ iche)
-- `buildHeaders()` — headers ndabara (auth, content-type)
-- `transformRequest()` — na-ebufe ya dịka ọ dị na ndabara
-- `execute()` — loop HTTP bụ isi nwere retry/backoff/breaker
+- `buildUrl()` — ndabara URL ewu (ngalaba subclass na-agbagha maka omenala)
+- `buildHeaders()` — nkụnye eji isi mee (auth, ụdị ọdịnaya)
+- `transformRequest()` — gafere site na ndabara
+- `execute()` — isi HTTP loop nwere retry/backoff/breaker
 
 ```ts
 // open-sse/executors/default.ts
 export class DefaultExecutor extends BaseExecutor {
-  // Na-ahụ maka providers niile dakọtara na OpenAI/Anthropic
-  // Providers na-edebanye configurations (URL, auth, headers) mana ha na-ekekọrịta logic executor
+  // Handles all OpenAI/Anthropic-compatible providers
+  // Providers register configurations (URL, auth, headers) but share executor logic
 }
 ```
 
-A na-ahazi omume pụrụ iche nke provider (auth headers, base URL, version headers) site na registry nke provider, ọ bụghị site na klaasị executor dị iche iche.
+A haziri omume akọwapụtara nke onye na-eweta (akwụkwọ nkụnye eji isi mee, URL base, ụdị nkụnye eji isi mee) site na ndekọ onye na-eweta ya, ọ bụghị klas ndị mmezu dị iche.
 
 ````
 
@@ -273,88 +278,88 @@ A na-ahazi omume pụrụ iche nke provider (auth headers, base URL, version hea
 
 ## Ọrụ (modul 117)
 
-Ọrụ bụ **modul ndị lekwasịrị anya n'otu ebumnuche** nke handlers na-ejikọta. Ngalaba ndị bụ isi:
+Ọrụ bụ** modul lekwasịrị anya, otu ebumnuche** ndị njikwa na-edepụta. Nnukwu ngalaba:
 
-### Routing & Combo
+### Ntugharị & Combo
 
-- `combo.ts` — ebe mbata maka arịrịọ ndị e ji combo mee routing
-- `services/autoCombo/` — ntule ihe 16, atụmatụ auto routing 8
-- `wildcardRouter.ts` — na-achọpụta routes wildcard (`gpt-*`)
-- `modelFamilyFallback.ts` — fallback T5 n'ime otu ezinụlọ
+- ebe ntinye `combo.ts` — maka arịrịọ a na-akpọbata
+- `services/autoCombo/` — isi ihe 16, atụmatụ ụzọ ụgbọ ala 8
+- `wildcardRouter.ts` — dabara n'okporo ụzọ ọhịa (`gpt-*`)
+- `modelFamilyFallback.ts` — T5 ndaghachi azụ n'ime ezinụlọ
 
-### Mmachi Ọsọ & Oke Ojiji
+### Oke oke & oke
 
-- `rateLimitManager.ts` — token bucket maka key+provider ọ bụla
+- `rateLimitManager.ts` — token ịwụ kwa igodo + onye na-eweta ya
 - `usage.ts` — ndekọ ojiji
-- `quotaCache.ts` — snapshots nke oke ojiji dị na memory
+- `quotaCache.ts` — n'ime ebe nchekwa snapshots
 
 ### Akaụntụ & Token
 
-- `tokenRefresh.ts` — mmelite OAuth mgbe 401 pụtara
-- `accountFallback.ts` — ịgbanwee gaa na akaụntụ ọzọ
-- `sessionManager.ts` — ọnọdụ session nwere ọtụtụ ntụgharị
+- `tokenRefresh.ts` — OAuth nweta ume na 401
+- `accountFallback.ts` — gbanwee gaa na akaụntụ ọzọ
+- `sessionManager.ts` — ọtụtụ ntụgharị oge nnọkọ
 
-### Ọgụgụ Isi
+### ọgụgụ isi
 
-- `intentClassifier.ts` — na-ekewa ebumnuche arịrịọ
-- `taskAwareRouter.ts` — na-eme routing dabere n'ụdị ọrụ
-- `thinkingBudget.ts` — na-ekenye tokens maka iche echiche
-- `contextManager.ts` — na-etinye context nke routing
+- `intentClassifier.ts` — hazie ebumnuche arịrịọ
+- `taskAwareRouter.ts` — ụzọ site n'ụdị ọrụ
+- `thinkingBudget.ts` — ekenye echiche echiche
+- `contextManager.ts` — igba uzo uzo
 
-### Nkwụsi Ike
+### Nkwenye
 
-- `resilience.ts` — nhazi retry, backoff, na breaker
-- `emergencyFallback.ts` — fallback ikpeazụ
-- `modelDeprecation.ts` — na-eme auto-route gaa na models ndị nọchiri anya ha
+- `resilience.ts` — nwaa ọzọ, backoff, emebi orchestration
+- `emergencyFallback.ts` — ikpeazụ-ebe ọdịda ọdịda
+- `modelDeprecation.ts` — ụzọ akpaaka gaa na ụdị ndị nọchiri ya
 
-### Ọnọdụ
+### Steeti
 
-- `signatureCache.ts` — na-ewepụ arịrịọ ndị megharịrị onwe ha site na signature arịrịọ
-- `volumeDetector.ts` — ibelata ibu
-- `contextHandoff.ts` — serialization nke session
+- `signatureCache.ts` — dedup site na mbinye aka arịrịọ
+- `volumeDetector.ts` — ibu ibu
+- `contextHandoff.ts` — nnọkọ serialization
 
 ### Mkpakọ
 
-- `compression/` (subdirectory) — pipeline mkpakọ zuru ezu
-- Faịlụ 39 na-ekpuchi engines, rule packs, na adapters
+- `compression/` (subdirectory) — pipeline mkpakọ zuru oke
+- Faịlụ 39 na-ekpuchi injin, ngwugwu iwu, ihe nkwụnye
 
 ### Nkà
 
-- (a kọwara ya na [SKILLS.md](./SKILLS.md))
+- ( kpuchie na [SKILLS.md](./SKILLS.md) )
 
-### Memory
+### Ebe nchekwa
 
-- (a kọwara ya na [MEMORY.md](./MEMORY.md))
+- ( kpuchie na [MEMORY.md](./MEMORY.md) )
 
 ---
 
-## Executors (modul 150)
+## Ndị nrụpụta (modul 150)
 
-Ọtụtụ n'ime ha bụ otu faịlụ maka provider ọ bụla. Klas executor niile na-agbatị `BaseExecutor` ma na-eme override naanị n'ihe dị iche; modul ndị ọzọ bụ helpers maka provider ọ bụla (tool schemas, fetch/TTS adapters, na quirk handlers).
+Karịrị otu faịlụ kwa onye na-eweta ya. Klaasị ndị mmebe niile na-agbatị `BaseExecutor` wee kpochapụ ihe dị iche; modul ndị ọzọ bụ ndị na-enyere onye ọ bụla aka (usoro ihe eji eme ihe, fetch/TTS adapters, quirk handlers).
 
-### Usoro Ndị A Na-ahụkarị
+### Ụkpụrụ nkịtị
 
-A na-achọpụta providers site na `getExecutor(providerId)`, nke na-eweghachi executor ahaziri. Providers ndị dakọtara na OpenAI/Anthropic na-eji `DefaultExecutor` (`executors/default.ts`). A na-ahazi omume pụrụ iche nke provider (base URL, auth headers, API version) na `open-sse/config/providers/`, ebe a na-ahazi mgbanwe request body na `open-sse/translator/`.
+A na-edozi ndị na-enye ya site na `getExecutor(providerId)`, nke na-eweghachite onye nhazi ahaziri. ndị na-enye OpenAI/Anthropic-compatible na-eji `DefaultExecutor` (`executors/default.ts`). A haziri omume akọwapụtara nke onye na-eweta ( URL, auth nkụnye eji isi mee, ụdị API ) na `open-sse/config/providers/`, ebe a na-edozi mgbanwe ahụ na `open-sse/translator/`.
 
-A na-ahazi **URL omenala** site na nhazi provider:
+**Omenala URL** atọrọ site na nhazi onye na-eweta:
 
 ```ts
-// Nhazi provider dị na open-sse/config/providers/
+// Provider config in open-sse/config/providers/
 export default {
   id: "together",
   baseURL: "https://api.together.xyz/v1/chat/completions",
 }
 ````
 
-A na-ejikwa **auth omenala** site na nhazi auth nke registry provider (API key, OAuth, header profiles).
+**Nyocha omenala** A na-edozi site na nhazi auth ndekọ nke onye na-eweta ( igodo API, OAuth, profaịlụ nkụnye eji isi mee ).
 
-A na-edebanye mgbanwe **request body omenala** (dịka ọmụmaatụ, Anthropic na-ekewapụ `system` na `messages`) maka provider ọ bụla na `open-sse/translator/`.
+**Òtù arịrịọ omenala** mgbanwe (dịka ọmụmaatụ, Anthropic nkewapụ `system` na `messages`) ka edebanyere aha onye ọ bụla na `open-sse/translator/`.
 
 ````
 
-### Factory nke Executor
+### The Executor Factory
 
-`executors/index.ts` na-ebupụ `getExecutor(providerId)`:
+`executors/index.ts` exports `getExecutor(providerId)`:
 
 ```ts
 import { getExecutor } from "@omniroute/open-sse/executors";
@@ -366,7 +371,7 @@ const result = await executor.execute({
 });
 ````
 
-Nchọpụta ahụ na-agafe na `ExecutorRegistry` (`executors/registry.ts`): a na-ekwupụta executor pụrụ iche ọ bụla na tebụl arụnyere n'ime `executors/index.ts`, ma na-edebanye ya site na `registerExecutor(alias, instance)` mgbe modul na-eburu; `getExecutor()` na-enyocha registry ma jiri `DefaultExecutor` e debere na memoization dịka fallback maka provider ọ bụla na-enweghị ntinye pụrụ iche. Golden test `tests/unit/executor-map-golden.test.ts` na-akọwa mapping zuru ezu nke alias → executor.
+Mkpebi na-aga site na `ExecutorRegistry` (`executors/registry.ts`): A na-ekwupụta onye ọrụ ọ bụla pụrụ iche na tebụl wuru n'ime `executors/index.ts` wee debanye aha ya site na `registerExecutor(alias, instance)` na ibu modul; `getExecutor()` na-enyocha ndekọ ahụ wee daa azụ na `DefaultExecutor` echekwara n'isi maka onye na-eweta ọ bụla na-enweghị ntinye pụrụ iche. A na-eji eserese ọla edo mara → nke na-eme maapụ a na-akpọ `tests/unit/executor-map-golden.test.ts`.
 
 ---
 
@@ -481,17 +486,17 @@ Nke a na-ahụ maka:
 
 ## Nhazi
 
-`open-sse/config/` nwere oyi akwa nhazi:
+`open-sse/config/` na-ejide oyi akwa nhazi:
 
-| Faịlụ                         | Ebumnuche                                       |
-| ----------------------------- | ----------------------------------------------- |
-| `providerRegistry.ts`         | Ndekọ ụdị nkata n'elu katalọgụ ndị na-eweta 374 |
-| `providerModels.ts`           | Aha nnọchi ụdị, nhazi usoro                     |
-| `constants.ts`                | Oge nchere, oke, koodu ọnọdụ                    |
-| `defaultThinkingSignature.ts` | Mbinye aka ndabara nke echiche Claude           |
-| `modelStrip.ts` (n'ime ọrụ)   | Iwepụ mpaghara maka onye na-eweta ọ bụla        |
+| Faịlụ                         | Ebumnuche                                                  |
+| ----------------------------- | ---------------------------------------------------------- |
+| `providerRegistry.ts`         | Ndekọ nkata ihe nlere anya karịa katalọgụ ndị na-eweta 394 |
+| `providerModels.ts`           | Utu aha ụdị, eserese usoro                                 |
+| `constants.ts`                | Ọpụpụ, oke, koodu ọkwa                                     |
+| `defaultThinkingSignature.ts` | mbinye aka echiche Claude dapụtara                         |
+| `modelStrip.ts` (na ọrụ)      | Onye na-enye ndị na-eweta ihe ịkwapụ ubi                   |
 
-### Shima Ndekọ Ndị Na-eweta
+### Atụmatụ ndekọ onye na-eweta
 
 ```ts
 interface ProviderConfig {
@@ -506,7 +511,7 @@ interface ProviderConfig {
 }
 ```
 
-Nkwado Zod mgbe modul na-ebulite na-ahụ na nhazi ndị na-eweta niile ziri ezi.
+nkwado Zod na ibu modul na-eme ka nhazi ndị na-eweta ọrụ niile dị irè.
 
 ---
 

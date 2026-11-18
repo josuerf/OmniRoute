@@ -25,38 +25,90 @@ omniroute launch --profile glm52  # OmniRoute-এর মাধ্যমে glm/g
 
 ---
 
-## Claude Code কীভাবে একটি gateway-এর সঙ্গে সংযুক্ত হয়
+## কিভাবে Claude কোড একটি গেটওয়ের সাথে সংযোগ করে
 
-Claude Code **Anthropic Messages API**-এর সঙ্গে যোগাযোগ করে এবং environment variable-এর
-মাধ্যমে একটি custom endpoint-এর দিকে নির্দেশিত হয় (এতে কোনো `--base-url` flag নেই):
+Claude কোড কথা বলে**Anthropic বার্তা API** এবং এনভায়রনমেন্ট ভেরিয়েবল সহ একটি কাস্টম এন্ডপয়েন্টে নির্দেশিত (এটির কোন `--base-url` পতাকা নেই):
 
-| Variable                                     | উদ্দেশ্য                                                                                           |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_BASE_URL`                         | Gateway-এর root URL (Claude Code শেষে `/v1/messages` যোগ করে)। **কোনো `/v1` suffix নয়।**          |
-| `ANTHROPIC_AUTH_TOKEN`                       | `Authorization: Bearer …` হিসেবে পাঠানো হয়—আপনার OmniRoute access token / API key ব্যবহার করুন    |
-| `ANTHROPIC_API_KEY`                          | বিকল্প: `x-api-key` হিসেবে পাঠানো হয়। উভয়টি সেট করা থাকলে `ANTHROPIC_AUTH_TOKEN` অগ্রাধিকার পায় |
-| `ANTHROPIC_MODEL`                            | একটি নির্দিষ্ট model বাধ্যতামূলক করে (`/model` picker-এর default-কে override করে)                  |
-| `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` | `1` → native `/model` picker `/v1/models` থেকে `claude*`/`anthropic*` model দেখায়                 |
-| `CLAUDE_CODE_MAX_OUTPUT_TOKENS`              | প্রতি response-এ output token সীমাবদ্ধ করে (যেমন `65536`)                                          |
-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW`            | auto-compaction-এর জন্য token threshold                                                            |
+| পরিবর্তনশীল                                  | উদ্দেশ্য                                                                                        |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_BASE_URL`                         | গেটওয়ে রুট URL (Claude কোড `/v1/messages` যুক্ত করে)।** কোনো `/v1` প্রত্যয় নেই।**             |
+| `ANTHROPIC_AUTH_TOKEN`                       | `Authorization: Bearer …` — হিসাবে পাঠানো আপনার OmniRoute অ্যাক্সেস টোকেন / API কী ব্যবহার করুন |
+| `ANTHROPIC_API_KEY`                          | বিকল্প: `x-api-key` হিসাবে পাঠানো হয়েছে। উভয় সেট হলে, `ANTHROPIC_AUTH_TOKEN` জিতবে            |
+| `ANTHROPIC_MODEL`                            | একটি নির্দিষ্ট মডেল জোর করে ( `/model` পিকার ডিফল্ট ওভাররাইড করে)                               |
+| `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` | `1` → নেটিভ `/model` বাছাইকারী `/v1/models` থেকে `claude*`/`anthropic*` মডেলের তালিকা করে       |
+| `CLAUDE_CODE_MAX_OUTPUT_TOKENS`              | প্রতি প্রতিক্রিয়া ক্যাপ আউটপুট টোকেন (যেমন `65536`)                                            |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW`            | স্বয়ংক্রিয় সংকোচনের জন্য টোকেন থ্রেশহোল্ড                                                     |
 
-> Env var-গুলো **startup-এর সময় একবারই পড়া হয়**—এগুলো পরিবর্তন করার পরে Claude Code restart করুন।
+> Env vars পড়া হয়** একবার স্টার্টআপে** — Claude কোড পরিবর্তন করার পর পুনরায় চালু করুন।
 
-`omniroute launch` আপনার জন্য এগুলোর সবই সেট করে: এটি সক্রিয় context থেকে base URL + token
-নির্ধারণ করে (তাই `omniroute connect <vps>` এবং তারপর `omniroute launch`
-সরাসরি কাজ করে), server-এর health check করে এবং `claude` exec করে।
+একটি নির্দিষ্ট স্ট্রিং এর পরিবর্তে ঘোরানো একটি শংসাপত্রের জন্য, `~/.claude/settings.json` এ `apiKeyHelper` একটি কমান্ডে সেট করুন যা বর্তমান শংসাপত্রটিকে stdout-এ প্রিন্ট করে। Claude কোড ডিফল্টরূপে পাঁচ মিনিটের জন্য তার আউটপুট ক্যাশ করে (`CLAUDE_CODE_API_KEY_HELPER_TTL_MS` ওভাররাইড করে) এবং `Authorization: Bearer` এবং `x-api-key` উভয় ক্ষেত্রেই মান পাঠায়। স্ক্রিপ্টটি অবশ্যই শংসাপত্রটি প্রিন্ট করতে হবে এবং এর সাথে একটি ব্যানার — করতে হবে না v2.1.227 + এ সাহায্যকারীকে ব্যর্থ করে।
+
+Entra ID SSO এভাবেই কাজ করে: `scripts/cli/omniroute-sso.mjs token` একটি স্বল্পকালীন এন্ট্রা অ্যাক্সেস টোকেন প্রিন্ট করে যা API কী-এর পরিবর্তে OmniRoute যাচাই করে। [`docs/security/ENTRA_SSO.md`](../security/ENTRA_SSO.md) দেখুন।
+
+`omniroute launch` আপনার জন্য এই সমস্তগুলি সেট করে: এটি সক্রিয় প্রসঙ্গ থেকে বেস URL + টোকেন সমাধান করে (তাই `omniroute connect <vps>` তারপর `omniroute launch` ঠিক কাজ করে), সার্ভারের স্বাস্থ্য পরীক্ষা করে এবং `claude` চালায়।
 
 ---
 
-## Discovery alias—`/model` picker-এ non-Claude model প্রদর্শন করুন
+## ব্যবহারের বৈশিষ্ট্য: সেশন এবং প্রকল্প
 
-Claude Code-এর gateway model discovery কেবল `claude` বা `anthropic` দিয়ে শুরু হওয়া id
-দেখায়, তাই `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` থাকলে native
-`/model` picker সাধারণত OmniRoute-এর **শুধু** Claude/Anthropic model-গুলো দেখায়—
-`kimi/kimi-k2.6` বা `glm/glm-5.2` কখনোই দেখা যায় না, যদিও সেগুলো ঠিকভাবেই route হয়।
+OmniRoute প্রতিটি API কী-এর অনুরোধকে গ্রুপ করে** এজেন্ট সেশন** এবং রেকর্ড করে যা** প্রকল্প** প্রতিটি সেশন (`agent_sessions` টেবিল) এ কাজ করেছে, তাই প্রতি টিমের সদস্য, প্রতি প্রকল্প এবং প্রতি সেশনে ব্যবহার এবং খরচ রিপোর্ট করা যেতে পারে।
 
-OmniRoute যেকোনো enabled model (এবং combo)-কে একটি `claude/…` id-এর অধীনে mirror করতে
-পারে, যাতে এটি ওই filter অতিক্রম করে এবং picker-এ দেখা যায়:
+কোন ক্লায়েন্ট সেটআপ ছাড়া কি রেকর্ড করা হয়:
+
+| মাঠ        | উৎস                                                                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| অধিবেশন    | `x-claude-code-session-id` হেডার ( `metadata.user_id.session_id` এর মতো একই মান), প্রতি সেশনে স্থিতিশীল                                           |
+| প্রকল্প    | `Primary working directory:` লাইন Claude কোড তার পরিবেশ বার্তা পাঠায়; `.claude/worktrees/` অধীনে worktree ফোল্ডারগুলি রিপোজিটরির নামে সমাধান করে |
+| শাখা       | গিট স্ট্যাটাস থেকে`Current branch:` Claude কোড প্রথম বার্তার সাথে পাঠায়                                                                          |
+| ক্লায়েন্ট | `user-agent` (`claude-cli/<version>`)                                                                                                             |
+
+Codex (`<environment_context><cwd>`) এবং OpenCode (`x-opencode-session`) একইভাবে স্বীকৃত। সঙ্গে চাবি** কোন লগ** শুধুমাত্র সেশন আইডি এবং শিরোনাম সরবরাহকৃত প্রকল্প ক্ষেত্রগুলি রাখা সক্ষম করা হয়েছে; প্রম্পট (পথ, শাখা) থেকে পড়া কিছুই সংরক্ষণ করা হয় না।
+
+### স্পষ্টভাবে প্রকল্পের নামকরণ (প্রস্তাবিত)
+
+ওয়ার্কিং ডাইরেক্টরি মেশিনের মধ্যে আলাদা, তাই একই রিপোজিটরি বিভিন্ন পাথের অধীনে দেখাতে পারে। পরিবর্তে প্রজেক্টটি স্পষ্টভাবে পাঠান: Claude কোড প্রতিটি মডেল অনুরোধে `ANTHROPIC_CUSTOM_HEADERS` তে তালিকাভুক্ত যেকোনো শিরোনাম যোগ করে, এবং OmniRoute তাদের দুটি পড়ে:
+
+| হেডার                      | মান                                                           |
+| -------------------------- | ------------------------------------------------------------- |
+| `x-omniroute-project`      | প্রকল্পের নাম, যেমন `omniroute`                               |
+| `x-omniroute-project-repo` | সাধারণীকৃত দূরবর্তী, যেমন `github.com/diegosouzapw/OmniRoute` |
+
+উভয়ই শুধুমাত্র অ্যাট্রিবিউশনের জন্য পড়া হয়; সেগুলি কখনই আপস্ট্রিম প্রদানকারীর কাছে পাঠানো হয় না।
+
+`ANTHROPIC_CUSTOM_HEADERS` স্টার্টআপে একবার পড়া হয়, এবং সেটিংস ফাইলগুলি আক্ষরিক মান সঞ্চয় করে, তাই Claude কোড চালু হলে এটি গণনা করুন। এটি `~/.zshrc` বা `~/.bashrc` এ যোগ করুন এবং প্রকল্প ফোল্ডার থেকে `claude` শুরু করতে থাকুন:
+
+```bash
+claude() {
+  local common name repo
+  if common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+    case $common in
+      */.git) name=$(basename "$(dirname "$common")") ;;  # repository name, also in worktrees
+      *) name=$(basename "$common" .git) ;;                # bare repository (/srv/foo.git)
+    esac
+    repo=$(git remote get-url origin 2>/dev/null \
+      | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://([^@/]*@)?##; s#^[^@/]+@([^:]+):#\1/#; s|[?#].*$||; s#\.git$##')
+  else
+    name=$(basename "$PWD")                                # not a git repository: folder name
+  fi
+  ANTHROPIC_CUSTOM_HEADERS="${ANTHROPIC_CUSTOM_HEADERS:+${ANTHROPIC_CUSTOM_HEADERS}
+}x-omniroute-project: ${name}${repo:+
+x-omniroute-project-repo: ${repo}}" command claude "$@"
+}
+```
+
+`sed` এক্সপ্রেশন রিমোট URL এ এমবেড করা যেকোনো শংসাপত্র, ক্যোয়ারী স্ট্রিং এবং ফ্র্যাগমেন্ট স্ট্রিপ করে এবং `ANTHROPIC_CUSTOM_HEADERS` এ ইতিমধ্যেই হেডার রাখা হয়। IDE এক্সটেনশনগুলি আপনার শেল ছাড়া Claude কোড চালু করে, তাই তাদের সেশনগুলি কার্যকারী ডিরেক্টরিতে ফিরে আসে।
+
+---
+
+## ডিসকভারি অ্যালিয়াস — `/model` পিকারে Claude-বহির্ভূত মডেল দেখানো
+
+Claude Code-এর গেটওয়ে মডেল ডিসকভারি শুধুমাত্র সেই আইডিগুলো তালিকাভুক্ত করে যেগুলো `claude`
+বা `anthropic` দিয়ে শুরু হয়, তাই `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` সেট থাকলেও
+নেটিভ `/model` পিকারে সাধারণত **শুধুমাত্র** OmniRoute-এর Claude/Anthropic মডেলগুলোই দেখা যায় — একটি
+`kimi/kimi-k2.6` বা `glm/glm-5.2` কখনোই দেখা যায় না, যদিও এটি ঠিকঠাক রাউট হয়।
+
+OmniRoute যেকোনো সক্রিয় মডেলকে (এবং কম্বোকে) একটি `claude/…` আইডির অধীনে মিরর করতে পারে যাতে এটি
+ওই ফিল্টার পাস করে এবং পিকারে দেখা যায়:
 
 ```
 kimi/kimi-k2.6            →  claude/kimi/kimi-k2.6      "Kimi K2.6 (OmniRoute)"
@@ -64,32 +116,40 @@ glm/glm-5.2              →  claude/glm/glm-5.2         "GLM 5.2 (OmniRoute)"
 <combo "custo-otimizado"> →  claude/combo/custo-otimizado
 ```
 
-Claude Code-এ এগুলোর একটি বেছে নিলে, routing-এর আগে OmniRoute `claude/` wrapper
-সরিয়ে প্রকৃত id ফিরিয়ে আনে—একটি আসল `claude/<real-claude-model>` id
-(প্রকৃত Claude OAuth provider) সর্বদা অপরিবর্তিত রাখা হয়।
+আপনি যখন Claude Code-এ এগুলোর একটি বেছে নেন, OmniRoute রাউট করার আগে `claude/` র্যাপারটি
+সরিয়ে আসল আইডিতে ফিরিয়ে দেয় — একটি প্রকৃত `claude/<real-claude-model>` আইডি
+(প্রকৃত Claude OAuth প্রোভাইডার) সবসময় অপরিবর্তিত থাকে।
 
-**এটি default হিসেবে বন্ধ থাকে** এবং একটি তিন-স্তরের gate দ্বারা নিয়ন্ত্রিত হয় (সবচেয়ে
-নির্দিষ্টটি অগ্রাধিকার পায়), ফলে সাধারণ OmniRoute কখনোই Claude Code ব্যবহার না করা
-client-দের জন্য তার catalog দ্বিগুণ করে না:
+ডিফল্টভাবে শুধুমাত্র বেস আইডিগুলো মিরর করা হয়। অপ্ট-ইন
+`CATALOG_MIRROR_REFINEMENTS_ENABLED` ফিচার ফ্ল্যাগ চালু থাকলে, ক্যাটালগে ইতিমধ্যে তালিকাভুক্ত
+রিজনিং-এফোর্ট ভ্যারিয়েন্টগুলো (যেমন `codex/gpt-6-sol-high`) অন্য যেকোনো
+আইডির মতোই মিরর করা হয়, যাতে Claude Code একটি স্পষ্ট এফোর্ট লেভেল বেছে নিতে পারে, এবং বিল্ট-ইন `auto/*` আইডিগুলো
+যেগুলো রিকোয়েস্ট পাথ বাস্তবায়ন করতে পারে না সেগুলো মিরর করা হয় না। এফোর্ট ভ্যারিয়েন্টগুলো মোটেই
+তালিকাভুক্ত হবে কি না তা এখনো `OMNIROUTE_DISABLE_THINKING_LEVEL_VARIANTS` দ্বারা নিয়ন্ত্রিত হয় —
+মিরর কখনোই এমন কোনো ভ্যারিয়েন্ট যোগ করে না যা বেস ক্যাটালগে নেই।
 
-| স্তর     | কোথায়                                                                         |
-| -------- | ------------------------------------------------------------------------------ |
-| Model    | Provider detail page → প্রতি-model "Expose in Claude Code" toggle              |
-| Provider | Provider detail page → provider-level toggle (এর সব model-কে অন্তর্ভুক্ত করে)  |
-| Global   | Settings → Feature Flags → `EXPOSE_CC_DISCOVERY_ALIASES` (default হিসেবে বন্ধ) |
+**এটি ডিফল্টভাবে বন্ধ থাকে** এবং একটি তিন-স্তরের গেট দ্বারা নিয়ন্ত্রিত হয় (সবচেয়ে নির্দিষ্টটি
+জয়ী হয়), যাতে একটি সাধারণ OmniRoute সেই ক্লায়েন্টদের জন্য কখনোই এর ক্যাটালগ দ্বিগুণ না করে
+যারা Claude Code ব্যবহার করে না:
 
-`EXPOSE_CC_DISCOVERY_ALIASES` environment variable global level-কে বাধ্যতামূলকভাবে চালু
-করে এবং dashboard override-এর ওপর অগ্রাধিকার পায় (এটি কার্যকর হলে Feature Flags screen-এ
-একটি "environment variable-এর মাধ্যমে সক্রিয়" note দেখা যায়)। সেখান থেকে প্রতি-provider
-এবং প্রতি-model toggle আরও সূক্ষ্ম নিয়ন্ত্রণ দেয়—যেমন global বন্ধ + Kimi provider চালু
-থাকলে কেবল Kimi-এর model-গুলো প্রকাশিত হয়।
+| স্তর       | কোথায়                                                                      |
+| ---------- | --------------------------------------------------------------------------- |
+| মডেল       | প্রোভাইডার বিস্তারিত পৃষ্ঠা → প্রতি-মডেল "Expose in Claude Code" টগল        |
+| প্রোভাইডার | প্রোভাইডার বিস্তারিত পৃষ্ঠা → প্রোভাইডার-স্তরের টগল (এর সব মডেলকে কভার করে) |
+| গ্লোবাল    | Settings → Feature Flags → `EXPOSE_CC_DISCOVERY_ALIASES` (ডিফল্ট বন্ধ)      |
 
-> ⚠️ **Non-Claude model-এ window-এর অমিল।** Claude Code তার অপরিচিত যেকোনো id-এর জন্য
-> 200K context window ধরে নেয় (এটি `/v1/models` থেকে প্রকৃত window পড়তে পারে না)।
-> বড় window-যুক্ত model-এর ক্ষেত্রে (যেমন Kimi K2-এর 256K), model-এর প্রকৃত window-এর
-> চেয়ে কম একটি মানে `CLAUDE_CODE_AUTO_COMPACT_WINDOW` সেট করুন, যাতে
-> auto-compaction সময়ের আগেই সক্রিয় না হয়। উপরে তৈরি হওয়া profile-গুলো ইতিমধ্যেই
-> প্রতি model-এর জন্য এটি করে।
+`EXPOSE_CC_DISCOVERY_ALIASES` এনভায়রনমেন্ট ভ্যারিয়েবল গ্লোবাল স্তরটি চালু করে
+এবং ড্যাশবোর্ড ওভাররাইডের চেয়ে অগ্রাধিকার পায় (যখন তা করে, Feature Flags স্ক্রিনে
+একটি "active via environment variable" নোট দেখায়)। প্রতি-প্রোভাইডার এবং
+প্রতি-মডেল টগল সেখান থেকে পরিমার্জন করে — যেমন গ্লোবাল বন্ধ + Kimi প্রোভাইডার চালু করলে
+শুধুমাত্র Kimi-এর মডেলগুলো প্রকাশ পায়।
+
+> ⚠️ **Claude-বহির্ভূত মডেলে উইন্ডো অমিল।** Claude Code যেকোনো আইডির জন্য 200K কনটেক্সট
+> উইন্ডো ধরে নেয় যা এটি চিনতে পারে না (এটি `/v1/models` থেকে প্রকৃত উইন্ডো পড়তে
+> পারে না)। বড় উইন্ডোওয়ালা মডেলের জন্য (যেমন Kimi K2-এর 256K),
+> `CLAUDE_CODE_AUTO_COMPACT_WINDOW` মডেলটির প্রকৃত উইন্ডোর চেয়ে কম মানে সেট করুন যাতে
+> অটো-কমপ্যাকশন অকালে ট্রিগার না হয়। উপরের জেনারেট করা প্রোফাইলগুলো ইতিমধ্যে
+> প্রতি মডেলে এটি করে।
 
 ---
 

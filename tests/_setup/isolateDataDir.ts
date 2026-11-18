@@ -1,7 +1,7 @@
 // Test-only DATA_DIR isolation.
 //
 // Loaded via `node --import ./tests/_setup/isolateDataDir.ts` from the test/mutation
-// invocations (package.json test scripts, stryker.conf.json tap.nodeArgs, the
+// invocations (package.json test scripts, stryker.conf.mjs tap.nodeArgs, the
 // quality.yml TIA step, and the CI test jobs) — NEVER from production. It MUST stay
 // out of open-sse/utils/setupPolyfill.ts, which is also imported by production
 // (bin/omniroute.mjs, proxyFetch.ts, proxyDispatcher.ts) where redirecting DATA_DIR
@@ -25,6 +25,21 @@ import path from "node:path";
 // raise ENOENT/ENOTEMPTY after the test has already passed. Keep the global test default
 // console-only; tests that cover file logging explicitly set APP_LOG_TO_FILE themselves.
 process.env.APP_LOG_TO_FILE ||= "false";
+
+// `node --test --test-force-exit` exits each test-file child as soon as its known tests finish,
+// without flushing the child->runner stdout pipe (nodejs/node#64833; fix proposed in
+// nodejs/node#64875, unreleased). Pipe writes are asynchronous on POSIX, so the tail of the
+// file's report is dropped and the runner silently reports fewer tests. Node 22 and 26 are
+// affected too. Blocking writes close the race; this only runs inside runner-spawned children
+// (NODE_TEST_CONTEXT=child-v8), never in the runner itself (the runner's own piped stdout can
+// still lose its tail; nothing parses it, and the regression test writes it to a file) or under
+// Stryker. Remove once every supported Node line ships the upstream fix. Guarded by
+// tests/unit/test-force-exit-report-flush.test.ts.
+if (process.env.NODE_TEST_CONTEXT?.startsWith("child")) {
+  (
+    process.stdout as unknown as { _handle?: { setBlocking?: (blocking: boolean) => void } }
+  )._handle?.setBlocking?.(true);
+}
 
 if (!process.env.DATA_DIR) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-test-"));

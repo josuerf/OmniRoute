@@ -16,34 +16,34 @@ AgentBridge on OmniRoute'i MITM-puhverserver (vahendusrünne ehk Man-in-the-Midd
 
 ### Mis on AgentBridge?
 
-Kui IDE agent (nt GitHub Copilot, Cursor, Claude Code) teeb API-kutse, loob see otseühenduse ülesvoolu AI-teenusepakkujaga (OpenAI, Anthropic jne). AgentBridge püüab selle ühenduse TLS-i tasandil läbipaistvalt kinni — ilma et oleks vaja muuta agendi konfiguratsiooni — ning suunab päringu ümber OmniRoute'i kaudu.
+Kui IDE agent (nt GitHub Copilot, Cursor, Claude kood) teeb API -kõne, ühendub see otse ülesvoolu AI pakkujaga (OpenAI, Anthropic jne). AgentBridge katkestab selle ühenduse läbipaistvalt TLS tasemel — ilma et oleks vaja agendi konfiguratsiooni — muuta, ja kirjutab päringu ümber OmniRoute kaudu.
 
-See võimaldab teil:
+See tähendab, et saate:
 
-- **Suuna mis tahes agent ümber mis tahes teenusepakkujale**: kas Copilot suhtleb OpenAI-ga? Suunake see ümber Anthropic Claude'i, Gemini või mõne muu OmniRoute'i 374 teenusepakkuja juurde.
-- **Rakenda mudelite vastendusi**: `gemini-3-flash` → `claude-sonnet-4.7` läbipaistvalt töötleja tasandil.
-- **Jälgi kogu agendiliiklust**: iga kinnipüütud päring avaldatakse [liiklusinspektoris](./TRAFFIC_INSPECTOR.md).
-- **Rakenda OmniRoute'i töökindlusfunktsioone**: kombineeritud marsruutimine, kaitselülitid, varuvariandid ja kulude jälgimine töötavad ka IDE agentide liiklusega.
+- **Suunake mis tahes agent mis tahes teenusepakkuja juurde** : Copilot räägid OpenAI-ga? Suunake see ümber Anthropic Claude, Gemini või mõnele OmniRoute 394 pakkujale.
+- **Rakendage mudeli vastendusi** : `gemini-3-flash` → `claude-sonnet-4.7` läbipaistvalt käitleja tasemel.
+- **Jälgige kogu agendiliiklust** : iga pealtkuulatud päring avaldatakse [liiklusinspektorile](./TRAFFIC_INSPECTOR.md).
+- **Rakendage OmniRoute vastupidavust** : kombineeritud marsruutimine, kaitselülitid, varud ja kulude jälgimine ka IDE agendi liikluse jaoks.
 
-### Positsioon turul
+### Positsioneerimine vs turg
 
-| Funktsioon                           | 9router | anti-api | llm-interceptor | **OmniRoute AgentBridge** |
-| ------------------------------------ | :-----: | :------: | :-------------: | :-----------------------: |
-| Antigravity                          |    ✓    |    ✓     |        —        |             ✓             |
-| GitHub Copilot                       |    ✓    |    ✓     |        —        |             ✓             |
-| Kiro (AWS)                           |    ✓    |    ✓     |        —        |             ✓             |
-| OpenAI Codex                         |    —    |    ✓     |        —        |             ✓             |
-| Cursor IDE                           |    ✓    |    ✓     |        —        |             ✓             |
-| Zed Industries                       |    —    |    ✓     |        —        |             ✓             |
-| Claude Code                          |    —    |    —     |        ✓        |             ✓             |
-| Open Code                            |    —    |    —     |        ✓        |             ✓             |
-| Trae                                 |    —    |    —     |        —        |       🔍 Uurimisel        |
-| Töölaua kasutajaliides               |    ✓    |    ✗     |        ✗        |             ✓             |
-| Liiklusinspektor                     |    ✗    |    ✗     |        ✓        |             ✓             |
-| OmniRoute'i marsruutimine            |    ✗    |    ✗     |        ✗        |             ✓             |
-| Mudelite vastendamise kasutajaliides |    ✗    |    ✗     |        ✗        |             ✓             |
-| Möödapääsuloend                      |    ✗    |    ✗     |        ✓        |             ✓             |
-| Ülesvoolu CA-sertifikaat             |    ✗    |    ✗     |        ✓        |             ✓             |
+| Funktsioon              | 9 ruuter | anti-api | llm-pealtkuulaja | **OmniRoute AgentBridge** |
+| ----------------------- | :------: | :------: | :--------------: | :-----------------------: |
+| Antigravity             |    ✓     |    ✓     |        —         |             ✓             |
+| GitHub Copilot          |    ✓     |    ✓     |        —         |             ✓             |
+| Kiro (AWS)              |    ✓     |    ✓     |        —         |             ✓             |
+| OpenAI Codex            |    —     |    ✓     |        —         |             ✓             |
+| Cursor IDE              |    ✓     |    ✓     |        —         |             ✓             |
+| Zed Industries          |    —     |    ✓     |        —         |             ✓             |
+| Claude kood             |    —     |    —     |        ✓         |             ✓             |
+| Ava kood                |    —     |    —     |        ✓         |             ✓             |
+| Trae                    |    —     |    —     |        —         |         🔍 Uurib          |
+| Armatuurlaud UI         |    ✓     |    ✗     |        ✗         |             ✓             |
+| Liiklusinspektor        |    ✗     |    ✗     |        ✓         |             ✓             |
+| OmniRoute marsruutimine |    ✗     |    ✗     |        ✗         |             ✓             |
+| Mudeli kaardistamine UI |    ✗     |    ✗     |        ✗         |             ✓             |
+| Möödasõiduloend         |    ✗     |    ✗     |        ✓         |             ✓             |
+| Ülesvoolu CA sert       |    ✗     |    ✗     |        ✓         |             ✓             |
 
 ---
 
@@ -539,22 +539,22 @@ Täielikud OpenAPI skeemid: `docs/openapi.yaml` → silt `AgentBridge`.
 
 ### Trae uurimine
 
-Trae on suhteliselt uus tehisintellektil põhinev programmeerimisassistent. Enne töötleja rakendamist:
+Trae on suhteliselt uus AI kodeerimisassistent. Enne töötleja rakendamist:
 
-1. Tuvastage binaarfail/laiendus VS Code'i / JetBrainsi poodides või eraldiseisva rakendusena
-2. Jäädvustage liiklus mitmproxy abil, et tuvastada API hostid ja lõpp-punktide struktuur
-3. Tehke kindlaks autentimismehhanism
-4. Hinnake kasutustingimuste ja API tuvastatavuse põhjal, kas jätkata või mitte
+1. Tuvastage binary/extension VS koodi / JetBrains turuplatsidel või eraldiseisva rakendusena
+2. Jäädvustage liiklust mitmproxyga, et avastada API hoste ja lõpp-punkti kujundeid
+3. Määrake autentimismehhanism
+4. Hinnake go/no-go TOS ja API leitavuse põhjal
 
-Kuni uurimine on lõpule viidud, kuvatakse Trae kaardil juhtpaneelil märk „Uurimisel“ koos lingiga „Teata teostatavusest“. Töötleja toes failis `src/mitm/handlers/trae.ts` väljastab struktureeritud vea `Pole veel rakendatud`.
+Kuni uurimise lõpuleviimiseni kuvatakse Trae kaardil armatuurlaual märk "Uurimine" koos lingiga "Teata elujõulisusest". `src/mitm/handlers/trae.ts` käitleja stub annab struktureeritud `Not yet implemented` vea.
 
-### Ootel olevad agendid (MITM on nõutav — kohandatud baas-URL-i tugi puudub)
+### Mahajäänud agendid (MITM nõutav — pole kohandatud baasi URL tuge)
 
-Järgmised tööriistad ei toeta oma praegustes versioonides kohandatud baas-URL-e, mistõttu on MITM ainus liikluse pealtkuulamise võimalus. Teostatavuse hindamine on ootel:
+Järgmised tööriistad ei toeta kohandatud baasi URLs nende praegustes versioonides, mistõttu on MITM ainus pealtkuulamistee. Elujõulisuse hindamine on pooleli:
 
 - **Windsurf** (Codeium/Cognition)
-- **Amp** (Sourcegraph)
-- **Amazon Q / Kiro CLI** (AWS Bedrock — Kiro IDE-st eraldiseisev)
-- **Cowork** (Anthropicu töölauarakendus)
+- **Amp** (Allikasgraafik)
+- **Amazon Q / Kiro CLI** (AWS aluspõhjakivi — eraldi Kiro IDE)
+- **Koostöö** (Anthropic töölaud)
 
-Märkus. GitHub Copilot CLI ≥v1.0.19 toetab muutujat `COPILOT_PROVIDER_BASE_URL` — selle tööriista puhul kasutage MITM-i asemel otsekonfiguratsiooni.
+Märkus. GitHub Copilot CLI ≥ v1.0.19 toetab `COPILOT_PROVIDER_BASE_URL` — Kasutage selle tööriista MITM asemel otsekonfiguratsiooni.

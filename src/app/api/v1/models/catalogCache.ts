@@ -100,6 +100,10 @@ export function defaultBackgroundRefreshScheduler(task: () => Promise<unknown>):
 export type CatalogCacheOptions = {
   hideAutoCombos?: boolean;
   hideNoThinkVariants?: boolean;
+  /** Public listing advertises only combos (`settings.exposeCombosOnly`). */
+  exposeCombosOnly?: boolean;
+  /** Management-only build that keeps operator-hidden models (`/api/models/catalog`). */
+  revealHidden?: boolean;
   /**
    * Overrides `CATALOG_STALE_WHILE_REVALIDATE_MS` for this call only.
    *
@@ -132,26 +136,11 @@ export type CatalogCacheOptions = {
  * the event loop so even the "served immediately" stale body only reaches the client
  * once the rebuild finishes. Net effect: ~50 s on essentially every call.
  *
- * 60 s was still short of the arithmetic that matters, because this cache is keyed per
- * API key (the catalog is filtered per key, so it has to be): every developer polling
- * with their own key owns a separate entry with its own TTL and pays its own rebuild.
- * At ~49 s per rebuild a 60 s TTL costs 82 % of a core per key, so two keys saturated
- * the single-threaded runtime permanently and a team of five kept it there all day —
- * which is what the gateway was doing while it shed chat requests with 503s (IAF-477).
- *
- * At 600 s that is ~8 % of a core per key, so ten actively polling keys stay inside one
- * core. Freshness is unaffected: every write that feeds the builder moves
- * `modelCatalogCacheVersion` and `dropCatalogCacheIfStateChanged()` drops the whole
- * cache the moment it does, so this value only governs how old a catalog may be when
- * nothing at all has been written. Operators can tune it up to the 1 h ceiling the
- * settings schema now allows (`settingsSchemas.ts`, `.max(3600000)`) when their catalog
- * builds slower than the one measured above.
- *
- * Keep in sync with `DEFAULT_DATABASE_SETTINGS.cache.modelCatalogCacheTtlMs`
- * (`src/types/databaseSettings.ts`) — that is the value that actually takes effect, and
- * `tests/unit/v1-models-catalog-ttl.test.ts` fails if the two drift.
+ * Held at 60 s to match the ceiling the settings schema already allows for the override
+ * (`settingsSchemas.ts`, `.max(60000)`), so the default can never exceed what an
+ * operator is permitted to configure.
  */
-export const CATALOG_CACHE_TTL_MS_DEFAULT = 600_000;
+export const CATALOG_CACHE_TTL_MS_DEFAULT = 600_000; // fork IAF-477: amortize the 49 s catalog build
 
 /** Cold-path wait bound for a coalesced catalog rebuild (#12627). Override with CATALOG_BUILD_TIMEOUT_MS. */
 export const CATALOG_BUILD_TIMEOUT_MS_DEFAULT = 8_000;
@@ -163,120 +152,80 @@ function catalogBuildTimeoutMs(): number {
   return Number.isFinite(n) && n > 0 ? n : CATALOG_BUILD_TIMEOUT_MS_DEFAULT;
 }
 
-/**
- * Byte budget shared by each of the two response memos below (they are bounded
- * independently, so the worst case is 2× this value). Override with
- * `CATALOG_CACHE_MAX_BYTES`.
- *
- * Sized from the workload this cache actually serves: one ~1.3 MB full catalog per
- * distinct key, so 64 MB holds roughly 50 concurrent full-catalog keys, well past the
- * "every developer on the team polls with their own API key" case, while keeping the
- * memo's share of the heap a fixed, known number instead of a function of how many
- * keys have ever been seen.
- */
-export const CATALOG_CACHE_MAX_BYTES_DEFAULT = 64 * 1024 * 1024;
+// Bound both maps independently: cursor/auth/filter combinations can create many keys.
+// Oversized responses still reach the caller without being retained.
+const CATALOG_CACHE_MAX_ENTRIES = 64;
+const CATALOG_CACHE_MAX_BYTES = 16 * 1024 * 1024;
 
-/**
- * Secondary entry-count guard, so a flood of tiny bodies (a restricted key sees only a
- * handful of models) cannot pin an unbounded number of key strings under the byte
- * budget. Override with `CATALOG_CACHE_MAX_ENTRIES`.
- */
-export const CATALOG_CACHE_MAX_ENTRIES_DEFAULT = 512;
-
-function positiveIntEnv(raw: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(raw ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-/**
- * Size-bounded LRU store for the `GET /v1/models` response memos.
- *
- * Both memos used to be plain module-scope Maps with no production prune path:
- * `catalogLastGood` was only ever emptied by a test hook, and `catalogCache` only by
- * `dropCatalogCacheIfStateChanged()` when the catalog generation moved, which can be
- * hours apart on a stable deployment. Every distinct cache key (API key fingerprint ×
- * client × flag combination) therefore added a serialized catalog body that was never
- * released, and heap grew with the number of keys the process had ever served.
- *
- * The bound is on BYTES rather than entry count because catalog size varies by an
- * order of magnitude between a full catalog and a restricted key's view; an entry cap
- * would either leave most of the budget unused or evict a live key and force the
- * expensive rebuild the memo exists to prevent.
- *
- * Eviction is least-recently-used, including on reads: the keys being polled right now
- * are exactly the ones whose rebuild cost must not be paid again.
- */
-class BoundedCatalogStore {
-  #entries = new Map<string, CachedCatalog>();
-  #bytes = 0;
-
-  get size(): number {
-    return this.#entries.size;
-  }
-
-  /**
-   * Approximate retained size. `String.length` counts UTF-16 code units, which for the
-   * ASCII-dominated JSON these bodies contain tracks byte length closely enough to
-   * budget against, and unlike `Buffer.byteLength` it does not walk the string on every
-   * cache write.
-   */
-  get bytes(): number {
-    return this.#bytes;
-  }
+class BoundedCatalogCache {
+  private items = new Map<string, { entry: CachedCatalog; bytes: number }>();
+  private bytes = 0;
 
   get(key: string): CachedCatalog | undefined {
-    const entry = this.#entries.get(key);
-    if (entry === undefined) return undefined;
-    // Re-insert so insertion order stays usage order; the eviction loop below drops
-    // from the front, which is then the genuinely least recently used entry.
-    this.#entries.delete(key);
-    this.#entries.set(key, entry);
-    return entry;
+    const value = this.items.get(key);
+    if (!value) return undefined;
+    this.items.delete(key);
+    this.items.set(key, value);
+    return value.entry;
   }
 
   set(key: string, entry: CachedCatalog): void {
-    const previous = this.#entries.get(key);
-    if (previous !== undefined) this.#bytes -= previous.body.length;
-    this.#entries.delete(key);
-    this.#entries.set(key, entry);
-    this.#bytes += entry.body.length;
-    this.#evict();
+    // Two bytes per UTF-16 code unit bounds V8's one-/two-byte string storage.
+    // Entry-count limits bound object/Map overhead independently of string size.
+    const bytes =
+      2 *
+      (key.length +
+        entry.body.length +
+        Object.entries(entry.headers).reduce(
+          (total, [name, value]) => total + name.length + value.length,
+          0
+        ));
+    if (bytes > CATALOG_CACHE_MAX_BYTES) return;
+    // An oversized refresh must preserve an existing bounded last-good entry.
+    this.delete(key);
+    while (
+      this.items.size >= CATALOG_CACHE_MAX_ENTRIES ||
+      this.bytes + bytes > CATALOG_CACHE_MAX_BYTES
+    ) {
+      this.delete(this.items.keys().next().value!);
+    }
+    this.items.set(key, { entry, bytes });
+    this.bytes += bytes;
+  }
+
+  private delete(key: string): void {
+    const value = this.items.get(key);
+    if (!value) return;
+    this.bytes -= value.bytes;
+    this.items.delete(key);
   }
 
   clear(): void {
-    this.#entries.clear();
-    this.#bytes = 0;
+    this.items.clear();
+    this.bytes = 0;
   }
 
-  /** Snapshot, so a caller may re-`set()` entries while walking them. */
-  entries(): Array<[string, CachedCatalog]> {
-    return [...this.#entries.entries()];
-  }
-
-  #evict(): void {
-    const maxBytes = positiveIntEnv(
-      process.env.CATALOG_CACHE_MAX_BYTES,
-      CATALOG_CACHE_MAX_BYTES_DEFAULT
-    );
-    const maxEntries = positiveIntEnv(
-      process.env.CATALOG_CACHE_MAX_ENTRIES,
-      CATALOG_CACHE_MAX_ENTRIES_DEFAULT
-    );
-    // `size > 1` is deliberate: a budget smaller than a single catalog must degrade to
-    // "keep one entry", never to "cache nothing". An empty cache means every request
-    // pays the full rebuild, which is the client-visible failure this module exists to
-    // prevent (and what the v3.8.8 resource-pressure outage looked like from outside).
-    while (this.#entries.size > 1 && (this.#bytes > maxBytes || this.#entries.size > maxEntries)) {
-      const oldestKey = this.#entries.keys().next().value;
-      if (oldestKey === undefined) break;
-      const oldest = this.#entries.get(oldestKey);
-      this.#entries.delete(oldestKey);
-      if (oldest !== undefined) this.#bytes -= oldest.body.length;
+  pruneExpired(now: number, staleWindowMs: number): void {
+    for (const [key, { entry }] of this.items) {
+      const retention = entry.status === 200 ? Math.max(0, staleWindowMs) : 0;
+      if (entry.expiresAt <= now && (entry.status !== 200 || now - entry.expiresAt > retention)) {
+        this.delete(key);
+      }
     }
+  }
+
+  *entries(): IterableIterator<[string, CachedCatalog]> {
+    for (const [key, { entry }] of this.items) yield [key, entry];
+  }
+
+  stats(): { entries: number; bytes: number } {
+    return { entries: this.items.size, bytes: this.bytes };
   }
 }
 
-const catalogLastGood = new BoundedCatalogStore();
+// Last-good has no TTL: timeout fallback deliberately survives the fresh/SWR
+// windows, until LRU pressure or a catalog generation change removes the entry.
+const catalogLastGood = new BoundedCatalogCache();
 
 export class CatalogBuildTimeoutError extends Error {
   constructor() {
@@ -307,7 +256,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-const catalogCache = new BoundedCatalogStore();
+const catalogCache = new BoundedCatalogCache();
 
 /**
  * An in-flight build is bound to the catalog-state generation it started from
@@ -337,7 +286,11 @@ function buildCatalogCacheKey(request: Request, catalogSettings?: CatalogCacheOp
   const hideAuto = catalogSettings?.hideAutoCombos ? "1" : "0";
   const hideNoThink = catalogSettings?.hideNoThinkVariants ? "1" : "0";
   const page = catalogPageCacheKey(parseCatalogPage(request));
-  return `${prefix}|${isCodex}|${fingerprintCatalogAuthKey(apiKey)}|${configuredOnly}|${hideAuto}|${hideNoThink}|${page}`;
+  // Each suffix is appended only when set, so every key built with both flags off
+  // (the public /v1/models default) stays byte-identical.
+  const reveal = catalogSettings?.revealHidden ? "|reveal" : "";
+  const combosOnly = catalogSettings?.exposeCombosOnly ? "|combosOnly" : "";
+  return `${prefix}|${isCodex}|${fingerprintCatalogAuthKey(apiKey)}|${configuredOnly}|${hideAuto}|${hideNoThink}|${page}${reveal}${combosOnly}`;
 }
 
 // Tracks the model-catalog cache version (src/lib/db/readCache.ts) as of the last
@@ -560,9 +513,13 @@ export async function resolveCachedCatalogResponse(
 
   const cacheKey = buildCatalogCacheKey(request, catalogSettings);
   const now = Date.now();
+  const staleWindowMs =
+    catalogSettings?.getStaleWhileRevalidateMs?.() ?? CATALOG_STALE_WHILE_REVALIDATE_MS;
+  catalogCache.pruneExpired(now, staleWindowMs);
   const cached = catalogCache.get(cacheKey);
 
   if (cached && cached.expiresAt > now) {
+    if (cached.status === 200) catalogLastGood.get(cacheKey);
     return catalogStringResponse(
       cached.body,
       mergeCatalogHeaders(corsHeaders, cached.headers, diagnosticHeaders),
@@ -575,9 +532,8 @@ export async function resolveCachedCatalogResponse(
   // intermittent failure behind a fake success forever — and (b) it is within the
   // staleness window, so a refresh that keeps failing eventually falls through to the
   // cold-path wait instead of pinning ancient data.
-  const staleWindowMs =
-    catalogSettings?.getStaleWhileRevalidateMs?.() ?? CATALOG_STALE_WHILE_REVALIDATE_MS;
   if (cached && cached.status === 200 && now - cached.expiresAt <= staleWindowMs) {
+    catalogLastGood.get(cacheKey);
     startBackgroundRefresh(
       cacheKey,
       request,
@@ -631,27 +587,14 @@ export function __resetCatalogBuilderRunsForTest(): void {
   lastSeenCatalogCacheVersion = getModelCatalogCacheVersion();
 }
 
+/** Retained-string accounting only; successful bodies may be shared across maps. */
+export function __getCatalogCacheStatsForTest() {
+  return { cache: catalogCache.stats(), lastGood: catalogLastGood.stats() };
+}
+
 /** Counts full builder executions — proves concurrent requests share one run (#6408). */
 export function __getCatalogBuilderRunsForTest(): number {
   return _catalogBuilderRuns;
-}
-
-/**
- * Retained size of both memos, so a test can assert the byte budget holds instead of
- * inferring it from heap sampling (IAF-477).
- */
-export function __getCatalogCacheSizesForTest(): {
-  cacheEntries: number;
-  cacheBytes: number;
-  lastGoodEntries: number;
-  lastGoodBytes: number;
-} {
-  return {
-    cacheEntries: catalogCache.size,
-    cacheBytes: catalogCache.bytes,
-    lastGoodEntries: catalogLastGood.size,
-    lastGoodBytes: catalogLastGood.bytes,
-  };
 }
 
 /**
@@ -661,7 +604,7 @@ export function __getCatalogCacheSizesForTest(): {
  */
 export function __expireCatalogCacheForTest(msAgo = 1): void {
   const expiresAt = Date.now() - msAgo;
-  for (const [key, entry] of catalogCache.entries()) {
+  for (const [key, entry] of [...catalogCache.entries()]) {
     catalogCache.set(key, { ...entry, expiresAt });
   }
 }

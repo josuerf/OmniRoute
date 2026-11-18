@@ -1,5 +1,6 @@
 import { fisherYatesShuffle, getNextFromDeck } from "../../../src/shared/utils/shuffleDeck";
 import { generateRoutingHints } from "../manifestAdapter";
+import { isAccountSemaphoreFull } from "../accountSemaphore.ts";
 import { resolveMaxConcurrentByConnection } from "./concurrencyCaps.ts";
 import { sortTargetsByContextSize } from "./comboStructure.ts";
 import { selectQuotaShareTarget } from "./quotaShareStrategy.ts";
@@ -13,6 +14,7 @@ import {
   orderTargetsByQuotaWeighted,
   orderTargetsByResetAwareQuota,
   orderTargetsByResetWindow,
+  orderTargetsByExpiryFirst,
 } from "./quotaStrategies.ts";
 import {
   orderTargetsByPowerOfTwoChoices,
@@ -21,6 +23,7 @@ import {
 } from "./targetSorters.ts";
 import { decrementInflight } from "./quotaShareInflight.ts";
 import { getStrategyTraits, type StrategyOrderingKind } from "./strategyRegistry.ts";
+import type { PreDispatchExclusion } from "./pinRecovery.ts";
 import type { ComboLike, ComboLogger, ResolvedComboTarget } from "./types.ts";
 
 /**
@@ -46,6 +49,7 @@ export interface ApplyStrategyOrderingDeps {
   log: ComboLogger;
   apiKeyAllowedConnections: string[] | null;
   sessionKey?: string | null;
+  exclusions?: PreDispatchExclusion[];
 }
 
 type StrategyOrderer = (
@@ -215,14 +219,15 @@ async function orderByCacheAffinity(
 
 async function orderByQuotaWeighted(
   orderedTargets: ResolvedComboTarget[],
-  { combo, config, log, apiKeyAllowedConnections }: ApplyStrategyOrderingDeps
+  { combo, config, log, apiKeyAllowedConnections, exclusions }: ApplyStrategyOrderingDeps
 ): Promise<ApplyStrategyOrderingResult> {
   const nextTargets = await orderTargetsByQuotaWeighted(
     orderedTargets,
     combo.name,
     config,
     log,
-    apiKeyAllowedConnections
+    apiKeyAllowedConnections,
+    exclusions
   );
   let quotaShareRelease: (() => void) | null = null;
   const winnerId = nextTargets[0]?.connectionId ?? "";
@@ -280,8 +285,20 @@ const STRATEGY_ORDERERS: Record<
     );
     return orderedOnly(orderedTargets);
   },
-  p2c: (orderedTargets, { combo, log }) => {
-    const nextTargets = orderTargetsByPowerOfTwoChoices(orderedTargets, combo.name);
+  p2c: async (orderedTargets, { combo, log }) => {
+    // An account at its max_concurrent cap would queue the request while a sibling sits
+    // idle. Draw only among accounts with room; full ones stay behind as last fallbacks.
+    const caps = await resolveMaxConcurrentByConnection(orderedTargets);
+    const isFull = (t: ResolvedComboTarget): boolean => {
+      const cap = t.connectionId ? caps.get(t.connectionId) : null;
+      return Boolean(cap && isAccountSemaphoreFull(t.provider, t.connectionId as string, cap));
+    };
+    const full = orderedTargets.filter(isFull);
+    const open = orderedTargets.filter((t) => !full.includes(t));
+    const nextTargets =
+      full.length === 0 || open.length === 0
+        ? orderTargetsByPowerOfTwoChoices(orderedTargets, combo.name)
+        : [...orderTargetsByPowerOfTwoChoices(open, combo.name), ...full];
     log.info("COMBO", `Power-of-two-choices ordering: selected ${nextTargets[0]?.modelStr}`);
     return orderedOnly(nextTargets);
   },
@@ -291,26 +308,45 @@ const STRATEGY_ORDERERS: Record<
     return orderedOnly(nextTargets);
   },
   "cost-optimized": orderByCost,
-  "reset-aware": async (orderedTargets, { combo, config, log, apiKeyAllowedConnections }) => {
+  "reset-aware": async (
+    orderedTargets,
+    { combo, config, log, apiKeyAllowedConnections, exclusions }
+  ) => {
     const nextTargets = await orderTargetsByResetAwareQuota(
       orderedTargets,
       combo.name,
       config,
       log,
-      apiKeyAllowedConnections
+      apiKeyAllowedConnections,
+      exclusions
     );
     log.info("COMBO", `Reset-aware ordering: ${describeFirstTarget(nextTargets)} first`);
     return orderedOnly(nextTargets);
   },
-  "reset-window": async (orderedTargets, { combo, config, log, apiKeyAllowedConnections }) => {
+  "reset-window": async (
+    orderedTargets,
+    { combo, config, log, apiKeyAllowedConnections, exclusions }
+  ) => {
     const nextTargets = await orderTargetsByResetWindow(
+      orderedTargets,
+      combo.name,
+      config,
+      log,
+      apiKeyAllowedConnections,
+      exclusions
+    );
+    log.info("COMBO", `Reset-window ordering: ${describeFirstTarget(nextTargets)} first`);
+    return orderedOnly(nextTargets);
+  },
+  "expiry-first": async (orderedTargets, { combo, config, log, apiKeyAllowedConnections }) => {
+    const nextTargets = await orderTargetsByExpiryFirst(
       orderedTargets,
       combo.name,
       config,
       log,
       apiKeyAllowedConnections
     );
-    log.info("COMBO", `Reset-window ordering: ${describeFirstTarget(nextTargets)} first`);
+    log.info("COMBO", `Expiry-first ordering: ${describeFirstTarget(nextTargets)} first`);
     return orderedOnly(nextTargets);
   },
   "context-optimized": (orderedTargets, { log }) => {
@@ -319,12 +355,13 @@ const STRATEGY_ORDERERS: Record<
     return orderedOnly(nextTargets);
   },
   "cache-optimized": orderByCacheAffinity,
-  headroom: async (orderedTargets, { combo, log, apiKeyAllowedConnections }) => {
+  headroom: async (orderedTargets, { combo, log, apiKeyAllowedConnections, exclusions }) => {
     const nextTargets = await orderTargetsByHeadroom(
       orderedTargets,
       combo.name,
       log,
-      apiKeyAllowedConnections
+      apiKeyAllowedConnections,
+      exclusions
     );
     log.info(
       "COMBO",

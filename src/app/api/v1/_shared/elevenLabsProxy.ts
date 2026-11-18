@@ -21,6 +21,8 @@ const ALLOWED_RESPONSE_HEADERS = [
   "content-disposition",
   "request-id",
   "retry-after",
+  "character-cost",
+  "song-id",
 ] as const;
 
 type ElevenLabsCredentials = {
@@ -49,18 +51,28 @@ function proxyResponseHeaders(upstream: Response): Headers {
 export async function proxyElevenLabsRequest(
   request: Request,
   pathname: string,
-  init: Omit<RequestInit, "headers"> = {}
+  init: Omit<RequestInit, "headers"> = {},
+  options: {
+    model?: string;
+    contentType?: string;
+    /** Internal combo dispatch already performed policy + connection-scope checks. */
+    preauthorizedConnections?: string[] | null;
+  } = {}
 ): Promise<Response> {
-  const policy = await enforceApiKeyPolicy(request, null);
-  if (policy.rejection) return policy.rejection;
-  // GHSA-3w2r: the ElevenLabs connection must be one the caller key may use.
-  const scope = await resolveKeyConnectionScope(policy.apiKeyInfo);
-  if (scope.rejection) return scope.rejection;
+  let allowedConnections = options.preauthorizedConnections;
+  if (allowedConnections === undefined) {
+    const policy = await enforceApiKeyPolicy(request, options.model ?? null);
+    if (policy.rejection) return policy.rejection;
+    // GHSA-3w2r: the ElevenLabs connection must be one the caller key may use.
+    const scope = await resolveKeyConnectionScope(policy.apiKeyInfo);
+    if (scope.rejection) return scope.rejection;
+    allowedConnections = scope.allowedConnections;
+  }
 
   const selection = await getProviderCredentialsWithQuotaPreflight(
     "elevenlabs",
     null,
-    scope.allowedConnections
+    allowedConnections
   );
   if (isKeyScopeBlockedCredentials(selection)) {
     return keyScopeBlockedResponse("elevenlabs", selection);
@@ -85,13 +97,13 @@ export async function proxyElevenLabsRequest(
   upstreamUrl.search = incomingUrl.search;
   const headers = new Headers();
   headers.set("xi-api-key", apiKey);
-  const contentType = request.headers.get("content-type");
+  const contentType = options.contentType ?? request.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
   const accept = request.headers.get("accept");
   if (accept) headers.set("accept", accept);
 
   try {
-    const upstream = await fetch(upstreamUrl, { ...init, headers });
+    const upstream = await fetch(upstreamUrl, { ...init, headers, signal: request.signal });
     if (upstream.ok) {
       await clearRecoveredProviderState(credentials as Record<string, unknown>);
     }

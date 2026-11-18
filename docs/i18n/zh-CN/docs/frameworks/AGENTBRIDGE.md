@@ -14,36 +14,36 @@ AgentBridge 是 OmniRoute 的 MITM（中间人）代理，可拦截来自 IDE AI
 
 ## §1 概述
 
-### 什么是 AgentBridge？
+### AgentBridge是什么？
 
-当 IDE 智能体（例如 GitHub Copilot、Cursor、Claude Code）发起 API 调用时，它会直接连接上游 AI 提供者（OpenAI、Anthropic 等）。AgentBridge 在 TLS 层透明地拦截该连接——无需更改任何智能体配置——并通过 OmniRoute 重写请求。
+当IDE代理（例如GitHub Copilot、 Cursor、 Claude代码）进行API调用时，它直接连接到上游AI提供程序（OpenAI、 Anthropic等）。 AgentBridge在TLS级别—透明地拦截该连接，无需更改任何代理配置—并通过OmniRoute重写请求。
 
 这意味着您可以：
 
-- **将任意智能体重新路由到任意提供者**：Copilot 正在连接 OpenAI？可将其重定向至 Anthropic Claude、Gemini，或 OmniRoute 支持的 374 个提供者中的任意一个。
-- **应用模型映射**：在处理程序层透明地将 `gemini-3-flash` → `claude-sonnet-4.7`。
-- **观察所有智能体流量**：每个被拦截的请求都会发布到[流量检查器](./TRAFFIC_INSPECTOR.md)。
-- **应用 OmniRoute 弹性机制**：组合路由、断路器、故障回退和成本跟踪同样适用于 IDE 智能体流量。
+- **将任何代理重新路由到任何提供者**: Copilot与OpenAI交谈？将其重定向到Anthropic Claude、 Gemini或OmniRoute的 394 个提供程序中的任何一个。
+- **应用模型映射**: `gemini-3-flash` → `claude-sonnet-4.7`在处理程序级别透明。
+- **观察所有代理流量**：每个拦截的请求都会发布到[Traffic Inspector](./TRAFFIC_INSPECTOR.md) 。
+- **应用OmniRoute弹性**：组合路由、断路器、后备和成本跟踪也适用于IDE代理流量。
 
-### 与市场产品的定位对比
+### 定位与市场
 
-| 功能           | 9router | anti-api | llm-interceptor | **OmniRoute AgentBridge** |
-| -------------- | :-----: | :------: | :-------------: | :-----------------------: |
-| Antigravity    |    ✓    |    ✓     |        —        |             ✓             |
-| GitHub Copilot |    ✓    |    ✓     |        —        |             ✓             |
-| Kiro (AWS)     |    ✓    |    ✓     |        —        |             ✓             |
-| OpenAI Codex   |    —    |    ✓     |        —        |             ✓             |
-| Cursor IDE     |    ✓    |    ✓     |        —        |             ✓             |
-| Zed Industries |    —    |    ✓     |        —        |             ✓             |
-| Claude Code    |    —    |    —     |        ✓        |             ✓             |
-| Open Code      |    —    |    —     |        ✓        |             ✓             |
-| Trae           |    —    |    —     |        —        |         🔍 调查中         |
-| 仪表板 UI      |    ✓    |    ✗     |        ✗        |             ✓             |
-| 流量检查器     |    ✗    |    ✗     |        ✓        |             ✓             |
-| OmniRoute 路由 |    ✗    |    ✗     |        ✗        |             ✓             |
-| 模型映射 UI    |    ✗    |    ✗     |        ✗        |             ✓             |
-| 绕过列表       |    ✗    |    ✗     |        ✓        |             ✓             |
-| 上游 CA 证书   |    ✗    |    ✗     |        ✓        |             ✓             |
+| 特征           | 9路由器 | 反API | llm拦截器 | **OmniRoute AgentBridge** |
+| -------------- | :-----: | :---: | :-------: | :-----------------------: |
+| Antigravity    |    ✓    |   ✓   |     —     |             ✓             |
+| GitHub Copilot |    ✓    |   ✓   |     —     |             ✓             |
+| Kiro (AWS)     |    ✓    |   ✓   |     —     |             ✓             |
+| OpenAI Codex   |    —    |   ✓   |     —     |             ✓             |
+| Cursor IDE     |    ✓    |   ✓   |     —     |             ✓             |
+| Zed实业        |    —    |   ✓   |     —     |             ✓             |
+| Claude代码     |    —    |   —   |     ✓     |             ✓             |
+| 开放代码       |    —    |   —   |     ✓     |             ✓             |
+| 特雷           |    —    |   —   |     —     |          🔍调查           |
+| 仪表板UI       |    ✓    |   ✗   |     ✗     |             ✓             |
+| 交通督察       |    ✗    |   ✗   |     ✓     |             ✓             |
+| OmniRoute路由  |    ✗    |   ✗   |     ✗     |             ✓             |
+| 模型映射UI     |    ✗    |   ✗   |     ✗     |             ✓             |
+| 绕过列表       |    ✗    |   ✗   |     ✓     |             ✓             |
+| 上游CA证书     |    ✗    |   ✗   |     ✓     |             ✓             |
 
 ---
 
@@ -533,24 +533,24 @@ ipconfig /flushdns
 
 ## §8 路线图
 
-### Trae 调研
+### 特雷调查
 
-Trae 是一款相对较新的 AI 编程助手。在实现处理器之前：
+Trae 是一个相对较新的AI编码助手。在实现处理程序之前：
 
-1. 在 VS Code / JetBrains 市场中或作为独立应用识别其二进制文件/扩展
-2. 使用 mitmproxy 捕获流量，以发现 API 主机和端点结构
-3. 确定身份验证机制
-4. 根据 TOS 和 API 的可发现性评估是否继续
+1. 识别VS Code / JetBrains市场中的binary/extension或作为独立应用程序
+2. 使用 mitmproxy 捕获流量以发现API主机和端点形状
+3. 确定认证机制
+4. 基于TOS和API可发现性评估go/no-go
 
-在调研完成之前，仪表板中的 Trae 卡片会显示“调研中”徽章和“报告可行性”链接。位于 `src/mitm/handlers/trae.ts` 的处理器存根会抛出结构化的“尚未实现”错误。
+在调查完成之前，仪表板中的 Trae 卡会显示“正在调查”徽章以及“报告可行性”链接。 `src/mitm/handlers/trae.ts`处的处理程序存根抛出结构化`Not yet implemented`错误。
 
-### 待办代理（需要 MITM — 不支持自定义基础 URL）
+### 积压代理（MITM需要—没有自定义基础URL支持）
 
-以下工具的当前版本不支持自定义基础 URL，因此 MITM 是唯一的拦截途径。可行性评估尚未完成：
+以下工具当前版本不支持自定义基础URLs ，这使得MITM成为唯一的拦截路径。可行性评估正在进行中：
 
 - **Windsurf** (Codeium/Cognition)
-- **Amp** (Sourcegraph)
-- **Amazon Q / Kiro CLI** (AWS Bedrock — 与 Kiro IDE 不同)
-- **Cowork** (Anthropic 桌面版)
+- **放大器**（来源图）
+- **Amazon Q / Kiro CLI** （AWS基岩—与Kiro IDE分开）
+- **协同办公**（Anthropic桌面）
 
-注意：GitHub Copilot CLI ≥v1.0.19 支持 `COPILOT_PROVIDER_BASE_URL` — 对该工具请使用直接配置，而不是 MITM。
+注意： GitHub Copilot CLI ≥ v1.0.19 支持`COPILOT_PROVIDER_BASE_URL` —使用直接配置而不是该工具的MITM 。

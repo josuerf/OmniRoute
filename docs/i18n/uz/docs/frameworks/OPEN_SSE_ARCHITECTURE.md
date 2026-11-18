@@ -165,30 +165,30 @@ Chaqiruv jurnali artefaktlari (agar yoqilgan boʻlsa) `${DATA_DIR}/call_logs/` m
 
 ---
 
-## Asosiy fayllarni chuqur tahlil qilish
+## Asosiy fayllar chuqur sho'ng'ish
 
 ### chatCore.ts (5977 qator)
 
-**Asosiy soʻrov ishlov beruvchisi**. Hajmi katta boʻlishiga qaramay, u aniq tuzilishga ega:
+The** asosiy so'rovni qayta ishlash** . Uning kattaligiga qaramay, u aniq tuzilishga ega:
 
 ```ts
-// chatCore.ts faylining psevdotuzilmasi
+// Pseudo-structure of chatCore.ts
 export async function handleChat(request: NextRequest) {
-  // 1. Autentifikatsiya + CORS
+  // 1. Auth + CORS
   await authenticateRequest(request);
   applyCorsHeaders(response);
 
-  // 2. Soʻrov tanasini tekshirish
+  // 2. Body validation
   const body = await parseRequestBody(request);
 
-  // 3. Formatni aniqlash + oʻgirish
+  // 3. Format detection + translation
   const sourceFormat = detectFormat(request);
   const targetFormat = getTargetFormat(providerId);
   if (needsTranslation(sourceFormat, targetFormat)) {
     body = translateRequest(body, sourceFormat, targetFormat);
   }
 
-  // 4. Kombinatsion marshrutlash
+  // 4. Combo routing
   const targets = await resolveComboTargets(comboId, body);
   for (const target of targets) {
     try {
@@ -196,20 +196,20 @@ export async function handleChat(request: NextRequest) {
       await recordUsage(result);
       return result;
     } catch (err) {
-      // Keyingi nishonga oʻtish
+      // Continue to next target
     }
   }
 
-  // 5. Favqulodda zaxira variant
+  // 5. Emergency fallback
   return await emergencyFallback(body);
 }
 ```
 
-Bitta ulkan funksiya boʻlishiga qaramay, u 5 bosqichli konveyerga mos keladigan **izohlangan boʻlimlar** asosida tashkil etilgan.
+Bitta ulkan funktsiya bo'lishiga qaramay, u tashkil etilgan** sharhlangan bo'limlar** bu xarita 5 bosqichli quvur liniyasiga.
 
 ### combo.ts (4456 LOC)
 
-Kombinatsiyani tartiblangan nishonlarga ajratuvchi **marshrutlash mexanizmi**.
+The** marshrutlash dvigateli** Bu tartiblangan maqsadlarga kombinatsiyani hal qiladi.
 
 ```ts
 // services/combo.ts
@@ -219,146 +219,147 @@ export async function handleComboChat(body, comboId): Promise<ChatResult> {
     try {
       return await handleSingleModel(target, body);
     } catch (err) {
-      log.warn("nishon ishlamadi, keyingisi sinab ko‘rilmoqda", {
-        target,
-        err,
-      });
+      log.warn("target failed, trying next", { target, err });
     }
   }
-  throw new ComboExhaustedError("Barcha nishonlar ishlamadi");
+  throw new ComboExhaustedError("All targets failed");
 }
 ```
 
-**19 ta marshrutlash strategiyasini** qoʻllab-quvvatlaydi (`src/shared/constants/routingStrategies.ts` fayliga qarang):
+Qo'llab-quvvatlaydi** 22 marshrutlash strategiyasi** (qarang: `src/shared/constants/routingStrategies.ts`):
 
-| Strategiya          | Xatti-harakat                                                                      |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| `priority`          | Birinchi nishondan boshlanadigan tartiblangan roʻyxat                              |
-| `weighted`          | Har bir nishon vazniga asoslangan ehtimollik                                       |
-| `round-robin`       | Nishonlar boʻylab tartib bilan navbatma-navbat aylanish                            |
-| `context-relay`     | Kontekstni nishonlar oʻrtasida uzatish                                             |
-| `fill-first`        | Keyingisiga oʻtishdan oldin kvotani toʻldirish                                     |
-| `p2c`               | Ikki variantdan birini tanlash                                                     |
-| `random`            | Bir tekis tasodifiy tanlash                                                        |
-| `least-used`        | Yaqinda eng kam ishlatilganini tanlash                                             |
-| `cost-optimized`    | Eng arzon sogʻlom nishonni birinchi tanlash                                        |
-| `reset-aware`       | Provayderning tiklash oynalarini hisobga olish                                     |
-| `reset-window`      | Tiklash oynasiga asoslangan marshrutlash                                           |
-| `headroom`          | Qolgan kvota zaxirasi eng koʻp boʻlganini birinchi tanlash                         |
-| `strict-random`     | Haqiqiy bir tekis tanlash (sifat boʻyicha vaznlashsiz)                             |
-| `auto`              | 16 omilli baholashdan foydalanish (`autoCombo/`)                                   |
-| `lkgp`              | Oxirgi maʼlum boʻlgan yaxshi provayderni birinchi tanlash                          |
-| `context-optimized` | Uzun kontekstli soʻrovlar uchun eng mos                                            |
-| `fusion`            | Panelga parallel ravishda yuborish, soʻng hakam orqali sintez qilish (`fusion.ts`) |
+| Strategiya          | Xulq-atvor                                                                                                       |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `priority`          | Birinchi maqsadli buyurtmalar ro'yxati                                                                           |
+| `weighted`          | Maqsadli vazn bo'yicha ehtimollik                                                                                |
+| `round-robin`       | Nishonlarni tartibda aylantiring                                                                                 |
+| `context-relay`     | Kontekstni maqsadlar bo'ylab tarqating                                                                           |
+| `fill-first`        | Keyingisiga o'tishdan oldin kvotani to'ldiring                                                                   |
+| `p2c`               | Ikki tanlovning kuchi                                                                                            |
+| `random`            | Yagona tasodifiy                                                                                                 |
+| `least-used`        | Eng so'nggi foydalanilganini tanlang                                                                             |
+| `cost-optimized`    | Eng arzon sog'lom maqsad birinchi                                                                                |
+| `reset-aware`       | Provayder oynalarini tiklashdan xabardor                                                                         |
+| `reset-window`      | Oynaga asoslangan marshrutlashni asl holatiga qaytaring                                                          |
+| `expiry-first`      | Kvota muddati tugaydigan hisobni avval foydalanilmagan holda sarflang                                            |
+| `headroom`          | Birinchi bo'lib qolgan kvotalar bo'sh joy                                                                        |
+| `quota-weighted`    | Tugagan hisoblarni o'tkazib yuboring, so'ngra parvoz paytida qolgan kvota ÷ bo'yicha chizib oling                |
+| `strict-random`     | Haqiqatan ham bir xil (sifatli vazn yo'q)                                                                        |
+| `auto`              | 16 faktorli balldan foydalaning (`autoCombo/`)                                                                   |
+| `lkgp`              | So'nggi ma'lum yaxshi provayder birinchi                                                                         |
+| `context-optimized` | Uzoq kontekstli so'rovlar uchun eng yaxshisi                                                                     |
+| `cache-optimized`   | Har bir qayta foydalanish mumkin bo'lgan so'rov prefiksini bir xil hisob qaydnomasiga mahkamlang (kesh-xitlar)   |
+| `fusion`            | Panelga parallel ravishda havola qiling, so'ngra sudya orqali sintez qiling (`fusion.ts`)                        |
+| `pipeline`          | Zanjir bosqichlari — har bir maqsadning chiqishi keyingisini ta'minlaydi                                         |
+| `jev`               | Ro'yxatdan o'tish: TypeSafe Jev qaysi reytingli yozuvlar bajarilganligini tan oladi; boshqa sizning buyurtmangiz |
 
 ### base.ts (1170 LOC)
 
-Har bir ijrochi klass bevosita yoki `DefaultExecutor` va boshqa quyi klasslar orqali kengaytiradigan **abstrakt ijrochi**. U quyidagilarni oʻz ichiga oladi:
+The** mavhum ijrochi** har bir ijrochi sinfi (to'g'ridan-to'g'ri yoki `DefaultExecutor` va boshqa kichik sinflar orqali) kengaytirilishi. Unda:
 
-- `buildUrl()` — standart URL yaratish (quyi klasslar maxsus holatlar uchun qayta belgilaydi)
-- `buildHeaders()` — standart sarlavhalar (autentifikatsiya, kontent turi)
-- `transformRequest()` — standart holatda oʻzgarishsiz uzatish
-- `execute()` — qayta urinish/kechiktirish/uzgichga ega asosiy HTTP sikli
+- `buildUrl()` — standart URL konstruktsiyasi (subklasslar maxsus uchun bekor qilinadi)
+- `buildHeaders()` — standart sarlavhalari (auth, kontent turi)
+- sukut bo'yicha `transformRequest()` — o'tish
+- `execute()` — retry/backoff/breaker bilan asosiy HTTP loop
 
 ```ts
 // open-sse/executors/default.ts
 export class DefaultExecutor extends BaseExecutor {
-  // Barcha OpenAI/Anthropic bilan mos provayderlarni boshqaradi
-  // Provayderlar konfiguratsiyalarni (URL, autentifikatsiya, sarlavhalar) roʻyxatdan oʻtkazadi,
-  // ammo umumiy ijrochi mantigʻidan foydalanadi
+  // Handles all OpenAI/Anthropic-compatible providers
+  // Providers register configurations (URL, auth, headers) but share executor logic
 }
 ```
 
-Provayderga xos xatti-harakatlar (autentifikatsiya sarlavhalari, asosiy URL, versiya sarlavhalari) alohida ijrochi klasslari orqali emas, balki provayderlar reyestri orqali sozlanadi.
+Provayderga xos xatti-harakatlar (auth sarlavhalari, asosiy URL, versiya sarlavhalari) alohida ijrochi sinflari emas, balki provayder reestri orqali sozlangan.
 
 ````
 
 ---
 
-## Xizmatlar (117 ta modul)
+## Xizmatlar (117 modul)
 
-Xizmatlar — ishlov beruvchilar birlashtiradigan **aniq yoʻnaltirilgan, bitta vazifani bajaruvchi modullar**. Asosiy toifalar:
+Xizmatlar** yo'naltirilgan, bir maqsadli modullar** ishlovchilar tuzadigan. Katta toifalar:
 
-### Yoʻnaltirish va kombinatsiya
+### Marshrutlash va kombinatsiya
 
-- `combo.ts` — kombinatsion yoʻnaltirilgan soʻrovlar uchun kirish nuqtasi
-- `services/autoCombo/` — 16 omilli baholash, 8 ta avtomatik yoʻnaltirish strategiyasi
-- `wildcardRouter.ts` — joker belgili yoʻnalishlarni moslashtiradi (`gpt-*`)
-- `modelFamilyFallback.ts` — T5 oilasi ichidagi zaxira mexanizmi
+- `combo.ts` — birlashtirilgan so'rovlar uchun kirish nuqtasi
+- `services/autoCombo/` — 16 faktorli skoring, 8 ta avtomatik marshrutlash strategiyasi
+- `wildcardRouter.ts` — joker belgilarga mos keladi (`gpt-*`)
+- `modelFamilyFallback.ts` — T5 oila ichidagi zaxira
 
-### Tezlikni cheklash va kvota
+### Tarifni cheklash va kvota
 
-- `rateLimitManager.ts` — har bir kalit+provayder uchun token savati
-- `usage.ts` — foydalanishni qayd etish
-- `quotaCache.ts` — xotiradagi kvota oniy tasvirlari
+- har bir kalit + provayderi uchun `rateLimitManager.ts` — token paqir
+- `usage.ts` — foydalanishni yozib olish
+- `quotaCache.ts` — xotiradagi kvotaning suratlari
 
 ### Hisob va token
 
-- `tokenRefresh.ts` — 401 holatida OAuth yangilanishi
-- `accountFallback.ts` — muqobil hisobga oʻtish
-- `sessionManager.ts` — koʻp bosqichli seans holati
+- `tokenRefresh.ts` — OAuth yangilanishi 401 da
+- `accountFallback.ts` — muqobil hisobga o'tish
+- `sessionManager.ts` — ko'p burilishli sessiya holati
 
 ### Intellekt
 
-- `intentClassifier.ts` — soʻrov maqsadini tasniflash
-- `taskAwareRouter.ts` — vazifa turi boʻyicha yoʻnaltirish
-- `thinkingBudget.ts` — fikrlash tokenlarini taqsimlash
-- `contextManager.ts` — yoʻnaltirish kontekstini kiritish
+- `intentClassifier.ts` — so‘rov maqsadini tasniflash
+- vazifa turi bo'yicha `taskAwareRouter.ts` — marshruti
+- `thinkingBudget.ts` — fikrlash belgilarini ajratadi
+- `contextManager.ts` — marshrutlash kontekstini kiritadi
 
-### Bardoshlilik
+### Chidamlilik
 
-- `resilience.ts` — qayta urinish, kechikish va uzgichni muvofiqlashtirish
-- `emergencyFallback.ts` — oxirgi chora sifatidagi zaxira mexanizmi
-- `modelDeprecation.ts` — voris modellarga avtomatik yoʻnaltirish
+- `resilience.ts` — retry, backoff, breaker orchestration
+- `emergencyFallback.ts` — oxirgi chora
+- `modelDeprecation.ts` — vorisi modellarga avtomatik marshrut
 
-### Holat
+### Davlat
 
-- `signatureCache.ts` — soʻrov imzosi boʻyicha takrorlarni yoʻqotish
-- `volumeDetector.ts` — yuklamani kamaytirish
-- `contextHandoff.ts` — seansni serializatsiya qilish
+- `signatureCache.ts` — so'rov imzosi bilan dedup
+- `volumeDetector.ts` — yukni yo'qotish
+- `contextHandoff.ts` — sessiyasini ketma-ketlashtirish
 
 ### Siqish
 
-- `compression/` (quyi katalog) — toʻliq siqish konveyeri
-- Dvigatellar, qoidalar toʻplamlari va adapterlarni qamrab oluvchi 39 ta fayl
+- `compression/` (pastki katalog) — to'liq siqish quvur liniyasi
+- Dvigatellarni, qoidalar paketlarini, adapterlarni qamrab oluvchi 39 ta fayl
 
-### Koʻnikmalar
+### Ko'nikmalar
 
-- ([SKILLS.md](./SKILLS.md) faylida yoritilgan)
+- ( [SKILLS.md](./SKILLS.md) bilan qoplangan)
 
 ### Xotira
 
-- ([MEMORY.md](./MEMORY.md) faylida yoritilgan)
+- ( [MEMORY.md](./MEMORY.md) bilan qoplangan)
 
 ---
 
-## Ijrochilar (150 ta modul)
+## Ijrochilar (150 modul)
 
-Asosan har bir provayder uchun bittadan fayl mavjud. Barcha ijrochi sinflar `BaseExecutor` sinfini kengaytiradi va farq qiladigan qismlarni qayta belgilaydi; boshqa modullar esa har bir provayderga xos yordamchi vositalardir (vosita sxemalari, fetch/TTS adapterlari, oʻziga xos xatti-harakat ishlov beruvchilari).
+Har bir provayder uchun asosan bitta fayl. Ijrochi sinflari hammasi `BaseExecutor` kengaytiradi va farq qiladigan narsalarni bekor qiladi; boshqa modullar provayder uchun yordamchilardir (asbob sxemalari, fetch/TTS adapterlari, quirk ishlovchilar).
 
-### Umumiy andozalar
+### Umumiy naqshlar
 
-Provayderlar sozlangan ijrochini qaytaruvchi `getExecutor(providerId)` orqali aniqlanadi. OpenAI/Anthropic bilan mos provayderlar `DefaultExecutor` (`executors/default.ts`) dan foydalanadi. Provayderga xos xatti-harakatlar (asosiy URL, autentifikatsiya sarlavhalari, API versiyasi) `open-sse/config/providers/` ichida sozlanadi, soʻrov tanasini oʻzgartirish esa `open-sse/translator/` ichida amalga oshiriladi.
+Provayderlar `getExecutor(providerId)` orqali hal qilinadi, bu konfiguratsiya qilingan ijrochini qaytaradi. OpenAI/Anthropic-compatible provayderlari `DefaultExecutor` (`executors/default.ts`) dan foydalanadilar. Provayderga xos xatti-harakatlar (asosiy URL, auth sarlavhalari, API versiyasi) `open-sse/config/providers/` da sozlangan, soʻrov tanasini oʻzgartirishlar esa `open-sse/translator/` da koʻrib chiqiladi.
 
-**Maxsus URL** provayder konfiguratsiyasi orqali oʻrnatiladi:
+**Maxsus URL** provayder konfiguratsiyasi orqali o'rnatiladi:
 
 ```ts
-// open-sse/config/providers/ ichidagi provayder konfiguratsiyasi
+// Provider config in open-sse/config/providers/
 export default {
   id: "together",
   baseURL: "https://api.together.xyz/v1/chat/completions",
 }
 ````
 
-**Maxsus autentifikatsiya** provayderlar reyestrining autentifikatsiya konfiguratsiyasi (API kaliti, OAuth, sarlavha profillari) orqali boshqariladi.
+**Shaxsiy autentifikatsiya** provayder registrining autentifikatsiya konfiguratsiyasi (API kaliti, OAuth, sarlavha profillari) orqali amalga oshiriladi.
 
-**Maxsus soʻrov tanasi** oʻzgartirishlari (masalan, Anthropic tomonidan `system` ning `messages` dan ajratilishi) har bir provayder uchun `open-sse/translator/` ichida roʻyxatdan oʻtkaziladi.
+**Maxsus so'rovning asosiy qismi** transformatsiyalar (masalan, `system` `messages` dan ajratuvchi Anthropic ) har bir provayder uchun `open-sse/translator/` da ro‘yxatga olinadi.
 
 ````
 
-### Ijrochi fabrikasi
+### The Executor Factory
 
-`executors/index.ts` fayli `getExecutor(providerId)` ni eksport qiladi:
+`executors/index.ts` exports `getExecutor(providerId)`:
 
 ```ts
 import { getExecutor } from "@omniroute/open-sse/executors";
@@ -370,7 +371,7 @@ const result = await executor.execute({
 });
 ````
 
-Aniqlash `ExecutorRegistry` (`executors/registry.ts`) orqali amalga oshiriladi: har bir ixtisoslashtirilgan ijrochi `executors/index.ts` ning ichki jadvalida eʼlon qilinadi va modul yuklanishida `registerExecutor(alias, instance)` orqali roʻyxatdan oʻtkaziladi; `getExecutor()` reyestrni tekshiradi va ixtisoslashtirilgan yozuvi boʻlmagan har qanday provayder uchun memoizatsiyalangan `DefaultExecutor` ga qaytadi. Toʻliq alias → ijrochi mosligi `tests/unit/executor-map-golden.test.ts` etalon testi orqali tavsiflanadi.
+Ruxsat `ExecutorRegistry` (`executors/registry.ts`) orqali o'tadi: har bir ixtisoslashtirilgan ijrochi `executors/index.ts` ning o'rnatilgan jadvalida e'lon qilinadi va modul yuklanganda `registerExecutor(alias, instance)` orqali ro'yxatga olinadi; `getExecutor()` ro'yxatga olish kitobi bilan maslahatlashadi va ixtisoslashtirilgan yozuvsiz har qanday provayder uchun xotirada saqlangan `DefaultExecutor` ga qaytadi. To'liq taxallus → ijrochi xaritalash oltin test `tests/unit/executor-map-golden.test.ts` bilan tavsiflanadi.
 
 ---
 
@@ -485,17 +486,17 @@ U quyidagilarni boshqaradi:
 
 ## Konfiguratsiya
 
-`open-sse/config/` konfiguratsiya qatlamini o‘z ichiga oladi:
+`open-sse/config/` konfiguratsiya qatlamini saqlaydi:
 
-| Fayl                          | Vazifasi                                                |
-| ----------------------------- | ------------------------------------------------------- |
-| `providerRegistry.ts`         | 374 ta provayder katalogi asosidagi chat-model reyestri |
-| `providerModels.ts`           | Model taxalluslari, formatlarni moslashtirish           |
-| `constants.ts`                | Vaqt cheklovlari, limitlar, holat kodlari               |
-| `defaultThinkingSignature.ts` | Standart Claude fikrlash imzosi                         |
-| `modelStrip.ts` (xizmatlarda) | Har bir provayder uchun maydonlarni olib tashlash       |
+| Fayl                          | Maqsad                                             |
+| ----------------------------- | -------------------------------------------------- |
+| `providerRegistry.ts`         | 394 provayder katalogi bo'yicha chat-model reestri |
+| `providerModels.ts`           | Model taxalluslari, formatni xaritalash            |
+| `constants.ts`                | Vaqt tugashi, chegaralar, holat kodlari            |
+| `defaultThinkingSignature.ts` | Standart Claude fikrlash imzosi                    |
+| `modelStrip.ts` (xizmatlarda) | Har bir provayder uchun maydonni tozalash          |
 
-### Provayder reyestri sxemasi
+### Provayder reestri sxemasi
 
 ```ts
 interface ProviderConfig {
@@ -510,7 +511,7 @@ interface ProviderConfig {
 }
 ```
 
-Modul yuklanishidagi Zod validatsiyasi barcha provayder konfiguratsiyalari yaroqli bo‘lishini ta’minlaydi.
+modul yuklanganda Zod tekshiruvi barcha provayder konfiguratsiyasining haqiqiyligini ta'minlaydi.
 
 ---
 

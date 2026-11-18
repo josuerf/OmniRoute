@@ -21,13 +21,15 @@
 # calls are `pr checks`, `pr diff`, `issue view` and `api .../jobs/<id>/logs`. GH_BIN overrides
 # the `gh` binary (tests point it at a stub).
 set -euo pipefail
+# Signature files must compare byte-for-byte across developer and CI locales (#17267).
+export LC_ALL=C
 
 usage() {
   cat >&2 <<'EOF'
 usage: ci-discriminate.sh <PR> [--ref-pr <N> | --base-red <issue>] [--repo <owner/repo>]
   --ref-pr <N>       reference PR whose reds are inherited (same base, ideally near-empty)
   --base-red <issue> base-red issue whose body/comments list the inherited reds
-  --repo <slug>      GitHub repository (default diegosouzapw/OmniRoute)
+  --repo <slug>      GitHub repository (default cheaper-inference/OmniRoute)
 env: GH_BIN (gh binary), CI_DISC_DIR (where <PR>.txt lands; default <main checkout>/_artifacts/ci-disc)
 EOF
 }
@@ -38,7 +40,7 @@ die() {
 }
 
 GH="${GH_BIN:-gh}"
-REPO="diegosouzapw/OmniRoute"
+REPO="cheaper-inference/OmniRoute"
 PR=""
 REF_PR=""
 BASE_RED=""

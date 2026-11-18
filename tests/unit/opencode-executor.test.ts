@@ -242,11 +242,12 @@ describe("OpencodeExecutor", () => {
       // announces the event stream and the JSON body is rebuilt from it.
       const result = await zenExecutor.execute(createInput("gpt-5.6-luna", false));
 
-      // #14384 routed gpt-5.6-* on Zen through /v1/responses, so #12633's rule applies:
-      // that endpoint authenticates with x-api-key, not Bearer. The point of THIS test is
-      // the absent Accept header — the auth header is asserted only so the bag is exact.
+      // #14384 routed gpt-5.6-* on Zen through /v1/responses. Under #19315 both x-api-key
+      // and Authorization Bearer are sent for console-keyed responses endpoints. The point of THIS
+      // test is the absent Accept header — the auth headers are asserted only so the bag is exact.
       assert.deepEqual(result.headers, {
         "x-api-key": "test-key",
+        Authorization: "Bearer test-key",
         "Content-Type": "application/json",
       });
       assert.deepEqual(fetchCalls[0].options.headers, result.headers);
@@ -258,12 +259,17 @@ describe("OpencodeExecutor", () => {
       assert.equal(result.headers["Accept"], "text/event-stream");
     });
 
-    it("omits authorization when credentials are missing", async () => {
+    it("authenticates without credentials through the anonymous free-tier lane", async () => {
+      // Since 2026-10-21 a gated (free) model rides buildUrl() to the anonymous
+      // /inference lane, which serves the literal `Bearer public` credential and 403s a
+      // real API key — so even a keyless request states the lane credential rather than
+      // going out with no Authorization header at all (see resolveFreeTierCredential).
       const result = await zenExecutor.execute(createInput("minimax-m2.5-free", true, null));
 
       assert.deepEqual(result.headers, {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
+        Authorization: "Bearer public",
       });
       assert.deepEqual(fetchCalls[0].options.headers, result.headers);
     });

@@ -61,7 +61,7 @@ export default function CodexServiceModeSettings({ apiKeyId }: { apiKeyId: strin
 
   return (
     <section className="mb-6 min-w-0 rounded-xl border border-border p-4 space-y-3">
-      <h3 className="font-medium">{t("title")}</h3>
+      <h3>{t("title")}</h3>
       <p className="text-sm text-text-muted">{t("description")}</p>
       <Select
         label={t("label")}
@@ -75,7 +75,7 @@ export default function CodexServiceModeSettings({ apiKeyId }: { apiKeyId: strin
       />
       <p className="text-xs text-text-muted">{t("warning")}</p>
       {error && (
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-error">
           {t(error)}
         </p>
       )}
@@ -105,7 +105,7 @@ export default function CodexServiceModeSettings({ apiKeyId }: { apiKeyId: strin
           <>
             {t("confirm", { mode: t(pending ?? mode) })}
             {error === "saveError" && (
-              <span role="alert" className="block text-red-500">
+              <span role="alert" className="block text-error">
                 {t(error)}
               </span>
             )}

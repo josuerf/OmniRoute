@@ -165,30 +165,30 @@ Artefakter fra kaldeloggen (hvis aktiveret) skrives til `${DATA_DIR}/call_logs/`
 
 ---
 
-## Dybdegående gennemgang af nøglefiler
+## Nøglefiler Deep-Dive
 
 ### chatCore.ts (5977 linjer)
 
-Den **primære request-handler**. Trods dens størrelse har den en klar struktur:
+De** hovedanmodningsbehandler** . På trods af sin størrelse har den en klar struktur:
 
 ```ts
-// Pseudostruktur for chatCore.ts
+// Pseudo-structure of chatCore.ts
 export async function handleChat(request: NextRequest) {
-  // 1. Godkendelse + CORS
+  // 1. Auth + CORS
   await authenticateRequest(request);
   applyCorsHeaders(response);
 
-  // 2. Validering af body
+  // 2. Body validation
   const body = await parseRequestBody(request);
 
-  // 3. Formatregistrering + oversættelse
+  // 3. Format detection + translation
   const sourceFormat = detectFormat(request);
   const targetFormat = getTargetFormat(providerId);
   if (needsTranslation(sourceFormat, targetFormat)) {
     body = translateRequest(body, sourceFormat, targetFormat);
   }
 
-  // 4. Combo-routing
+  // 4. Combo routing
   const targets = await resolveComboTargets(comboId, body);
   for (const target of targets) {
     try {
@@ -196,20 +196,20 @@ export async function handleChat(request: NextRequest) {
       await recordUsage(result);
       return result;
     } catch (err) {
-      // Fortsæt til næste mål
+      // Continue to next target
     }
   }
 
-  // 5. Nød-fallback
+  // 5. Emergency fallback
   return await emergencyFallback(body);
 }
 ```
 
-Selvom det er én enorm funktion, er den organiseret i **kommenterede sektioner**, der svarer til pipelineprocessens 5 trin.
+På trods af at den er en kæmpe funktion, er den organiseret i** kommenterede afsnit** at kort til 5-trins rørledningen.
 
 ### combo.ts (4456 LOC)
 
-**Routingmotoren**, der opløser en combo til ordnede mål.
+De** routing motor** der løser en kombination til bestilte mål.
 
 ```ts
 // services/combo.ts
@@ -226,46 +226,51 @@ export async function handleComboChat(body, comboId): Promise<ChatResult> {
 }
 ```
 
-Understøtter **19 routingstrategier** (se `src/shared/constants/routingStrategies.ts`):
+Understøtter** 22 rutestrategier** (se `src/shared/constants/routingStrategies.ts`):
 
-| Strategi            | Adfærd                                                                          |
-| ------------------- | ------------------------------------------------------------------------------- |
-| `priority`          | Ordnet liste med første mål først                                               |
-| `weighted`          | Sandsynlighedsbaseret efter vægt pr. mål                                        |
-| `round-robin`       | Gennemløb målene i rækkefølge                                                   |
-| `context-relay`     | Overdrag kontekst mellem mål                                                    |
-| `fill-first`        | Opfyld kvoten, før der skiftes til det næste                                    |
-| `p2c`               | Styrken ved to valgmuligheder                                                   |
-| `random`            | Ensartet tilfældig fordeling                                                    |
-| `least-used`        | Vælg målet med færrest nylige anvendelser                                       |
-| `cost-optimized`    | Billigste sunde mål først                                                       |
-| `reset-aware`       | Tager højde for udbydernes nulstillingsvinduer                                  |
-| `reset-window`      | Routing baseret på nulstillingsvinduer                                          |
-| `headroom`          | Størst resterende kvotemargen først                                             |
-| `strict-random`     | Helt ensartet (ingen kvalitetsvægtning)                                         |
-| `auto`              | Brug scoring med 16 faktorer (`autoCombo/`)                                     |
-| `lkgp`              | Sidst kendte fungerende udbyder først                                           |
-| `context-optimized` | Bedst til requests med lang kontekst                                            |
-| `fusion`            | Send parallelt til et panel, og syntetiser derefter via en dommer (`fusion.ts`) |
+| Strategi            | Opførsel                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `priority`          | Første-mål bestilt liste                                                                 |
+| `weighted`          | Probabilistisk efter målvægt                                                             |
+| `round-robin`       | Gå gennem målene i rækkefølge                                                            |
+| `context-relay`     | Udlever kontekst på tværs af mål                                                         |
+| `fill-first`        | Udfyld kvoten, før du går videre til næste                                               |
+| `p2c`               | Kraften i to valg                                                                        |
+| `random`            | Ensartet tilfældig                                                                       |
+| `least-used`        | Vælg den med færrest seneste anvendelser                                                 |
+| `cost-optimized`    | Billigste sunde mål først                                                                |
+| `reset-aware`       | Er opmærksom på udbyderens nulstillingsvinduer                                           |
+| `reset-window`      | Nulstil vinduesbaseret routing                                                           |
+| `expiry-first`      | Brug den konto, hvis kvote ville udløbe, ubrugt først                                    |
+| `headroom`          | Mest resterende kvote frihøjde først                                                     |
+| `quota-weighted`    | Spring over opbrugte konti, og træk derefter efter den resterende kvote ÷ under flyvning |
+| `strict-random`     | Virkelig ensartet (ingen kvalitetsvægtning)                                              |
+| `auto`              | Brug 16-faktor scoring (`autoCombo/`)                                                    |
+| `lkgp`              | Sidst kendte gode udbyder først                                                          |
+| `context-optimized` | Bedst til anmodninger med lang sammenhæng                                                |
+| `cache-optimized`   | Fastgør hvert genanvendeligt promptpræfiks til den samme konto (prompt-cache-hits)       |
+| `fusion`            | Ventilér ud til et panel parallelt, og syntetiser derefter via en dommer (`fusion.ts`)   |
+| `pipeline`          | Kædetrin — hvert måls output føder det næste                                             |
+| `jev`               | Opt-in: TypeSafe Jev indrømmer, hvilke rangerede poster, der kører; ellers din ordre     |
 
 ### base.ts (1170 LOC)
 
-Den **abstrakte executor**, som alle executor-klasser udvider (direkte eller gennem `DefaultExecutor` og andre underklasser). Den indeholder:
+De** abstrakt eksekutor** at hver eksekveringsklasse strækker sig (direkte eller gennem `DefaultExecutor` og andre underklasser). Den indeholder:
 
-- `buildUrl()` — standardkonstruktion af URL (underklasser tilsidesætter ved specialtilpasninger)
-- `buildHeaders()` — standardheaders (godkendelse, content-type)
-- `transformRequest()` — videresender uændret som standard
-- `execute()` — det primære HTTP-loop med gentagne forsøg/backoff/breaker
+- `buildUrl()` — standard URL -konstruktion (underklasser tilsidesætter for brugerdefineret)
+- `buildHeaders()` — standardoverskrifter (auth, indholdstype)
+- `transformRequest()` — pass-through som standard
+- `execute()` — den vigtigste HTTP løkke med retry/backoff/breaker
 
 ```ts
 // open-sse/executors/default.ts
 export class DefaultExecutor extends BaseExecutor {
-  // Håndterer alle OpenAI/Anthropic-kompatible udbydere
-  // Udbydere registrerer konfigurationer (URL, godkendelse, headers), men deler executor-logik
+  // Handles all OpenAI/Anthropic-compatible providers
+  // Providers register configurations (URL, auth, headers) but share executor logic
 }
 ```
 
-Udbyderspecifik adfærd (godkendelsesheaders, basis-URL, versionsheaders) konfigureres via udbyderregistret og ikke via separate executor-klasser.
+Udbyderspecifik adfærd (auth-headers, base URL, version headers) konfigureres via udbyderregistret, ikke separate eksekveringsklasser.
 
 ````
 
@@ -273,88 +278,88 @@ Udbyderspecifik adfærd (godkendelsesheaders, basis-URL, versionsheaders) konfig
 
 ## Tjenester (117 moduler)
 
-Tjenester er **fokuserede moduler med ét enkelt formål**, som handlers sammensætter. De overordnede kategorier:
+Tjenester er** fokuserede moduler til en enkelt formål** som handlere komponerer. De store kategorier:
 
-### Routing og kombination
+### Routing & Combo
 
 - `combo.ts` — indgangspunkt for combo-routede anmodninger
-- `services/autoCombo/` — scoring med 16 faktorer, 8 automatiske routingstrategier
-- `wildcardRouter.ts` — matcher wildcard-ruter (`gpt-*`)
-- `modelFamilyFallback.ts` — T5-fallback inden for samme familie
+- `services/autoCombo/` — 16-faktor scoring, 8 automatiske routingstrategier
+- `wildcardRouter.ts` — matcher jokertegn ruter (`gpt-*`)
+- `modelFamilyFallback.ts` — T5 inden for familien fallback
 
-### Hastighedsbegrænsning og kvote
+### Satsbegrænsning og kvote
 
-- `rateLimitManager.ts` — token bucket pr. nøgle+udbyder
-- `usage.ts` — registrering af forbrug
-- `quotaCache.ts` — kvoteøjebliksbilleder i hukommelsen
+- `rateLimitManager.ts` — token-bøtte pr. nøgle + udbyder
+- `usage.ts` — brugsoptagelse
+- `quotaCache.ts` — kvote-øjebliksbilleder i hukommelsen
 
 ### Konto og token
 
-- `tokenRefresh.ts` — OAuth-fornyelse ved 401
-- `accountFallback.ts` — skift til en alternativ konto
-- `sessionManager.ts` — sessionstilstand på tværs af flere interaktioner
+- `tokenRefresh.ts` — OAuth opdatering på 401
+- `accountFallback.ts` — skifte til alternativ konto
+- `sessionManager.ts` — multi-turn session tilstand
 
 ### Intelligens
 
-- `intentClassifier.ts` — klassificerer anmodningens hensigt
-- `taskAwareRouter.ts` — router efter opgavetype
-- `thinkingBudget.ts` — allokerer tokens til ræsonnering
-- `contextManager.ts` — injicerer routingkontekst
+- `intentClassifier.ts` — klassificere anmodning hensigt
+- `taskAwareRouter.ts` — rute efter opgavetype
+- `thinkingBudget.ts` — tildele tænkepoletter
+- `contextManager.ts` — injicere routingkontekst
 
 ### Modstandsdygtighed
 
-- `resilience.ts` — orkestrering af genforsøg, backoff og circuit breaker
-- `emergencyFallback.ts` — fallback som sidste udvej
-- `modelDeprecation.ts` — automatisk routing til efterfølgermodeller
+- `resilience.ts` — forsøg igen, backoff, breaker-orkestrering
+- `emergencyFallback.ts` — sidste udvej fallback
+- `modelDeprecation.ts` — auto-rute til efterfølgende modeller
 
 ### Tilstand
 
-- `signatureCache.ts` — deduplikering efter anmodningssignatur
+- `signatureCache.ts` — dedup ved anmodningssignatur
 - `volumeDetector.ts` — belastningsreduktion
-- `contextHandoff.ts` — serialisering af sessioner
+- `contextHandoff.ts` — session serialisering
 
-### Komprimering
+### Kompression
 
-- `compression/` (undermappe) — komplet komprimeringspipeline
-- 39 filer, der dækker motorer, regelsæt og adaptere
+- `compression/` (undermappe) — fuld kompressionspipeline
+- 39 filer, der dækker motorer, regelpakker, adaptere
 
 ### Færdigheder
 
-- (beskrevet i [SKILLS.md](./SKILLS.md))
+- (dækket med [SKILLS.md](./SKILLS.md) )
 
 ### Hukommelse
 
-- (beskrevet i [MEMORY.md](./MEMORY.md))
+- (dækket med [MEMORY.md](./MEMORY.md) )
 
 ---
 
-## Eksekveringsmoduler (150 moduler)
+## Eksekutører (150 moduler)
 
-For det meste én fil pr. udbyder. Eksekveringsklasserne udvider alle `BaseExecutor` og tilsidesætter det, der er forskelligt; de øvrige moduler er udbyderspecifikke hjælpefunktioner (værktøjsskemaer, fetch-/TTS-adaptere og håndtering af særheder).
+For det meste én fil pr. udbyder. Eksekutørklasserne udvider alle `BaseExecutor` og tilsidesætter det, der adskiller sig; de andre moduler er hjælpere pr. udbyder (værktøjsskemaer, fetch/TTS adaptere, quirk-handlere).
 
 ### Fælles mønstre
 
-Udbydere opløses via `getExecutor(providerId)`, som returnerer det konfigurerede eksekveringsmodul. OpenAI-/Anthropic-kompatible udbydere bruger `DefaultExecutor` (`executors/default.ts`). Udbyderspecifik adfærd (basis-URL, godkendelsesheadere, API-version) konfigureres i `open-sse/config/providers/`, mens transformationer af anmodningens body håndteres i `open-sse/translator/`.
+Udbydere løses via `getExecutor(providerId)`, som returnerer den konfigurerede executor. OpenAI/Anthropic-compatible udbydere bruger `DefaultExecutor` (`executors/default.ts`). Udbyderspecifik adfærd (base URL, auth-headers, API version) er konfigureret i `open-sse/config/providers/`, mens anmodningsteksttransformationer håndteres i `open-sse/translator/`.
 
-**Brugerdefineret URL** angives via udbyderkonfigurationen:
+**Brugerdefineret URL** indstilles via udbyderens konfiguration:
 
 ```ts
-// Udbyderkonfiguration i open-sse/config/providers/
+// Provider config in open-sse/config/providers/
 export default {
   id: "together",
   baseURL: "https://api.together.xyz/v1/chat/completions",
 }
 ````
 
-**Brugerdefineret godkendelse** håndteres gennem udbyderregistrets godkendelseskonfiguration (API-nøgle, OAuth og headerprofiler).
+**Brugerdefineret godkendelse** håndteres gennem udbyderregistrets godkendelseskonfiguration (API key, OAuth, header-profiler).
 
-**Brugerdefinerede transformationer af anmodningens body** (f.eks. at Anthropic adskiller `system` fra `messages`) registreres pr. udbyder i `open-sse/translator/`.
+**Tilpasset anmodningstekst** transformationer (f.eks. Anthropic, der adskiller `system` fra `messages`) registreres pr. udbyder i `open-sse/translator/`.
 
 ````
 
-### Eksekveringsfabrikken
+### The Executor Factory
 
-`executors/index.ts` eksporterer `getExecutor(providerId)`:
+`executors/index.ts` exports `getExecutor(providerId)`:
 
 ```ts
 import { getExecutor } from "@omniroute/open-sse/executors";
@@ -366,7 +371,7 @@ const result = await executor.execute({
 });
 ````
 
-Opløsningen foregår gennem `ExecutorRegistry` (`executors/registry.ts`): Hvert specialiseret eksekveringsmodul deklareres i den indbyggede tabel i `executors/index.ts` og registreres via `registerExecutor(alias, instance)`, når modulet indlæses; `getExecutor()` slår op i registret og falder tilbage til et memoiseret `DefaultExecutor` for enhver udbyder uden en specialiseret post. Den fulde tilknytning fra alias → eksekveringsmodul er beskrevet af golden-testen `tests/unit/executor-map-golden.test.ts`.
+Opløsning går gennem `ExecutorRegistry` (`executors/registry.ts`): hver specialiseret eksekutør erklæres i den indbyggede tabel i `executors/index.ts` og registreres via `registerExecutor(alias, instance)` ved modulbelastning; `getExecutor()` konsulterer registreringsdatabasen og falder tilbage til en husket `DefaultExecutor` for enhver udbyder uden en specialiseret post. Den fulde alias → executor mapping er karakteriseret ved den gyldne test `tests/unit/executor-map-golden.test.ts`.
 
 ---
 
@@ -485,13 +490,13 @@ Dette håndterer:
 
 | Fil                           | Formål                                           |
 | ----------------------------- | ------------------------------------------------ |
-| `providerRegistry.ts`         | Chatmodelregister for kataloget med 374 udbydere |
-| `providerModels.ts`           | Modelaliasser, formattilknytning                 |
+| `providerRegistry.ts`         | Chat-modelregistrering over 394-udbyderkataloget |
+| `providerModels.ts`           | Modelaliaser, formatkortlægning                  |
 | `constants.ts`                | Timeouts, grænser, statuskoder                   |
-| `defaultThinkingSignature.ts` | Claudes standardsignatur for tænkning            |
-| `modelStrip.ts` (i services)  | Fjernelse af felter pr. udbyder                  |
+| `defaultThinkingSignature.ts` | Standard Claude tænkende signatur                |
+| `modelStrip.ts` (i tjenester) | Per-udbyder feltstripping                        |
 
-### Skema for udbyderregister
+### Udbyderregistreringsskema
 
 ```ts
 interface ProviderConfig {
@@ -506,7 +511,7 @@ interface ProviderConfig {
 }
 ```
 
-Zod-validering ved modulindlæsning sikrer, at alle udbyderkonfigurationer er gyldige.
+Zod validering ved modulindlæsning sikrer, at alle udbyderkonfigurationer er gyldige.
 
 ---
 

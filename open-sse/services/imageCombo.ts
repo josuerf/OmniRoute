@@ -8,6 +8,7 @@
  *
  * #9239
  */
+import type { PrepareFalInput } from "../handlers/fal/compatibility.ts";
 import { getComboByName, getCombos } from "@/lib/db/combos";
 import { resolveComboTargets } from "@omniroute/open-sse/services/combo.ts";
 import { getImageModelEntry, parseImageModel } from "@omniroute/open-sse/config/imageRegistry.ts";
@@ -16,6 +17,7 @@ import {
   clearRecoveredProviderState,
 } from "@/sse/services/auth";
 import { isAllRateLimitedCredentials } from "@/app/api/v1/_shared/rateLimit";
+import { imageQuotaPreflightOptions } from "@/sse/services/imageQuotaSelectionPolicy";
 import {
   isKeyScopeBlockedCredentials,
   scopeComboTargetsForKey,
@@ -24,12 +26,21 @@ import {
 import { handleImageGeneration } from "@omniroute/open-sse/handlers/imageGeneration.ts";
 import { attachOmniRouteMetaHeaders } from "@/domain/omnirouteResponseMeta";
 import { generateRequestId } from "@/shared/utils/requestId";
-import { calculateModalCost } from "@/lib/usage/costCalculator";
-import { runImageRequestWithAccounting } from "@/lib/usage/imageRequestAccounting";
+import {
+  imageRequestBill,
+  runImageRequestWithAccounting,
+} from "@/lib/usage/imageRequestAccounting";
 import { toJsonErrorPayload } from "@/shared/utils/upstreamError";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import * as logger from "@/sse/utils/logger";
+import {
+  isTerminalMediaFailure,
+  narrowMediaConnectionScope,
+  pinnedConnectionIds,
+} from "./mediaComboFallback.ts";
+import { projectComboForEndpoint } from "./combo/endpointCapabilities.ts";
+import { orderCapabilityTargets } from "./combo/capabilityTargetOrder.ts";
 
 /**
  * Caller-facing shape of handleImageGeneration(). The handler is untyped and
@@ -43,6 +54,8 @@ type ImageGenerationResult =
 /** Minimum shape a combo target must expose to be iterated. */
 export interface ImageComboTarget {
   modelStr: string;
+  connectionId?: string | null;
+  allowedConnectionIds?: string[] | null;
 }
 
 /** Normalized per-target dispatch result (success or classified failure). */
@@ -95,7 +108,8 @@ export interface RunImageComboTargetsOptions<T extends ImageComboTarget> {
  *
  *  - missing credentials, DB errors, and rate-limited accounts are skipped
  *    (fall through to the next target) rather than terminating the request;
- *  - a 400/401/403 from an actual dispatch attempt is terminal (stop iterating);
+ *  - a 400/401/403 from an actual dispatch attempt advances only when a later
+ *    target uses a distinct provider/account; otherwise it is terminal;
  *  - any other dispatch failure (429/5xx) is non-terminal (try the next target);
  *  - the first success wins.
  *
@@ -111,7 +125,8 @@ export async function runImageComboTargets<T extends ImageComboTarget>(
   let lastError: { status: number; error: string } | null = null;
   let fallbackCount = 0;
 
-  for (const target of targets) {
+  for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
+    const target = targets[targetIndex];
     const { provider, model } = opts.resolveProvider(target);
     if (!provider) {
       lastError = { status: 400, error: `Invalid image model: ${target.modelStr}` };
@@ -170,9 +185,21 @@ export async function runImageComboTargets<T extends ImageComboTarget>(
     const status = result.status || 500;
     const error = typeof result.error === "string" ? result.error : failureLabel;
 
-    // Terminal failures (400 bad model, 403 banned, etc.) — stop iterating
-    // Non-terminal failures (429, 5xx) — try next target
-    if (status === 400 || status === 403 || status === 401) {
+    // Bad-model/auth failures are local to the provider account that handled
+    // the attempt. A genuinely different provider/account may still succeed;
+    // retrying the same unpinned account would only duplicate the failure.
+    if (
+      isTerminalMediaFailure({
+        status,
+        provider,
+        credentials,
+        target,
+        remaining: targets.slice(targetIndex + 1).map((candidate) => ({
+          target: candidate,
+          provider: opts.resolveProvider(candidate).provider,
+        })),
+      })
+    ) {
       return { outcome: "terminal", provider, status, error, fallbackCount };
     }
 
@@ -181,6 +208,21 @@ export async function runImageComboTargets<T extends ImageComboTarget>(
   }
 
   return { outcome: "exhausted", fallbackCount, lastError };
+}
+
+/** Credentials for one image combo target, honouring the key scope and the target's account pin. */
+function resolveImageTargetCredentials(
+  provider: string,
+  target: ImageComboTarget,
+  allowedConnections: string[] | null
+) {
+  return getProviderCredentialsWithQuotaPreflight(
+    provider,
+    null,
+    narrowMediaConnectionScope(allowedConnections, pinnedConnectionIds(target)),
+    parseImageModel(target.modelStr).model,
+    imageQuotaPreflightOptions(provider)
+  );
 }
 
 /**
@@ -195,13 +237,15 @@ async function resolveImageComboTargets(comboName: string, keyScope: ComboKeySco
   }
 
   const allCombos = await getCombos();
-  const targets = resolveComboTargets(combo as never, allCombos as never);
+  const projected = projectComboForEndpoint(combo as never, allCombos as never, "images");
+  const targets = resolveComboTargets(projected.combo as never, projected.allCombos as never);
   if (!targets || targets.length === 0) {
+    const message =
+      Array.isArray(combo.models) && combo.models.length > 0
+        ? `No images-capable targets in combo "${comboName}"`
+        : `Combo "${comboName}" has no usable targets`;
     return {
-      response: errorResponse(
-        HTTP_STATUS.BAD_REQUEST,
-        `Combo "${comboName}" has no usable targets`
-      ),
+      response: errorResponse(HTTP_STATUS.BAD_REQUEST, message),
     };
   }
 
@@ -222,7 +266,16 @@ async function resolveImageComboTargets(comboName: string, keyScope: ComboKeySco
       ),
     };
   }
-  return { targets: scoped.targets, allowedConnections: scoped.allowedConnections };
+  return {
+    targets: orderCapabilityTargets({
+      comboName,
+      endpoint: "images",
+      strategy: projected.combo.strategy,
+      targets: scoped.targets,
+    }),
+    allowedConnections: scoped.allowedConnections,
+    strategy: projected.combo.strategy || "priority",
+  };
 }
 
 /**
@@ -238,6 +291,7 @@ export async function executeImageCombo(
   comboName: string,
   body: Record<string, unknown>,
   auth: {
+    prepareFalInput?: PrepareFalInput | null;
     request: Request;
     policy: { apiKeyInfo?: { id?: string; name?: string } | null };
     /** GHSA-3w2r: the caller key's scope; omitted = unrestricted (unchanged). */
@@ -249,7 +303,7 @@ export async function executeImageCombo(
   // 1–2. Resolve combo targets, filtered to images-capable ones the key may use
   const resolved = await resolveImageComboTargets(comboName, auth.keyScope);
   if ("response" in resolved) return resolved.response;
-  const { targets: imageTargets, allowedConnections } = resolved;
+  const { targets: imageTargets, allowedConnections, strategy } = resolved;
 
   // 3. Iterate targets in priority order (first healthy target wins).
   //    The skip / terminal classification lives in the shared runImageComboTargets
@@ -257,8 +311,8 @@ export async function executeImageCombo(
   //    /v1/images/edits can reuse the exact same iteration semantics (#12547).
   const run = await runImageComboTargets(imageTargets, {
     resolveProvider: (target) => parseImageModel(target.modelStr),
-    resolveCredentials: (provider) =>
-      getProviderCredentialsWithQuotaPreflight(provider, null, allowedConnections),
+    resolveCredentials: (provider, target) =>
+      resolveImageTargetCredentials(provider, target, allowedConnections),
     dispatch: async ({ target, provider, model, credentials }) =>
       (await runImageRequestWithAccounting(
         {
@@ -268,10 +322,11 @@ export async function executeImageCombo(
           apiKeyInfo: auth.policy?.apiKeyInfo,
           credentials,
           startTime,
-          comboStrategy: "priority",
+          comboStrategy: strategy,
         },
         () =>
           handleImageGeneration({
+            prepareFalInput: auth.prepareFalInput,
             body: { ...body, model: target.modelStr },
             credentials,
             log,
@@ -296,9 +351,8 @@ export async function executeImageCombo(
     // handleImageGeneration() already returns the public OpenAI images payload
     // ({ created, data: [...] }); count the images at that level (#12268).
     const payload = run.data as { created?: number; data?: unknown[] } | unknown[];
-    const images = Array.isArray(payload) ? payload : payload?.data;
-    const n = Math.max(Number(body.n) || 1, images?.length || 0);
-    const costUsd = await calculateModalCost("image", selectedProvider, selectedModel, { n });
+    const bill = imageRequestBill(payload);
+    const costUsd = bill?.costUsd ?? null;
 
     const headers = new Headers({ "Content-Type": "application/json" });
     attachOmniRouteMetaHeaders(headers, {
@@ -306,10 +360,12 @@ export async function executeImageCombo(
       model: selectedModel,
       costUsd,
       latencyMs: Date.now() - startTime,
-      requestId: generateRequestId(),
-      strategy: "priority",
+      requestId: bill?.requestId || generateRequestId(),
+      strategy,
       fallbackAttempts: run.fallbackCount,
     });
+    if (costUsd === null) headers.delete("X-OmniRoute-Response-Cost");
+    headers.set("X-OmniRoute-Cost-Status", costUsd === null ? "unknown" : "known");
 
     // Return the handler payload unchanged so the combo path matches the
     // direct-model path byte-for-byte; re-wrap only if a handler ever yields
