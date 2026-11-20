@@ -139,6 +139,8 @@ interface AccountQuotaConnection {
   id: string;
   provider: string;
   lookupFailed?: boolean;
+  /** Terminal revocation (testStatus expired / lastErrorType token_revoked). */
+  tokenRevoked?: boolean;
   providerSpecificData?: unknown;
   /**
    * Email da conta upstream (ex.: conta Claude). Só é preenchido quando a chave
@@ -309,7 +311,11 @@ function getConnectionIdentity(
 ): AccountQuotaConnection | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as JsonRecord;
-  if (record.isActive === false) return null;
+  // A connection parked by revocation is reported even when deactivated, so the
+  // owner learns the token must be re-pasted instead of the account vanishing.
+  const tokenRevoked =
+    record.provider === "claude" && record.lastErrorType === "token_revoked";
+  if (record.isActive === false && !tokenRevoked) return null;
 
   const id = typeof record.id === "string" ? record.id : "";
   const provider = typeof record.provider === "string" ? record.provider : "";
@@ -321,6 +327,7 @@ function getConnectionIdentity(
     id,
     provider,
     providerSpecificData: record.providerSpecificData,
+    ...(tokenRevoked && { tokenRevoked: true }),
     ...(email && { email }),
   };
 }
@@ -396,6 +403,18 @@ async function resolveConnectionAccountQuota(
       ...(connection.email && { email: connection.email }),
       shared: true,
       ...unavailableAccountQuota("connection_lookup_failed"),
+    };
+  }
+
+  // Terminal revocation wins over the skipped-usage path (`not_available`) so the
+  // portal can ask for a new token. Contract: exact string `token_revoked`.
+  if (connection.tokenRevoked) {
+    return {
+      provider: connection.provider,
+      connectionId: connection.id,
+      ...(connection.email && { email: connection.email }),
+      shared: true,
+      ...unavailableAccountQuota("token_revoked"),
     };
   }
 
