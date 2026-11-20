@@ -3218,10 +3218,16 @@ export async function markAccountUnavailable(
     // A still-valid access token after a successful refresh is not "expired".
     // A follow-up 401 (timeout, hop, race) must cooldown, not park the account.
     const tokenExpiryMs = Date.parse(String(conn?.tokenExpiresAt || conn?.expiresAt || ""));
+    // A claude connection with NO refresh token (long-lived `claude setup-token`
+    // credential) cannot have been "just refreshed": a 401 means the token was
+    // revoked/invalid, so it stays terminal regardless of any stored expiry.
+    const isClaudeWithoutRefreshToken =
+      provider === "claude" && status === 401 && !!conn && !conn.refreshToken;
     if (
       terminalStatus === "expired" &&
       Number.isFinite(tokenExpiryMs) &&
-      tokenExpiryMs > Date.now() + 60_000
+      tokenExpiryMs > Date.now() + 60_000 &&
+      !isClaudeWithoutRefreshToken
     ) {
       terminalStatus = null;
     }
@@ -3372,9 +3378,12 @@ export async function markAccountUnavailable(
       return { shouldFallback: true, cooldownMs };
     }
 
+    const claudeTokenRevoked = isClaudeWithoutRefreshToken && terminalStatus === "expired";
     const baseUpdate = {
-      lastError: errorMsg,
-      lastErrorType: providerErrorType,
+      lastError: claudeTokenRevoked
+        ? "Long-lived Claude token revoked or invalid (401) - generate a new one with `claude setup-token`"
+        : errorMsg,
+      lastErrorType: claudeTokenRevoked ? "token_revoked" : providerErrorType,
       errorCode: status,
       lastErrorAt: new Date().toISOString(),
       backoffLevel: newBackoffLevel ?? backoffLevel,
