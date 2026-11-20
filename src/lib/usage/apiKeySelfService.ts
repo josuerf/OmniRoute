@@ -1,4 +1,9 @@
 import { hasSelfAccountQuotaScope, hasSelfUsageScope } from "@/shared/constants/selfServiceScopes";
+import {
+  getClaudeHeaderQuota,
+  isClaudeHeaderQuotaConnection,
+  toQuotaWindows,
+} from "@/lib/quota/claudeHeaderQuota";
 import { supportsProviderQuota } from "@/shared/utils/providerQuotaVisibility";
 
 type JsonRecord = Record<string, unknown>;
@@ -313,8 +318,7 @@ function getConnectionIdentity(
   const record = value as JsonRecord;
   // A connection parked by revocation is reported even when deactivated, so the
   // owner learns the token must be re-pasted instead of the account vanishing.
-  const tokenRevoked =
-    record.provider === "claude" && record.lastErrorType === "token_revoked";
+  const tokenRevoked = record.provider === "claude" && record.lastErrorType === "token_revoked";
   if (record.isActive === false && !tokenRevoked) return null;
 
   const id = typeof record.id === "string" ? record.id : "";
@@ -425,6 +429,35 @@ async function resolveConnectionAccountQuota(
       ...(connection.email && { email: connection.email }),
       shared: true,
       ...unavailableAccountQuota("not_supported"),
+    };
+  }
+
+  // Setup-token claude connections cannot call the usage endpoint: serve the last
+  // quota observed in the upstream response headers (same window keys as OAuth).
+  if (
+    connection.provider === "claude" &&
+    isClaudeHeaderQuotaConnection(connection.providerSpecificData)
+  ) {
+    const reading = getClaudeHeaderQuota(connection.id, connection.providerSpecificData);
+    const headerQuotas = normalizeQuotaWindows(toQuotaWindows(reading).quotas);
+    if (!reading || !headerQuotas) {
+      return {
+        provider: connection.provider,
+        connectionId: connection.id,
+        ...(connection.email && { email: connection.email }),
+        shared: true,
+        ...unavailableAccountQuota("not_available"),
+      };
+    }
+    return {
+      provider: connection.provider,
+      connectionId: connection.id,
+      ...(connection.email && { email: connection.email }),
+      shared: true,
+      available: true,
+      quotas: headerQuotas,
+      quotaSource: "response_headers",
+      observedAt: new Date(reading.observedAt).toISOString(),
     };
   }
 
