@@ -41,6 +41,7 @@ import {
 } from "../services/openrouterFreeWindow.ts";
 import { gateOutboundRequest } from "../services/wafRateLimit.ts";
 import { ClaudeUsageLimitGuard } from "./claudeUsageLimit.ts";
+import { recordClaudeHeaderQuota } from "../../src/lib/quota/claudeHeaderQuota.ts";
 import { shouldSkipIntraRetryFor429 } from "./rateLimitIntraRetry.ts";
 import type { PoolConfig } from "../services/sessionPool/types.ts";
 import type { Session } from "../services/sessionPool/session.ts";
@@ -1652,6 +1653,15 @@ export class BaseExecutor {
               }
             }
           }
+        }
+
+        // Setup-token claude connections have no usage endpoint: keep the 5h/7d
+        // window state carried by the response headers (headers only, no body read;
+        // no-op for OAuth connections, never throws).
+        if (this.provider === "claude") {
+          recordClaudeHeaderQuota(activeCredentials.connectionId, response.headers, Date.now(), {
+            providerSpecificData: activeCredentials.providerSpecificData,
+          });
         }
 
         // Claude OAuth usage wall: accept the slow-lane offer / claim the weekly
