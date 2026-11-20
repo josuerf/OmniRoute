@@ -123,3 +123,24 @@ test("regression: OAuth / no scopes / bad input are no-ops and never throw", () 
   });
   assert.equal(boom, null);
 });
+
+test("status headers that are long or have odd characters are dropped", () => {
+  const r = parseClaudeUnifiedHeaders(
+    {
+      "anthropic-ratelimit-unified-5h-utilization": "0.1",
+      "anthropic-ratelimit-unified-5h-status": "x".repeat(200),
+      "anthropic-ratelimit-unified-status": "allowed<script>",
+    },
+    NOW
+  )!;
+  assert.equal(r.fiveHour!.status, null);
+  assert.equal(r.status, undefined);
+  const ok = parseClaudeUnifiedHeaders(
+    {
+      "anthropic-ratelimit-unified-5h-utilization": "0.1",
+      "anthropic-ratelimit-unified-5h-status": " Allowed_Warning ",
+    },
+    NOW
+  )!;
+  assert.equal(ok.fiveHour!.status, "allowed_warning");
+});

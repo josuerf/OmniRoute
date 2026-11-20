@@ -64,13 +64,21 @@ function parseResetIso(raw: string | null): string | null {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
+const STATUS_PATTERN = /^[a-z0-9_-]{1,32}$/;
+
+/** Header status is persisted: keep only short [a-z0-9_-] tokens (e.g. allowed_warning). */
+function sanitizeStatus(raw: string | null): string | null {
+  const v = raw?.trim().toLowerCase();
+  return v && STATUS_PATTERN.test(v) ? v : null;
+}
+
 function parseWindow(h: HeaderSource, util: string, reset: string, status: string) {
   const utilization = parseUtilizationPercent(getHeader(h, util));
   if (utilization === null) return undefined;
   return {
     utilization,
     resetAt: parseResetIso(getHeader(h, reset)),
-    status: getHeader(h, status)?.trim().toLowerCase() || null,
+    status: sanitizeStatus(getHeader(h, status)),
   } satisfies ClaudeHeaderWindow;
 }
 
@@ -84,7 +92,7 @@ export function parseClaudeUnifiedHeaders(
   const fiveHour = parseWindow(headers, h.utilization5h, h.reset5h, h.status5h);
   const sevenDay = parseWindow(headers, h.utilization7d, h.reset7d, h.status7d);
   if (!fiveHour && !sevenDay) return null;
-  const status = getHeader(headers, h.status)?.trim().toLowerCase();
+  const status = sanitizeStatus(getHeader(headers, h.status));
   return {
     ...(fiveHour && { fiveHour }),
     ...(sevenDay && { sevenDay }),
@@ -204,6 +212,10 @@ async function defaultPersist(connectionId: string, stored: JsonRecord) {
     await import("../db/providers.ts");
   const conn = (await getProviderConnectionById(connectionId)) as JsonRecord | null;
   const psd = conn?.providerSpecificData;
+  // Read-modify-write of providerSpecificData without a transaction: the psd is re-read
+  // right above, so the race window is a few ms; a concurrent writer of another psd key
+  // could lose that key. Accepted (writes here are throttled to 1/min per connection and
+  // the lost data is only a cache of the quota reading or probe stamp).
   if (!psd || typeof psd !== "object" || !isClaudeHeaderQuotaConnection(psd)) return;
   // Only providerSpecificData is sent; accessToken/refreshToken are not in the patch.
   await updateProviderConnection(connectionId, {

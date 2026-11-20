@@ -179,6 +179,8 @@ export async function linkClaudeSetupTokenConnection(input: LinkClaudeSetupToken
   }
 }
 
+// In-process only: it serializes pastes inside this Node process. Multiple instances
+// sharing one DB are not covered (accepted: the deployment is a single process).
 const ownerLocks = new Map<string, Promise<void>>();
 
 async function linkUnlocked(input: LinkClaudeSetupTokenInput): Promise<{
