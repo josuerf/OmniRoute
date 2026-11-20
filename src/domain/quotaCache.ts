@@ -16,6 +16,11 @@
  * @module domain/quotaCache
  */
 
+import {
+  getClaudeHeaderQuota,
+  isClaudeHeaderQuotaConnection,
+  toQuotaWindows,
+} from "@/lib/quota/claudeHeaderQuota";
 import { getUsageForProvider } from "@omniroute/open-sse/services/usage.ts";
 import { getCachedProviderConnectionById } from "@/lib/db/readCache";
 import { resolveProxyForConnection } from "@/lib/db/settings";
@@ -995,6 +1000,20 @@ async function refreshEntry(entry: QuotaCacheEntry) {
         usage.quotas,
         usage.modelQuotas && typeof usage.modelQuotas === "object" ? usage.modelQuotas : {}
       );
+    } else if (
+      entry.provider === "claude" &&
+      isClaudeHeaderQuotaConnection(connection.providerSpecificData)
+    ) {
+      // Setup-token connection: no usage endpoint. The entry came from response
+      // headers; keep it only while the reading is fresh, otherwise stop weighing it.
+      const headerQuotas = toQuotaWindows(
+        getClaudeHeaderQuota(entry.connectionId, connection.providerSpecificData)
+      ).quotas;
+      if (Object.keys(headerQuotas).length > 0) {
+        setQuotaCache(entry.connectionId, entry.provider, headerQuotas);
+      } else {
+        cache.delete(entry.connectionId);
+      }
     }
   } catch (err) {
     console.warn(
