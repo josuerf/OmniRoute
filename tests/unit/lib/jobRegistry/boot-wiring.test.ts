@@ -46,4 +46,9 @@ test("initCloudSync: both budget and token-health jobs are registered", () => {
     /registerTokenHealthCheck\s*\(/,
     "src/lib/initCloudSync.ts must register the token health check job"
   );
+  assert.match(
+    source,
+    /registerClaudeSetupTokenProbe\s*\(/,
+    "src/lib/initCloudSync.ts must register the claude setup-token probe job"
+  );
 });
