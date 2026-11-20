@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
+import { resolveClaudeMessagesBaseUrl } from "./claudeUpstreamUrl.ts";
 import { mapNvidiaGlm52ReasoningParams } from "./base/reasoningEffort.ts";
 import { PROVIDERS, OAUTH_ENDPOINTS } from "../config/constants.ts";
 import { getAccessToken } from "../services/tokenRefresh.ts";
@@ -437,6 +438,7 @@ export class DefaultExecutor extends BaseExecutor {
         });
       }
       case "claude":
+        return `${resolveClaudeMessagesBaseUrl(this.config.baseUrl)}?beta=true`;
       case "glm":
       case "glmt":
       case "kimi-coding":
