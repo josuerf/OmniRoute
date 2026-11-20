@@ -1,5 +1,6 @@
 import { DefaultExecutor } from "@omniroute/open-sse/executors/default.ts";
 import { getRegistryEntry } from "@omniroute/open-sse/config/providerRegistry.ts";
+import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { recordClaudeHeaderQuota } from "@/lib/quota/claudeHeaderQuota";
 import { CLAUDE_SETUP_TOKEN_AUTH_METHOD } from "@/lib/oauth/utils/claudeSetupToken";
 
@@ -37,6 +38,8 @@ export interface ClaudeProbeDeps {
   getConnection?: (id: string) => Promise<JsonRecord | null>;
   updateConnection?: (id: string, patch: JsonRecord) => Promise<unknown>;
   recordQuota?: typeof recordClaudeHeaderQuota;
+  /** Per-connection egress proxy (same resolution as the token health check). */
+  resolveProxy?: (connectionId: string) => Promise<{ proxyConfig: unknown; blocked: boolean }>;
   log?: (message: string) => void;
 }
 
@@ -95,6 +98,11 @@ async function defaultMarkRevoked(connectionId: string, model: string) {
   );
 }
 
+async function defaultResolveProxy(connectionId: string) {
+  const { resolveGuardedProxyConfig } = await import("@/lib/tokenHealthCheckProxyGuard");
+  return resolveGuardedProxyConfig(connectionId, "claude");
+}
+
 async function defaultGetConnection(id: string) {
   const { getProviderConnectionById } = await import("@/lib/db/providers");
   return (await getProviderConnectionById(id)) as JsonRecord | null;
@@ -120,6 +128,10 @@ export async function probeClaudeSetupTokenConnection(
   const updateConnection = deps.updateConnection ?? defaultUpdateConnection;
   const markRevoked = deps.markRevoked ?? defaultMarkRevoked;
   const recordQuota = deps.recordQuota ?? recordClaudeHeaderQuota;
+  // With an injected fetch (tests) no proxy lookup happens unless resolveProxy is given.
+  const resolveProxy =
+    deps.resolveProxy ??
+    (deps.fetch ? async () => ({ proxyConfig: null, blocked: false }) : defaultResolveProxy);
   const model = getClaudeProbeModel();
   const psd = toRecord(conn.providerSpecificData);
 
@@ -135,16 +147,24 @@ export async function probeClaudeSetupTokenConnection(
   let headers: Headers;
   try {
     const url = executor.buildUrl(model, false, 0, credentials as never);
-    const res = await doFetch(url, {
-      method: "POST",
-      headers: executor.buildHeaders(credentials as never, false, null, model),
-      body: JSON.stringify({
-        model,
-        max_tokens: 1,
-        messages: [{ role: "user", content: "." }],
-      }),
-      signal: AbortSignal.timeout(deps.timeoutMs ?? CLAUDE_SETUP_TOKEN_PROBE_TIMEOUT_MS),
-    });
+    // Fail closed like the executor: a blocked proxy assignment must not fall back to direct egress.
+    const { proxyConfig, blocked } = await resolveProxy(conn.id);
+    if (blocked) {
+      log(`${LOG_PREFIX} connection ${conn.id}: proxy assignment blocked; will retry next cycle`);
+      return "transient";
+    }
+    const send = () =>
+      doFetch(url, {
+        method: "POST",
+        headers: executor.buildHeaders(credentials as never, false, null, model),
+        body: JSON.stringify({
+          model,
+          max_tokens: 1,
+          messages: [{ role: "user", content: "." }],
+        }),
+        signal: AbortSignal.timeout(deps.timeoutMs ?? CLAUDE_SETUP_TOKEN_PROBE_TIMEOUT_MS),
+      });
+    const res = await (proxyConfig ? runWithProxyContext(proxyConfig, send) : send());
     status = res.status;
     headers = res.headers;
     await res.body?.cancel().catch(() => {});
@@ -154,14 +174,22 @@ export async function probeClaudeSetupTokenConnection(
     return "transient";
   }
 
+  // The probe can outlive a re-link or a delete (10s timeout, serial sweep). Re-read the
+  // connection now and compare the token used by the probe (in memory only, never logged);
+  // if it changed or the row is gone, the result belongs to the old token: discard it.
+  const fresh = await getConnection(conn.id).catch(() => null);
+  if (!fresh || (fresh.accessToken ?? undefined) !== (conn.accessToken ?? undefined)) {
+    log(`${LOG_PREFIX} connection ${conn.id}: token changed during the probe; result discarded`);
+    return "transient";
+  }
+
   const at = new Date(now()).toISOString();
   const stamp = async (extra: JsonRecord = {}, patch: JsonRecord = {}) => {
-    const fresh = await getConnection(conn.id).catch(() => null);
-    if (!fresh) return;
+    const latest = (await getConnection(conn.id).catch(() => null)) ?? fresh;
     await updateConnection(conn.id, {
       ...patch,
       providerSpecificData: {
-        ...toRecord(fresh.providerSpecificData),
+        ...toRecord(latest.providerSpecificData),
         lastProbeAt: at,
         lastProbeStatus: status,
         ...extra,
@@ -170,6 +198,8 @@ export async function probeClaudeSetupTokenConnection(
   };
 
   if (status === 401) {
+    // Residual window: a re-link between the check above and markRevoked is accepted
+    // (markRevoked is the same path a live 401 takes).
     try {
       await markRevoked(conn.id, model);
     } catch {

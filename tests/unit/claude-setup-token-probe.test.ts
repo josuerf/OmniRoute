@@ -216,3 +216,44 @@ test("sweep: disabled (0) makes no call; due ones are probed serially, skipping 
   assert.deepEqual(r1, { probed: 2, disabled: false });
   assert.equal(on.calls.length, 2);
 });
+
+test("401 for a token that was replaced during the probe does not revoke the new token", async () => {
+  const h = harness(() => new Response("{}", { status: 401 }));
+  const NEW_TOKEN = [...TOKEN.split("-").slice(0, 3), "TESTEnovotokenzyxwvutsrqponmlkji"].join("-");
+  let swapped = false;
+  const fetchStub = h.deps.fetch;
+  h.deps.fetch = (async (url: string, init: RequestInit) => {
+    const res = await (fetchStub as unknown as (u: string, i: RequestInit) => Promise<Response>)(
+      url,
+      init
+    );
+    swapped = true; // the user re-links while the request is in flight
+    return res;
+  }) as unknown as typeof fetch;
+  h.deps.getConnection = async () =>
+    conn(swapped ? { accessToken: NEW_TOKEN } : {}) as Record<string, unknown>;
+
+  const outcome = await probeClaudeSetupTokenConnection(conn() as never, h.deps as never);
+  assert.equal(outcome, "transient");
+  assert.deepEqual(h.revoked, []);
+  assert.deepEqual(h.updates, [], "nothing written for a stale probe result");
+  assert.deepEqual(h.recorded, []);
+  assert.ok(!h.logs.join("\n").includes(NEW_TOKEN) && !h.logs.join("\n").includes(TOKEN));
+});
+
+test("a connection deleted during the probe is left alone", async () => {
+  const h = harness(() => new Response("{}", { status: 401 }));
+  h.deps.getConnection = async () => null;
+  const outcome = await probeClaudeSetupTokenConnection(conn() as never, h.deps as never);
+  assert.equal(outcome, "transient");
+  assert.deepEqual(h.revoked, []);
+  assert.deepEqual(h.updates, []);
+});
+
+test("a blocked proxy assignment skips the probe (no direct egress)", async () => {
+  const h = harness(() => new Response("{}", { status: 200 }));
+  const deps = { ...h.deps, resolveProxy: async () => ({ proxyConfig: null, blocked: true }) };
+  const outcome = await probeClaudeSetupTokenConnection(conn() as never, deps as never);
+  assert.equal(outcome, "transient");
+  assert.equal(h.calls.length, 0);
+});
