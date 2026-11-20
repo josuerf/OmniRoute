@@ -17,11 +17,11 @@ test("claude usage is skipped (no network, no expiry signal) when scopes lack us
     throw new Error("must not call upstream");
   }) as typeof fetch;
 
-  const usage: any = await getUsageForProvider({
+  const usage = (await getUsageForProvider({
     provider: "claude",
     accessToken: TOKEN,
     providerSpecificData: { scopes: ["user:inference"], authMethod: "setup_token" },
-  });
+  })) as { message?: unknown; quotas?: unknown };
 
   assert.equal(calls, 0);
   assert.match(String(usage.message), /user:profile/);

@@ -17,10 +17,23 @@ test.after(() => {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
+interface ConnRow {
+  id: string;
+  provider?: string;
+  authType?: string;
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresAt?: string | null;
+  isActive?: boolean;
+  testStatus?: string;
+  lastErrorType?: string | null;
+  providerSpecificData: Record<string, unknown>;
+  [key: string]: unknown;
+}
 const TOKEN = "sk-ant-oat01-TESTE0123456789abcdefghijKLMNOP";
 
 test("401 on a claude connection without refreshToken parks it as expired/token_revoked with a clear message", async () => {
-  const conn: any = await providersDb.createProviderConnection({
+  const conn: ConnRow = await providersDb.createProviderConnection({
     provider: "claude",
     authType: "oauth",
     name: "setup-token",
@@ -34,7 +47,7 @@ test("401 on a claude connection without refreshToken parks it as expired/token_
 
   await auth.markAccountUnavailable(conn.id, 401, "invalid bearer token", "claude");
 
-  const after: any = await providersDb.getProviderConnectionById(conn.id);
+  const after: ConnRow = await providersDb.getProviderConnectionById(conn.id);
   assert.equal(after.testStatus, "expired");
   assert.equal(after.lastErrorType, "token_revoked");
   assert.match(String(after.lastError), /setup-token/);
@@ -43,7 +56,7 @@ test("401 on a claude connection without refreshToken parks it as expired/token_
 });
 
 test("401 is terminal even if a legacy row carries a far-future expiresAt but no refreshToken", async () => {
-  const conn: any = await providersDb.createProviderConnection({
+  const conn: ConnRow = await providersDb.createProviderConnection({
     provider: "claude",
     authType: "oauth",
     name: "legacy-long-expiry",
@@ -54,13 +67,13 @@ test("401 is terminal even if a legacy row carries a far-future expiresAt but no
     testStatus: "active",
   });
   await auth.markAccountUnavailable(conn.id, 401, "invalid bearer token", "claude");
-  const after: any = await providersDb.getProviderConnectionById(conn.id);
+  const after: ConnRow = await providersDb.getProviderConnectionById(conn.id);
   assert.equal(after.testStatus, "expired");
   assert.equal(after.lastErrorType, "token_revoked");
 });
 
 test("401 on a claude connection WITH refreshToken keeps the normal classification", async () => {
-  const conn: any = await providersDb.createProviderConnection({
+  const conn: ConnRow = await providersDb.createProviderConnection({
     provider: "claude",
     authType: "oauth",
     name: "normal-oauth",
@@ -71,6 +84,6 @@ test("401 on a claude connection WITH refreshToken keeps the normal classificati
     testStatus: "active",
   });
   await auth.markAccountUnavailable(conn.id, 401, "invalid bearer token", "claude");
-  const after: any = await providersDb.getProviderConnectionById(conn.id);
+  const after: ConnRow = await providersDb.getProviderConnectionById(conn.id);
   assert.notEqual(after.lastErrorType, "token_revoked");
 });
