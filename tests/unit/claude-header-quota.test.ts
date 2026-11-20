@@ -34,7 +34,10 @@ test("parse: fraction -> percent, reset epoch -> ISO, null without window header
   assert.equal(r.fiveHour!.resetAt, new Date(Number(reset5) * 1000).toISOString());
   assert.equal(r.sevenDay!.status, "allowed_warning");
   assert.equal(r.status, "allowed");
-  assert.equal(parseClaudeUnifiedHeaders({ "anthropic-ratelimit-unified-status": "allowed" }), null);
+  assert.equal(
+    parseClaudeUnifiedHeaders({ "anthropic-ratelimit-unified-status": "allowed" }),
+    null
+  );
   assert.equal(parseClaudeUnifiedHeaders(null), null);
   const clamp = parseClaudeUnifiedHeaders({ "Anthropic-Ratelimit-Unified-5h-Utilization": "1.7" })!;
   assert.equal(clamp.fiveHour!.utilization, 100);
@@ -48,7 +51,8 @@ test("toQuotaWindows uses OAuth keys and drops stale/expired windows", () => {
   assert.equal(q["session (5h)"].used, 25);
   assert.equal(q["session (5h)"].remainingPercentage, 75);
   assert.deepEqual(toQuotaWindows(r, NOW + 2 * 3600_000).quotas, {}); // stale (>1h)
-  const after5h = toQuotaWindows({ ...r, observedAt: NOW + 3500_000 }, NOW + 3700_000).quotas as any;
+  const after5h = toQuotaWindows({ ...r, observedAt: NOW + 3500_000 }, NOW + 3700_000)
+    .quotas as any;
   assert.deepEqual(Object.keys(after5h), ["weekly (7d)"]); // 5h reset already passed
 });
 
@@ -80,7 +84,10 @@ test("record: setup_token stores, feeds cache and persists with throttle", async
   assert.equal(persisted.length, 2);
   const back = readStoredClaudeHeaderQuota({ lastRateLimit: persisted[1][1] })!;
   assert.equal(back.fiveHour!.utilization, 30);
-  assert.equal(getClaudeHeaderQuota("zzz", { lastRateLimit: persisted[1][1] })!.fiveHour!.utilization, 30);
+  assert.equal(
+    getClaudeHeaderQuota("zzz", { lastRateLimit: persisted[1][1] })!.fiveHour!.utilization,
+    30
+  );
 });
 
 test("regression: OAuth / no scopes / bad input are no-ops and never throw", () => {
@@ -88,18 +95,31 @@ test("regression: OAuth / no scopes / bad input are no-ops and never throw", () 
   let calls = 0;
   const deps = { persist: async () => void calls++, feedCache: () => void calls++ };
   for (const psd of [OAUTH, {}, undefined, null, { scopes: "user:inference" }]) {
-    assert.equal(recordClaudeHeaderQuota("o1", hdrs(), NOW, { ...deps, providerSpecificData: psd }), null);
+    assert.equal(
+      recordClaudeHeaderQuota("o1", hdrs(), NOW, { ...deps, providerSpecificData: psd }),
+      null
+    );
   }
-  assert.equal(recordClaudeHeaderQuota(null, hdrs(), NOW, { ...deps, providerSpecificData: SETUP }), null);
-  assert.equal(recordClaudeHeaderQuota("o1", undefined, NOW, { ...deps, providerSpecificData: SETUP }), null);
+  assert.equal(
+    recordClaudeHeaderQuota(null, hdrs(), NOW, { ...deps, providerSpecificData: SETUP }),
+    null
+  );
+  assert.equal(
+    recordClaudeHeaderQuota("o1", undefined, NOW, { ...deps, providerSpecificData: SETUP }),
+    null
+  );
   assert.equal(getClaudeHeaderQuota("o1"), null);
   assert.equal(calls, 0);
   assert.equal(isClaudeHeaderQuotaConnection(OAUTH), false);
   assert.equal(isClaudeHeaderQuotaConnection(SETUP), true);
   const boom = recordClaudeHeaderQuota("c9", hdrs(), NOW, {
     providerSpecificData: SETUP,
-    persist: () => { throw new Error("x"); },
-    feedCache: () => { throw new Error("y"); },
+    persist: () => {
+      throw new Error("x");
+    },
+    feedCache: () => {
+      throw new Error("y");
+    },
   });
   assert.equal(boom, null);
 });

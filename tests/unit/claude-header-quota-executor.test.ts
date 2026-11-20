@@ -31,7 +31,11 @@ async function run(connectionId: string, providerSpecificData: Record<string, un
   try {
     return await new DefaultExecutor("claude").execute({
       model: "claude-opus-4-8",
-      body: { model: "claude-opus-4-8", messages: [{ role: "user", content: "hi" }], max_tokens: 8 },
+      body: {
+        model: "claude-opus-4-8",
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 8,
+      },
       stream: false,
       credentials: { connectionId, accessToken: "sk-ant-oat01-TESTE", providerSpecificData },
       clientHeaders: { "user-agent": "Cursor/1.0" },

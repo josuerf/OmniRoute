@@ -163,10 +163,12 @@ function toStored(r: ClaudeHeaderReading): JsonRecord {
 
 /** Parse a persisted `providerSpecificData.lastRateLimit`. */
 export function readStoredClaudeHeaderQuota(psd: unknown): ClaudeHeaderReading | null {
-  const raw = psd && typeof psd === "object" ? (psd as JsonRecord)[CLAUDE_HEADER_QUOTA_PSD_KEY] : null;
+  const raw =
+    psd && typeof psd === "object" ? (psd as JsonRecord)[CLAUDE_HEADER_QUOTA_PSD_KEY] : null;
   if (!raw || typeof raw !== "object") return null;
   const o = raw as JsonRecord;
-  const observedAt = typeof o.observedAt === "string" ? Date.parse(o.observedAt) : Number(o.observedAt);
+  const observedAt =
+    typeof o.observedAt === "string" ? Date.parse(o.observedAt) : Number(o.observedAt);
   if (!Number.isFinite(observedAt)) return null;
   const win = (v: unknown): ClaudeHeaderWindow | undefined => {
     if (!v || typeof v !== "object") return undefined;
@@ -198,9 +200,8 @@ export type ClaudeHeaderQuotaDeps = {
 };
 
 async function defaultPersist(connectionId: string, stored: JsonRecord) {
-  const { getProviderConnectionById, updateProviderConnection } = await import(
-    "../db/providers.ts"
-  );
+  const { getProviderConnectionById, updateProviderConnection } =
+    await import("../db/providers.ts");
   const conn = (await getProviderConnectionById(connectionId)) as JsonRecord | null;
   const psd = conn?.providerSpecificData;
   if (!psd || typeof psd !== "object" || !isClaudeHeaderQuotaConnection(psd)) return;
