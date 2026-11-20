@@ -1,4 +1,4 @@
-import { addAllowedConnectionToApiKey } from "@/lib/db/apiKeys";
+import { addAllowedConnectionToApiKey, getApiKeyById } from "@/lib/db/apiKeys";
 import {
   createProviderConnection,
   deleteProviderConnection,
@@ -141,6 +141,38 @@ export interface LinkClaudeSetupTokenInput extends UpsertClaudeSetupTokenInput {
  * connection is kept.
  */
 export async function linkClaudeSetupTokenConnection(input: LinkClaudeSetupTokenInput): Promise<{
+  connection: { id: string; name: string };
+  created: boolean;
+  linkStatus: string;
+}> {
+  // Serialize per owner key: upsert is read-then-write, so two simultaneous
+  // pastes with the same key would otherwise both create a connection.
+  const previous = ownerLocks.get(input.ownerKeyId) ?? Promise.resolve();
+  const run = previous.then(async () => {
+    // Re-read the key's links inside the lock: a call that just finished may
+    // have linked a connection the caller's (earlier) snapshot does not list.
+    const fresh = await getApiKeyById(input.ownerKeyId).catch(() => null);
+    const freshIds = Array.isArray(fresh?.allowedConnections) ? fresh.allowedConnections : [];
+    return linkUnlocked({
+      ...input,
+      ownerConnectionIds: [...new Set([...input.ownerConnectionIds, ...freshIds])],
+    });
+  });
+  const tail = run.then(
+    () => undefined,
+    () => undefined
+  );
+  ownerLocks.set(input.ownerKeyId, tail);
+  try {
+    return await run;
+  } finally {
+    if (ownerLocks.get(input.ownerKeyId) === tail) ownerLocks.delete(input.ownerKeyId);
+  }
+}
+
+const ownerLocks = new Map<string, Promise<void>>();
+
+async function linkUnlocked(input: LinkClaudeSetupTokenInput): Promise<{
   connection: { id: string; name: string };
   created: boolean;
   linkStatus: string;
