@@ -151,8 +151,20 @@ export async function getUsageForProvider(
         id,
         options
       );
-    case "claude":
+    case "claude": {
+      // Long-lived `claude setup-token` credentials carry only `user:inference`;
+      // the usage/quota endpoints need `user:profile`. Skip the pointless call
+      // (and its 403/429 noise) without signalling an auth failure.
+      const claudeScopes = (providerSpecificData as { scopes?: unknown } | null | undefined)
+        ?.scopes;
+      if (Array.isArray(claudeScopes) && !claudeScopes.includes("user:profile")) {
+        return {
+          message:
+            "Claude connected. Usage/quota is unavailable: this credential lacks the user:profile scope (long-lived setup token).",
+        };
+      }
       return await getClaudeUsage(accessToken);
+    }
     case "codex":
       return await getCodexUsage(accessToken, providerSpecificData);
     case "cursor":
