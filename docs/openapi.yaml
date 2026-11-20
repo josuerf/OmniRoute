@@ -12965,9 +12965,36 @@ paths:
       tags:
         - V1 Me
       summary: "GET me › status"
+      description: >-
+        Usage/quota status of the calling key. Each `accountQuotas` entry of a Claude
+        setup-token connection may carry `authMethod` (`setup_token`), `linkedAt`,
+        `quotaSource` (`response_headers`) and `observedAt`. See docs/reference/API_REFERENCE.md.
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountQuotas:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        authMethod:
+                          type: string
+                          enum: [setup_token]
+                          description: Present only for the key that owns a setup-token connection.
+                        linkedAt:
+                          type: string
+                          format: date-time
+                        quotaSource:
+                          type: string
+                          enum: [response_headers]
+                        observedAt:
+                          type: string
+                          format: date-time
   /api/v1/models/{model}:
     get:
       tags:

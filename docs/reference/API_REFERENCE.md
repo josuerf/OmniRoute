@@ -781,6 +781,18 @@ handler additionally checks a `self:*` scope on the calling key.
 `self:usage` scope (`hasSelfUsageScope`, `src/shared/constants/selfServiceScopes.ts`);
 401 if the Bearer token is missing/invalid, 403 if the key lacks the scope.
 
+### `accountQuotas` entries for Claude setup-token connections
+
+Entries of `accountQuotas` that belong to a connection linked with
+`POST /api/v1/me/connections/claude/token` carry extra, read-only fields:
+
+| Field          | Type                | Meaning                                                                                       |
+| -------------- | ------------------- | --------------------------------------------------------------------------------------------- |
+| `authMethod`   | `"setup_token"`     | How the connection was linked. Only present for the key that owns the connection.             |
+| `linkedAt`     | ISO 8601 string     | When the token was last linked or re-linked (omitted when unknown).                           |
+| `quotaSource`  | `"response_headers"`| The windows come from the `anthropic-ratelimit-unified-*` headers of upstream responses.      |
+| `observedAt`   | ISO 8601 string     | When those headers were last observed. Stale readings (over 1 h) are reported as unavailable. |
+
 ### `poolQuotas` — the calling key's own fair share
 
 When the key holds an allocation in one or more quota-sharing pools, `GET /api/v1/me/status`
