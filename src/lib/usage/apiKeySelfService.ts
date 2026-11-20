@@ -505,8 +505,28 @@ async function resolveAccountQuotas(metadata: ApiKeySelfServiceMetadata, deps: R
 
   const connections = await listAccountQuotaConnections(metadata, deps);
   return Promise.all(
-    connections.map((connection) => resolveConnectionAccountQuota(connection, deps))
+    connections.map(async (connection) => ({
+      ...(await resolveConnectionAccountQuota(connection, deps)),
+      ...ownLinkIdentity(connection, metadata.id),
+    }))
   );
+}
+
+/**
+ * `authMethod`/`linkedAt` of a setup-token connection, ONLY for the key that owns it
+ * (`providerSpecificData.ownerKeyId`). A connection of another key that shows up in the
+ * list (shared) never leaks them. Never exposes ownerKeyId, token or scopes.
+ */
+function ownLinkIdentity(connection: AccountQuotaConnection, callerKeyId: string) {
+  const data = connection.providerSpecificData;
+  if (connection.provider !== "claude" || !data || typeof data !== "object") return {};
+  const record = data as JsonRecord;
+  if (record.authMethod !== "setup_token" || record.ownerKeyId !== callerKeyId) return {};
+  const linkedAt =
+    typeof record.linkedAt === "string" && Number.isFinite(Date.parse(record.linkedAt))
+      ? new Date(record.linkedAt).toISOString()
+      : undefined;
+  return { authMethod: "setup_token" as const, ...(linkedAt && { linkedAt }) };
 }
 
 /**
