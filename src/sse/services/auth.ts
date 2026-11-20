@@ -3221,6 +3221,10 @@ export async function markAccountUnavailable(
     // A claude connection with NO refresh token (long-lived `claude setup-token`
     // credential) cannot have been "just refreshed": a 401 means the token was
     // revoked/invalid, so it stays terminal regardless of any stored expiry.
+    // By design (accepted heuristic): ANY 401 here is terminal, even a transient
+    // one, since the token cannot be refreshed. Recovery is pasting the same token
+    // again via POST /api/v1/me/connections/claude/token: its upsert clears the
+    // error state (covered by "re-posting revives ..." in the route test).
     const isClaudeWithoutRefreshToken =
       provider === "claude" && status === 401 && !!conn && !conn.refreshToken;
     if (
