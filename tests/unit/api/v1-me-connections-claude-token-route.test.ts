@@ -25,6 +25,20 @@ const providersDb = await import("../../../src/lib/db/providers.ts");
 const { buildApiKeyConnectionsFixture } = await import("../../helpers/apiKeyConnectionsFixture.ts");
 const route = await import("../../../src/app/api/v1/me/connections/claude/token/route.ts");
 
+interface ConnRow {
+  id: string;
+  provider?: string;
+  authType?: string;
+  accessToken?: string;
+  refreshToken?: string | null;
+  expiresAt?: string | null;
+  isActive?: boolean;
+  testStatus?: string;
+  lastErrorType?: string | null;
+  providerSpecificData: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 const originalFetch = globalThis.fetch;
 const TOKEN = "sk-ant-oat01-TESTE0123456789abcdefghijKLMNOP_-xyz";
 const TOKEN_2 = "sk-ant-oat01-TESTEsegundoTOKEN0123456789abcdef_-";
@@ -109,7 +123,7 @@ test("creates a claude oauth connection with no refresh token and no expiry, lin
   assert.equal(typeof body.connectionId, "string");
   assert.equal(typeof body.name, "string");
 
-  const conn: any = await providersDb.getProviderConnectionById(body.connectionId);
+  const conn: ConnRow = await providersDb.getProviderConnectionById(body.connectionId);
   assert.equal(conn.provider, "claude");
   assert.equal(conn.authType, "oauth");
   assert.equal(conn.accessToken, TOKEN);
@@ -136,7 +150,7 @@ test("same key posting again replaces the token on the same connection (idempote
   assert.equal(second.status, "updated");
   assert.equal(second.connectionId, first.connectionId);
 
-  const conn: any = await providersDb.getProviderConnectionById(first.connectionId);
+  const conn: ConnRow = await providersDb.getProviderConnectionById(first.connectionId);
   assert.equal(conn.accessToken, TOKEN_2);
   const row = await apiKeysDb.getApiKeyById(fixture.oneNonClaudeConnection.apiKey.id);
   assert.equal(row?.allowedConnections?.length, 2, "unrelated connection preserved, no duplicate");
@@ -154,7 +168,7 @@ test("re-posting revives a connection parked as expired/token_revoked", async ()
     errorCode: 401,
   });
   await postRoute({ token: TOKEN_2 }, bearer);
-  const conn: any = await providersDb.getProviderConnectionById(first.connectionId);
+  const conn: ConnRow = await providersDb.getProviderConnectionById(first.connectionId);
   assert.equal(conn.testStatus, "active");
   assert.ok(!conn.lastErrorType);
   assert.equal(conn.isActive, true);
@@ -170,7 +184,149 @@ test("never reads connectionId or owner from the body", async () => {
   assert.equal(res.status, 201);
   const body = await res.json();
   assert.notEqual(body.connectionId, fixture.connections.claude.id);
-  const victim: any = await providersDb.getProviderConnectionById(fixture.connections.claude.id);
+  const victim: ConnRow = await providersDb.getProviderConnectionById(
+    fixture.connections.claude.id
+  );
   assert.notEqual(victim.accessToken, TOKEN);
   assert.notEqual(body.name, "evil");
+});
+
+const setupToken = await import("../../../src/lib/oauth/utils/claudeSetupToken.ts");
+
+async function claudeConnectionCount() {
+  return (await providersDb.getProviderConnections({ provider: "claude" })).length;
+}
+
+test("M1: a setup_token connection owned by another key but linked to this key is NOT overwritten", async () => {
+  const fixture = await buildApiKeyConnectionsFixture();
+  noNetwork();
+  const keyA = fixture.zeroConnections.apiKey;
+  const keyB = fixture.oneNonClaudeConnection.apiKey;
+
+  const a = await (await postRoute({ token: TOKEN }, `Bearer ${keyA.key}`)).json();
+  const connA: ConnRow = await providersDb.getProviderConnectionById(a.connectionId);
+  assert.equal(connA.providerSpecificData.ownerKeyId, keyA.id);
+
+  // The shared connection also ends up in key B's allowedConnections.
+  await apiKeysDb.addAllowedConnectionToApiKey(keyB.id, a.connectionId);
+
+  const res = await postRoute({ token: TOKEN_2 }, `Bearer ${keyB.key}`);
+  assert.equal(res.status, 201);
+  const b = await res.json();
+  assert.notEqual(b.connectionId, a.connectionId);
+
+  const after: ConnRow = await providersDb.getProviderConnectionById(a.connectionId);
+  assert.equal(after.accessToken, TOKEN, "owner A's token must be untouched");
+  const mine: ConnRow = await providersDb.getProviderConnectionById(b.connectionId);
+  assert.equal(mine.accessToken, TOKEN_2);
+  assert.equal(mine.providerSpecificData.ownerKeyId, keyB.id);
+});
+
+test("M2: failing key link removes the freshly created connection and rethrows", async () => {
+  const fixture = await buildApiKeyConnectionsFixture();
+  const key = fixture.zeroConnections.apiKey;
+  const before = await claudeConnectionCount();
+
+  await assert.rejects(
+    setupToken.linkClaudeSetupTokenConnection({
+      token: TOKEN,
+      name: "x",
+      ownerKeyId: key.id,
+      ownerConnectionIds: [],
+      link: async () => {
+        throw new Error("SQLITE_BUSY");
+      },
+    })
+  );
+  assert.equal(await claudeConnectionCount(), before, "no orphan connection left in the pool");
+});
+
+test("M2: link reporting not_found also removes the created connection", async () => {
+  const fixture = await buildApiKeyConnectionsFixture();
+  const key = fixture.zeroConnections.apiKey;
+  const before = await claudeConnectionCount();
+
+  const result = await setupToken.linkClaudeSetupTokenConnection({
+    token: TOKEN,
+    name: "x",
+    ownerKeyId: key.id,
+    ownerConnectionIds: [],
+    link: async () => ({ status: "not_found" }),
+  });
+  assert.equal(result.linkStatus, "not_found");
+  assert.equal(await claudeConnectionCount(), before);
+});
+
+test("M2: failing link on an UPDATE keeps the existing connection", async () => {
+  const fixture = await buildApiKeyConnectionsFixture();
+  noNetwork();
+  const key = fixture.zeroConnections.apiKey;
+  const first = await (await postRoute({ token: TOKEN }, `Bearer ${key.key}`)).json();
+  const before = await claudeConnectionCount();
+
+  await assert.rejects(
+    setupToken.linkClaudeSetupTokenConnection({
+      token: TOKEN_2,
+      name: "x",
+      ownerKeyId: key.id,
+      ownerConnectionIds: [first.connectionId],
+      link: async () => {
+        throw new Error("boom");
+      },
+    })
+  );
+  assert.equal(await claudeConnectionCount(), before);
+  assert.ok(await providersDb.getProviderConnectionById(first.connectionId));
+});
+
+test("B3: env-key is refused with 401", async () => {
+  noNetwork();
+  const prev = process.env.OMNIROUTE_API_KEY;
+  process.env.OMNIROUTE_API_KEY = "env-key-for-setup-token-test";
+  try {
+    const res = await postRoute({ token: TOKEN }, "Bearer env-key-for-setup-token-test");
+    assert.equal(res.status, 401);
+  } finally {
+    if (prev === undefined) delete process.env.OMNIROUTE_API_KEY;
+    else process.env.OMNIROUTE_API_KEY = prev;
+  }
+});
+
+test("B3: body above 8 KB is rejected with 413 payload_too_large (text length)", async () => {
+  const fixture = await buildApiKeyConnectionsFixture();
+  const before = await claudeConnectionCount();
+  const res = await postRoute(
+    { token: TOKEN, pad: "x".repeat(9 * 1024) },
+    `Bearer ${fixture.zeroConnections.apiKey.key}`
+  );
+  assert.equal(res.status, 413);
+  assert.deepEqual(await res.json(), { error: "payload_too_large" });
+  assert.equal(await claudeConnectionCount(), before);
+});
+
+test("B3: declared Content-Length above 8 KB is rejected with 413 before reading", async () => {
+  const fixture = await buildApiKeyConnectionsFixture();
+  const res = await route.POST(
+    new Request("http://localhost/api/v1/me/connections/claude/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": String(64 * 1024),
+        Authorization: `Bearer ${fixture.zeroConnections.apiKey.key}`,
+      },
+      body: JSON.stringify({ token: TOKEN }),
+    })
+  );
+  assert.equal(res.status, 413);
+  assert.deepEqual(await res.json(), { error: "payload_too_large" });
+});
+
+test("B3: a body just under the limit still works", async () => {
+  const fixture = await buildApiKeyConnectionsFixture();
+  noNetwork();
+  const res = await postRoute(
+    { token: TOKEN, pad: "x".repeat(4 * 1024) },
+    `Bearer ${fixture.zeroConnections.apiKey.key}`
+  );
+  assert.equal(res.status, 201);
 });

@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { addAllowedConnectionToApiKey } from "@/lib/db/apiKeys";
 import { getAuditRequestContext, logAuditEvent } from "@/lib/compliance";
 import { hasSelfUsageScope } from "@/shared/constants/selfServiceScopes";
 import {
   CLAUDE_SETUP_TOKEN_AUTH_METHOD,
   parseClaudeSetupToken,
-  upsertClaudeSetupTokenConnection,
+  linkClaudeSetupTokenConnection,
 } from "@/lib/oauth/utils/claudeSetupToken";
 
 function extractBearerToken(request: Request): string | null {
@@ -18,6 +17,13 @@ function extractBearerToken(request: Request): string | null {
 
 function authError(status = 401) {
   return NextResponse.json({ error: status === 401 ? "Unauthorized" : "Forbidden" }, { status });
+}
+
+/** The body is `{ token }` (~120 chars); anything above this is abuse. */
+const MAX_BODY_BYTES = 8 * 1024;
+
+function payloadTooLarge() {
+  return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
 }
 
 function invalidTokenFormat() {
@@ -34,6 +40,12 @@ function invalidTokenFormat() {
  * derived ONLY from the authenticated key. The body is `{ token }` and nothing
  * else is read from it — never a `connectionId`, owner or name (structural
  * IDOR, see the sibling route). The token is never logged, audited or echoed.
+ * Bodies above 8 KB are refused with 413 `payload_too_large`.
+ *
+ * Revocation (by design): a 401 from upstream on a claude connection WITHOUT a
+ * refresh token is terminal (`expired`/`token_revoked`, see
+ * `src/sse/services/auth.ts`); nothing retries it. Pasting the same token again
+ * (or a new one) reactivates it: the upsert clears every error field.
  */
 export async function POST(request: Request) {
   const apiKey = extractBearerToken(request);
@@ -49,9 +61,14 @@ export async function POST(request: Request) {
 
   if (!hasSelfUsageScope(metadata.scopes)) return authError(403);
 
+  const declaredLength = Number(request.headers.get("Content-Length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) return payloadTooLarge();
+
   let rawBody: unknown;
   try {
-    rawBody = await request.json();
+    const text = await request.text();
+    if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) return payloadTooLarge();
+    rawBody = JSON.parse(text);
   } catch {
     return invalidTokenFormat();
   }
@@ -63,19 +80,20 @@ export async function POST(request: Request) {
       typeof metadata.name === "string" && metadata.name.trim()
         ? metadata.name.trim()
         : metadata.id;
-    const { connection, created } = await upsertClaudeSetupTokenConnection({
+    // Creates/updates the connection and links it to the caller's key; if the
+    // link fails the created connection is removed (no orphan with a live token).
+    const { connection, created, linkStatus } = await linkClaudeSetupTokenConnection({
       token,
       name: `Claude (setup-token) - ${keyLabel}`,
+      ownerKeyId: metadata.id,
       ownerConnectionIds: Array.isArray(metadata.allowedConnections)
         ? metadata.allowedConnections
         : [],
     });
 
-    // Link ONLY the connection id produced/updated above for the caller's key.
-    const linkResult = await addAllowedConnectionToApiKey(metadata.id, connection.id);
-    if (linkResult.status === "not_found") return authError(401);
+    if (linkStatus === "not_found") return authError(401);
 
-    if (linkResult.status === "linked") {
+    if (linkStatus === "linked") {
       const auditContext = getAuditRequestContext(request);
       logAuditEvent({
         action: "apiKey.connections.link",

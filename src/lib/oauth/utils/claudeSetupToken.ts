@@ -1,5 +1,7 @@
+import { addAllowedConnectionToApiKey } from "@/lib/db/apiKeys";
 import {
   createProviderConnection,
+  deleteProviderConnection,
   getProviderConnections,
   updateProviderConnection,
 } from "@/lib/db/providers";
@@ -29,7 +31,9 @@ export interface UpsertClaudeSetupTokenInput {
   token: string;
   /** Display name, derived by the caller from the authenticated API key. */
   name: string;
-  /** Connections already linked to the authenticated key (the "owner" scope). */
+  /** Id of the authenticated API key; stamped on the connection as `ownerKeyId`. */
+  ownerKeyId: string;
+  /** Connections already linked to the authenticated key (candidate scope). */
   ownerConnectionIds: string[];
 }
 
@@ -37,11 +41,17 @@ export interface UpsertClaudeSetupTokenInput {
  * Create (or refresh) the setup-token Claude connection of ONE owner.
  *
  * Upsert rule (mirrors the sibling OAuth route, which also updates an existing
- * connection instead of piling up duplicates): if the owner's key already links
- * a claude connection marked `authMethod: "setup_token"`, its token is replaced
- * and any terminal/error state is cleared; otherwise a new connection is created.
- * Candidates come ONLY from `ownerConnectionIds` (derived from the key), never
- * from request input.
+ * connection instead of piling up duplicates): if the key already links a claude
+ * connection marked `authMethod: "setup_token"` AND stamped with
+ * `providerSpecificData.ownerKeyId === ownerKeyId`, its token is replaced and any
+ * terminal/error state is cleared; otherwise a new connection is created. The
+ * `ownerKeyId` check stops a connection shared with another key (present in this
+ * key's allowedConnections) from having its token swapped by a non-owner.
+ * Candidates come ONLY from the key's own data, never from request input.
+ *
+ * Re-pasting the same (or a new) token is the supported way to reactivate a
+ * connection parked as `expired`/`token_revoked`: the update clears every error
+ * field (see test "re-posting revives ...").
  *
  * expiresAt is deliberately null: a far-future expiry would make a revoked token
  * look "still valid" to the 401 handling (see markAccountUnavailable).
@@ -52,9 +62,11 @@ export async function upsertClaudeSetupTokenConnection(
   const owned = new Set(input.ownerConnectionIds);
   const existing = (await getProviderConnections({ provider: "claude" })).find((c) => {
     const row = c as JsonRecord;
+    const data = toRecord(row.providerSpecificData);
     return (
       owned.has(String(row.id)) &&
-      toRecord(row.providerSpecificData).authMethod === CLAUDE_SETUP_TOKEN_AUTH_METHOD
+      data.authMethod === CLAUDE_SETUP_TOKEN_AUTH_METHOD &&
+      data.ownerKeyId === input.ownerKeyId
     );
   }) as JsonRecord | undefined;
 
@@ -77,6 +89,7 @@ export async function upsertClaudeSetupTokenConnection(
       providerSpecificData: {
         ...toRecord(existing.providerSpecificData),
         authMethod: CLAUDE_SETUP_TOKEN_AUTH_METHOD,
+        ownerKeyId: input.ownerKeyId,
         scopes: CLAUDE_SETUP_TOKEN_SCOPES,
         linkedAt,
       },
@@ -101,6 +114,7 @@ export async function upsertClaudeSetupTokenConnection(
     testStatus: "active",
     providerSpecificData: {
       authMethod: CLAUDE_SETUP_TOKEN_AUTH_METHOD,
+      ownerKeyId: input.ownerKeyId,
       scopes: CLAUDE_SETUP_TOKEN_SCOPES,
       linkedAt,
     },
@@ -110,4 +124,47 @@ export async function upsertClaudeSetupTokenConnection(
     connection: { id: String(created.id), name: String(created.name ?? input.name) },
     created: true,
   };
+}
+
+export interface LinkClaudeSetupTokenInput extends UpsertClaudeSetupTokenInput {
+  /** Injection points for tests; default to the real DB modules. */
+  link?: (apiKeyId: string, connectionId: string) => Promise<{ status: string }>;
+  removeConnection?: (connectionId: string) => Promise<unknown>;
+}
+
+/**
+ * Upsert the connection AND link it to the key. There is no transaction that
+ * spans the providers table and the api_keys table, so atomicity is by
+ * compensation: when the link throws or reports `not_found` and the connection
+ * was CREATED by this call, it is deleted again so a token-bearing active
+ * connection is never left orphaned in the pool. A pre-existing (updated)
+ * connection is kept.
+ */
+export async function linkClaudeSetupTokenConnection(input: LinkClaudeSetupTokenInput): Promise<{
+  connection: { id: string; name: string };
+  created: boolean;
+  linkStatus: string;
+}> {
+  const { link = addAllowedConnectionToApiKey, removeConnection = deleteProviderConnection } =
+    input;
+  const { connection, created } = await upsertClaudeSetupTokenConnection(input);
+
+  const compensate = async () => {
+    if (!created) return;
+    try {
+      await removeConnection(connection.id);
+    } catch {
+      // Best effort: the original failure is what the caller must see.
+    }
+  };
+
+  let linkStatus: string;
+  try {
+    linkStatus = (await link(input.ownerKeyId, connection.id)).status;
+  } catch (error) {
+    await compensate();
+    throw error;
+  }
+  if (linkStatus === "not_found") await compensate();
+  return { connection, created, linkStatus };
 }
