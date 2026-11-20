@@ -5,6 +5,7 @@ import {
   getProviderConnections,
   updateProviderConnection,
 } from "@/lib/db/providers";
+import { clearClaudeHeaderQuota } from "@/lib/quota/claudeHeaderQuota";
 
 /**
  * Long-lived Claude token produced by `claude setup-token` (~1 year, no refresh
@@ -73,6 +74,14 @@ export async function upsertClaudeSetupTokenConnection(
   const linkedAt = new Date().toISOString();
 
   if (existing) {
+    // A re-link carries a new token: drop quota/probe state that belonged to the old one.
+    const {
+      lastRateLimit: _staleRateLimit,
+      lastProbeAt: _staleProbeAt,
+      lastProbeStatus: _staleProbeStatus,
+      ...keptData
+    } = toRecord(existing.providerSpecificData);
+    clearClaudeHeaderQuota(String(existing.id));
     const updated = (await updateProviderConnection(String(existing.id), {
       accessToken: input.token,
       refreshToken: null,
@@ -87,7 +96,7 @@ export async function upsertClaudeSetupTokenConnection(
       rateLimitedUntil: null,
       backoffLevel: 0,
       providerSpecificData: {
-        ...toRecord(existing.providerSpecificData),
+        ...keptData,
         authMethod: CLAUDE_SETUP_TOKEN_AUTH_METHOD,
         ownerKeyId: input.ownerKeyId,
         scopes: CLAUDE_SETUP_TOKEN_SCOPES,

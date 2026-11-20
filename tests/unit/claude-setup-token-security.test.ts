@@ -228,3 +228,43 @@ test("two simultaneous pastes with the same key yield a single claude connection
   const linked = (links?.allowedConnections ?? []).filter((id: string) => id === ja.connectionId);
   assert.equal(linked.length, 1, "linked exactly once");
 });
+
+test("re-link drops the old token's quota and probe state", async () => {
+  const quotaMod = await import("../../src/lib/quota/claudeHeaderQuota.ts");
+  const fixture = await buildApiKeyConnectionsFixture();
+  const bearer = `Bearer ${fixture.zeroConnections.apiKey.key}`;
+
+  const first = await postRoute({ token: TOKEN }, bearer);
+  assert.ok([200, 201].includes(first.status));
+  const { connectionId } = await first.json();
+
+  const conn = (await providersDb.getProviderConnectionById(connectionId)) as {
+    providerSpecificData: Record<string, unknown>;
+  };
+  await providersDb.updateProviderConnection(connectionId, {
+    providerSpecificData: {
+      ...conn.providerSpecificData,
+      lastRateLimit: { observedAt: 1, status: "allowed" },
+      lastProbeAt: "2026-01-01T00:00:00.000Z",
+      lastProbeStatus: 200,
+    },
+  });
+  quotaMod.recordClaudeHeaderQuota(
+    connectionId,
+    new Headers({ "anthropic-ratelimit-unified-5h-utilization": "0.5" }),
+    Date.now(),
+    { providerSpecificData: conn.providerSpecificData, persist: () => {}, feedCache: () => {} }
+  );
+  assert.ok(quotaMod.getClaudeHeaderQuota(connectionId), "memory reading primed");
+
+  const second = await postRoute({ token: TOKEN_3 }, bearer);
+  assert.equal(second.status, 200);
+  const after = (await providersDb.getProviderConnectionById(connectionId)) as {
+    providerSpecificData: Record<string, unknown>;
+  };
+  assert.equal(after.providerSpecificData.lastRateLimit, undefined);
+  assert.equal(after.providerSpecificData.lastProbeAt, undefined);
+  assert.equal(after.providerSpecificData.lastProbeStatus, undefined);
+  assert.equal(after.providerSpecificData.authMethod, "setup_token");
+  assert.equal(quotaMod.getClaudeHeaderQuota(connectionId), null);
+});
