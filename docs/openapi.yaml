@@ -12927,6 +12927,39 @@ paths:
       responses:
         "200":
           description: OK
+  /api/v1/me/connections/claude/token:
+    post:
+      tags:
+        - V1 Me
+      summary: "POST me › connections › claude › token"
+      description: "Link a pasted long-lived Claude token (claude setup-token) as a connection owned by the calling key. Bearer API key with the self:usage scope. The token is never echoed, logged or audited."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  description: "Long-lived Claude token (sk-ant-oat01-...)."
+      responses:
+        "200":
+          description: Existing setup-token connection of the key updated
+        "201":
+          description: Connection created and linked to the key
+        "400":
+          description: invalid_token_format
+        "401":
+          description: Missing or invalid Bearer API key
+        "403":
+          description: Key lacks the self:usage scope
+        "413":
+          description: payload_too_large (body above 8 KB)
+        "500":
+          description: Internal server error
   /api/v1/me/status:
     get:
       tags:

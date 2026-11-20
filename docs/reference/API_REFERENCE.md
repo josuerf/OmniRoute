@@ -775,6 +775,7 @@ handler additionally checks a `self:*` scope on the calling key.
 | ------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | GET    | `/api/v1/me/status`             | The calling key's own usage/quota status (`self:usage`; `accountQuotas` and `poolQuotas` require `self:account-quota`)                                 |
 | POST   | `/api/v1/me/connections/claude` | Exchange a Claude OAuth authorization code and atomically link the resulting connection into the calling key's own `allowedConnections` (`self:usage`) |
+| POST   | `/api/v1/me/connections/claude/token` | Link a pasted long-lived Claude token (`claude setup-token`, `sk-ant-oat01-...`) as a connection owned by the calling key (`self:usage`) |
 
 **Auth:** Bearer API key. `POST /api/v1/me/connections/claude` requires the
 `self:usage` scope (`hasSelfUsageScope`, `src/shared/constants/selfServiceScopes.ts`);
@@ -858,6 +859,50 @@ connection this exact authenticated call did not just create. Failures
 `{"error": "Internal server error"}` 500 as `/api/oauth/[provider]/[action]`'s
 `exchange` action — no upstream error body or token material is ever exposed.
 Never returns the raw access/refresh token or the full connection row.
+
+**`POST /api/v1/me/connections/claude/token`** links a long-lived Claude token
+(`claude setup-token`: ~1 year, no refresh token, scope `user:inference`) that the
+user pasted, with no OAuth exchange. Same auth as the sibling route: Bearer API key
+with the `self:usage` scope.
+
+Request body (nothing else is read from it; never a `connectionId`, owner or name):
+
+```json
+{ "token": "sk-ant-oat01-..." }
+```
+
+Response (`201` on first paste, `200` when the key's own setup-token connection was updated):
+
+```json
+{
+  "status": "created",
+  "connectionId": "uuid",
+  "name": "Claude (setup-token) - <key name>",
+  "provider": "claude",
+  "authMethod": "setup_token"
+}
+```
+
+`status` is `"created"` (201) or `"updated"` (200). The connection owner and display
+name come only from the authenticated key. Pasting again (same or new token)
+replaces the token of that key's setup-token connection and clears every error
+field, which is how a connection parked as `expired`/`token_revoked` is reactivated.
+Simultaneous pastes with the same key are serialized, so a key never ends up with
+duplicate setup-token connections.
+
+| Status | Meaning                                                                  |
+| ------ | ------------------------------------------------------------------------ |
+| 200    | Existing setup-token connection of the key updated                       |
+| 201    | Connection created and linked to the key                                 |
+| 400    | `{"error":"invalid_token_format"}`: bad JSON, missing or malformed token |
+| 401    | Missing/invalid Bearer key (or the key no longer exists)                 |
+| 403    | Key lacks the `self:usage` scope                                         |
+| 413    | `{"error":"payload_too_large"}`: body above 8 KB                         |
+| 500    | `{"error":"Internal server error"}`: generic, no detail                  |
+
+The route has no rate limiter of its own, so it never returns 429. The token is
+stored encrypted at rest (`enc:v1:` with `STORAGE_ENCRYPTION_KEY`) and is never
+echoed in any response, audit event (`apiKey.connections.link`) or log line.
 
 Built for the external, VPN-only self-service account-linking portal
 (a separate deployment, not part of this repository); see
