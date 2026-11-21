@@ -24,6 +24,7 @@ const hdrs = () =>
     "anthropic-ratelimit-unified-status": "allowed",
     authorization: "Bearer sk-ant-oat01-TESTE",
   });
+type QuotaMap = Record<string, { used?: number; remainingPercentage?: number }>;
 const SETUP = { authMethod: "setup_token", scopes: ["user:inference"] };
 const OAUTH = { scopes: ["user:inference", "user:profile"] };
 
@@ -46,24 +47,24 @@ test("parse: fraction -> percent, reset epoch -> ISO, null without window header
 
 test("toQuotaWindows uses OAuth keys and drops stale/expired windows", () => {
   const r = parseClaudeUnifiedHeaders(hdrs(), NOW)!;
-  const q = toQuotaWindows(r, NOW).quotas as any;
+  const q = toQuotaWindows(r, NOW).quotas as QuotaMap;
   assert.deepEqual(Object.keys(q).sort(), ["session (5h)", "weekly (7d)"]);
   assert.equal(q["session (5h)"].used, 25);
   assert.equal(q["session (5h)"].remainingPercentage, 75);
   assert.deepEqual(toQuotaWindows(r, NOW + 2 * 3600_000).quotas, {}); // stale (>1h)
   const after5h = toQuotaWindows({ ...r, observedAt: NOW + 3500_000 }, NOW + 3700_000)
-    .quotas as any;
+    .quotas as QuotaMap;
   assert.deepEqual(Object.keys(after5h), ["weekly (7d)"]); // 5h reset already passed
 });
 
 test("record: setup_token stores, feeds cache and persists with throttle", async () => {
   clearClaudeHeaderQuota();
-  const persisted: any[] = [];
-  const fed: any[] = [];
+  const persisted: Array<[string, Record<string, unknown>]> = [];
+  const fed: Array<[string, unknown]> = [];
   const deps = {
     providerSpecificData: SETUP,
-    persist: async (id: string, s: any) => void persisted.push([id, s]),
-    feedCache: (id: string, q: any) => void fed.push([id, q]),
+    persist: async (id: string, s: Record<string, unknown>) => void persisted.push([id, s]),
+    feedCache: (id: string, q: unknown) => void fed.push([id, q]),
   };
   assert.ok(recordClaudeHeaderQuota("c1", hdrs(), NOW, deps));
   assert.equal(getClaudeHeaderQuota("c1")!.fiveHour!.utilization, 25);
